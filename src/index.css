@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles */
+html {
+  font-family: 'Avenir', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #ffffff;
+  color: #374151;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid #9C8160;
+  outline-offset: 2px;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-custom {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Remove any icons from transaction type badges */
+span.bg-primary-100::after,
+span.bg-green-100::after,
+span.bg-yellow-100::after,
+span.bg-purple-100::after {
+  content: none !important;
+}
+
+/* Specifically target transaction type badges */
+.no-icon::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Override any potential icon styling on transaction type elements */
+span[style*="primary-100"]::after,
+span[style*="bg-primary"]::after {
+  content: none !important;
+}
+
+/* Force remove all pseudo-elements from transaction badges */
+span.bg-primary-100 *,
+span.bg-green-100 *,
+span.bg-yellow-100 *,
+span.bg-purple-100 *,
+.no-icon * {
+  position: relative;
+}
+
+.no-icon::before,
+.no-icon::after,
+span.bg-primary-100::before,
+span.bg-primary-100::after,
+span.bg-green-100::before,
+span.bg-green-100::after,
+span.bg-yellow-100::before,
+span.bg-yellow-100::after,
+span.bg-purple-100::before,
+span.bg-purple-100::after {
+  content: "" !important;
+  display: none !important;
+  background: none !important;
+  position: static !important;
+}
+
+/* Line clamp utility for text truncation */
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}

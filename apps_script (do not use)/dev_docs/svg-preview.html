@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Printer SVG Preview</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;padding:20px;background:#f7f7f8;color:#111}
+    .grid{display:flex;gap:16px;flex-wrap:wrap}
+    .card{background:#fff;border:1px solid #e6e6e9;border-radius:8px;padding:12px;width:160px;box-shadow:0 1px 0 rgba(0,0,0,0.03);text-align:center}
+    .icon{width:40px;height:40px;margin:8px auto;color:#2b2b2b}
+    .label{font-size:13px;margin-top:8px;color:#333}
+    .hint{font-size:12px;color:#666;margin-top:6px}
+    button.copy{margin-top:8px;padding:6px 8px;border-radius:6px;border:1px solid #ccc;background:#fafafa;cursor:pointer}
+  </style>
+</head>
+<body>
+  <h2>Printer icon candidates (flat SVGs)</h2>
+  <div class="hint">Click an icon or "Copy SVG" to copy its markup. Reply with the number to apply.</div>
+  <div class="grid">
+    <div class="card" data-id="1">
+      <div class="icon" title="1 — Outline, thin stroke (minimal)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="9" width="12" height="6"></rect>
+          <path d="M6 18h12"></path>
+          <path d="M8 9V6h8v3"></path>
+        </svg>
+      </div>
+      <div class="label">1 — Outline thin</div>
+      <button class="copy" data-id="1">Copy SVG</button>
+    </div>
+
+  <h2 style="margin-top:24px">Return arrow candidates — replacement set</h2>
+  <div class="grid" style="margin-top:8px">
+    <div class="card" data-id="20">
+      <div class="icon" title="20 — Fat chevron left (filled)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+      </div>
+      <div class="label">20 — Fat chevron (filled)</div>
+      <button class="copy" data-id="20">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="21">
+      <div class="icon" title="21 — Fat chevron left (outline)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+      </div>
+      <div class="label">21 — Fat chevron (outline)</div>
+      <button class="copy" data-id="21">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="22">
+      <div class="icon" title="22 — Block arrow left (filled)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true"><path d="M20 11H9.83l5.59-5.59L14 4l-8 8 8 8 1.41-1.41L9.83 13H20z"/></svg>
+      </div>
+      <div class="label">22 — Block arrow (filled)</div>
+      <button class="copy" data-id="22">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="23">
+      <div class="icon" title="23 — Block arrow left (outline)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11H9.83l5.59-5.59L14 4l-8 8 8 8 1.41-1.41L9.83 13H20z"/></svg>
+      </div>
+      <div class="label">23 — Block arrow (outline)</div>
+      <button class="copy" data-id="23">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="24">
+      <div class="icon" title="24 — Rounded solid arrow (filled)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true"><path d="M20 12a1 1 0 0 1-1 1H9.41l3.3 3.29a1 1 0 0 1-1.42 1.42l-5-5a1 1 0 0 1 0-1.42l5-5a1 1 0 1 1 1.42 1.42L9.41 11H19a1 1 0 0 1 1 1z"/></svg>
+      </div>
+      <div class="label">24 — Rounded (filled)</div>
+      <button class="copy" data-id="24">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="25">
+      <div class="icon" title="25 — Fat arrow with box tail (filled)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true"><path d="M11 4l-8 8 8 8v-5h9v-6h-9z"/></svg>
+      </div>
+      <div class="label">25 — Box-tail (filled)</div>
+      <button class="copy" data-id="25">Copy SVG</button>
+    </div>
+    <div class="card" data-id="25e">
+      <div class="icon" title="25 — Fat arrow with box tail (outline)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4l-8 8 8 8v-5h9v-6h-9z" fill="none"/></svg>
+      </div>
+      <div class="label">25 — Box-tail (empty)</div>
+      <button class="copy" data-id="25e">Copy SVG</button>
+    </div>
+  </div>
+
+    <div class="card" data-id="2">
+      <div class="icon" title="2 — Solid / filled (flat)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true">
+          <path d="M19 8H5c-1.1 0-2 .9-2 2v6h4v4h10v-4h4v-6c0-1.1-.9-2-2-2zM8 3h8v4H8z"/>
+        </svg>
+      </div>
+      <div class="label">2 — Solid / filled</div>
+      <button class="copy" data-id="2">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="3">
+      <div class="icon" title="3 — Minimal block printer with filled paper area">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="7" width="18" height="10"></rect>
+          <rect x="7" y="3" width="10" height="4" fill="currentColor"></rect>
+        </svg>
+      </div>
+      <div class="label">3 — Minimal block</div>
+      <button class="copy" data-id="3">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="4">
+      <div class="icon" title="4 — Outline printer with paper slot">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9h12v6H6z"></path>
+          <path d="M6 9V6h12v3"></path>
+          <rect x="9" y="13" width="6" height="4"></rect>
+        </svg>
+      </div>
+      <div class="label">4 — Outline w/ slot</div>
+      <button class="copy" data-id="4">Copy SVG</button>
+    </div>
+
+    <div class="card" data-id="5">
+      <div class="icon" title="5 — Compact flat blocks (bold)">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true">
+          <path d="M19 7H5v6h14V7zM7 3h10v4H7zM7 17h10v4H7z"/>
+        </svg>
+      </div>
+      <div class="label">5 — Compact bold</div>
+      <button class="copy" data-id="5">Copy SVG</button>
+    </div>
+  </div>
+
+  <script>
+    const svgs = {
+      1: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="9" width="12" height="6"></rect><path d="M6 18h12"></path><path d="M8 9V6h8v3"></path></svg>',
+      2: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 8H5c-1.1 0-2 .9-2 2v6h4v4h10v-4h4v-6c0-1.1-.9-2-2-2zM8 3h8v4H8z"/></svg>',
+      3: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10"></rect><rect x="7" y="3" width="10" height="4" fill="currentColor"></rect></svg>',
+      4: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12v6H6z"></path><path d="M6 9V6h12v3"></path><rect x="9" y="13" width="6" height="4"></rect></svg>',
+      5: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M19 7H5v6h14V7zM7 3h10v4H7zM7 17h10v4H7z"/></svg>',
+      6e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H8"></path><path d="M12 18l-6-6 6-6"></path></svg>',
+      6f: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M20 11H9.83l5.59-5.59L14 4l-8 8 8 8 1.41-1.41L9.83 13H20z"/></svg>',
+      11e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="7" width="9" height="10" rx="1" fill="none"></rect><polyline points="11,4 3,12 11,20" fill="none"></polyline></svg>',
+      11f: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="11" y="7" width="9" height="10" rx="1" fill="currentColor"></rect><polygon points="11,4 3,12 11,20" fill="currentColor"></polygon></svg>',
+      7e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H9.8"></path><path d="M13.1 7.1l-6.1 4.9 6.1 4.9"></path></svg>',
+      7f: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M20 11H9.83l5.59-5.59L14 4l-8 8 8 8 1.41-1.41L9.83 13H20z"/></svg>',
+      8e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H10"></path><path d="M14 18l-6-6 6-6" stroke-width="2.2"></path></svg>',
+      8f: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M14.7 17.3L9.4 12l5.3-5.3L13 5l-7 7 7 7 1.7-1.7zM20 11H10v2h10v-2z"/></svg>',
+      9e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H9.4"></path><path d="M13.3 18.3l-5.6-6 5.6-6"></path></svg>',
+      9f: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M20 12a1 1 0 0 1-1 1H9.41l3.3 3.29a1 1 0 0 1-1.42 1.42l-5-5a1 1 0 0 1 0-1.42l5-5a1 1 0 1 1 1.42 1.42L9.41 11H19a1 1 0 0 1 1 1z"/></svg>',
+      10e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H8"></path><path d="M12 18l-6-6 6-6" fill="none" stroke="currentColor"></path></svg>',
+      10f: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 18l-6-6 6-6"/></svg>',
+      25: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M11 4l-8 8 8 8v-5h9v-6h-9z"/></svg>',
+      25e: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4l-8 8 8 8v-5h9v-6h-9z" fill="none"/></svg>'
+    };
+
+    function copyToClipboard(text) {
+      navigator.clipboard?.writeText(text).then(()=>alert('SVG copied to clipboard'), ()=>alert('Copy failed'));
+    }
+
+    document.querySelectorAll('button.copy').forEach(btn=>{
+      btn.addEventListener('click', ()=> {
+        const id = btn.getAttribute('data-id');
+        copyToClipboard(svgs[id]);
+      });
+    });
+
+    // also allow clicking the icon card to copy
+    document.querySelectorAll('.card').forEach(card=>{
+      card.addEventListener('click', (e)=>{
+        if (e.target.tagName.toLowerCase() === 'button') return;
+        const id = card.getAttribute('data-id');
+        copyToClipboard(svgs[id]);
+      });
+    });
+  </script>
+</body>
+</html>
+
+

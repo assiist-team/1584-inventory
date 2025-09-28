@@ -1,0 +1,443 @@
+import { ArrowLeft, Save, X } from 'lucide-react'
+import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, FormEvent } from 'react'
+import { TransactionFormData, TransactionValidationErrors, TransactionImage } from '@/types'
+import { transactionService, projectService } from '@/services/inventoryService'
+import { ImageUploadService, UploadProgress } from '@/services/imageService'
+import ImageUpload from '@/components/ui/ImageUpload'
+
+export default function EditTransaction() {
+  const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
+  const navigate = useNavigate()
+
+  const [projectName, setProjectName] = useState<string>('')
+
+  const [formData, setFormData] = useState<TransactionFormData>({
+    transaction_date: '',
+    source: '',
+    transaction_type: 'Purchase',
+    payment_method: '',
+    amount: '',
+    notes: '',
+    transaction_images: [],
+    receipt_emailed: false
+  })
+
+  const [errors, setErrors] = useState<TransactionValidationErrors>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const [existingTransactionImages, setExistingTransactionImages] = useState<TransactionImage[]>([])
+
+  // Load transaction and project data
+  useEffect(() => {
+    const loadTransaction = async () => {
+      if (!projectId || !transactionId) return
+
+      try {
+        const [transaction, project] = await Promise.all([
+          transactionService.getTransaction(projectId, transactionId),
+          projectService.getProject(projectId)
+        ])
+
+        if (project) {
+          setProjectName(project.name)
+        }
+        if (transaction) {
+          // Use the transaction date directly for date input
+          setFormData({
+            transaction_date: transaction.transaction_date || '',
+            source: transaction.source,
+            transaction_type: transaction.transaction_type,
+            payment_method: transaction.payment_method,
+            amount: transaction.amount,
+            notes: transaction.notes || '',
+            transaction_images: [],
+            receipt_emailed: transaction.receipt_emailed
+          })
+          const images = transaction.transaction_images || []
+          setExistingTransactionImages(Array.isArray(images) ? images : [])
+        }
+      } catch (error) {
+        console.error('Error loading transaction:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadTransaction()
+  }, [projectId, transactionId])
+
+  // Validation function
+  const validateForm = (): boolean => {
+    const newErrors: TransactionValidationErrors = {}
+
+    if (!formData.source.trim()) {
+      newErrors.source = 'Source is required'
+    }
+
+    if (!formData.transaction_type.trim()) {
+      newErrors.transaction_type = 'Transaction type is required'
+    }
+
+    if (!formData.payment_method.trim()) {
+      newErrors.payment_method = 'Payment method is required'
+    }
+
+    if (!formData.amount.trim()) {
+      newErrors.amount = 'Amount is required'
+    } else if (isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
+      newErrors.amount = 'Amount must be a positive number'
+    }
+
+    if (!formData.transaction_date) {
+      newErrors.transaction_date = 'Transaction date is required'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+
+    if (!validateForm() || !projectId || !transactionId) return
+
+    setIsSubmitting(true)
+
+    try {
+      // First, upload any new transaction images
+      let transactionImages: TransactionImage[] = [...existingTransactionImages]
+      if (formData.transaction_images && formData.transaction_images.length > 0) {
+        setIsUploadingImages(true)
+
+        try {
+          const uploadResults = await ImageUploadService.uploadMultipleTransactionImages(
+            formData.transaction_images,
+            projectName,
+            transactionId,
+            handleImageUploadProgress
+          )
+
+          // Convert to TransactionImage format and combine with existing images
+          const newTransactionImages = ImageUploadService.convertFilesToTransactionImages(uploadResults)
+          transactionImages = [...existingTransactionImages, ...newTransactionImages]
+        } catch (error) {
+          console.error('Error uploading images:', error)
+          setErrors({ transaction_images: 'Failed to upload transaction images. Please try again.' })
+          setIsSubmitting(false)
+          setIsUploadingImages(false)
+          return
+        }
+
+        setIsUploadingImages(false)
+      } else {
+        // Use existing images if no new ones uploaded
+        transactionImages = existingTransactionImages
+      }
+
+      const updateData = {
+        ...formData,
+        transaction_images: transactionImages
+      }
+
+      await transactionService.updateTransaction(projectId, transactionId, updateData)
+      navigate(`/project/${projectId}?tab=transactions`)
+    } catch (error) {
+      console.error('Error updating transaction:', error)
+      // Set a general error message instead of targeting specific fields
+      setErrors({ general: error instanceof Error ? error.message : 'Failed to update transaction. Please try again.' })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleInputChange = (field: keyof TransactionFormData, value: string | boolean | File[]) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }))
+    }
+  }
+
+  const handleImagesChange = (files: File[]) => {
+    setFormData(prev => ({ ...prev, transaction_images: files }))
+    // Clear any existing image errors
+    if (errors.transaction_images) {
+      setErrors(prev => ({ ...prev, transaction_images: undefined }))
+    }
+  }
+
+  const handleImageUploadProgress = (fileIndex: number, progress: UploadProgress) => {
+    // Progress tracking removed to fix TypeScript errors
+    console.log(`Upload progress for file ${fileIndex}: ${progress.percentage}%`)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-600">Loading transaction...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="space-y-4">
+        {/* Back button row */}
+        <div className="flex items-center justify-between">
+          <Link
+            to={`/project/${projectId}?tab=transactions`}
+            className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Link>
+          <div className="flex items-center space-x-3">
+            <Link
+              to={`/project/${projectId}/transaction/${transactionId}`}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              View Transaction
+            </Link>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Form */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h1 className="text-2xl font-bold text-gray-900">Edit Transaction</h1>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-6 p-6">
+          {/* General Error Display */}
+          {errors.general && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+              <div className="flex">
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">Error</h3>
+                  <div className="mt-2 text-sm text-red-700">
+                    <p>{errors.general}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Transaction Date */}
+          <div>
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
+            </label>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            )}
+          </div>
+
+          {/* Source */}
+          <div>
+            <label htmlFor="source" className="block text-sm font-medium text-gray-700">
+              Source/Vendor *
+            </label>
+            <input
+              type="text"
+              id="source"
+              value={formData.source}
+              onChange={(e) => handleInputChange('source', e.target.value)}
+              placeholder="e.g., Home Depot, Amazon, Local Store"
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.source ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.source && (
+              <p className="mt-1 text-sm text-red-600">{errors.source}</p>
+            )}
+          </div>
+
+
+          {/* Transaction Type */}
+          <div>
+            <label htmlFor="transaction_type" className="block text-sm font-medium text-gray-700">
+              Transaction Type *
+            </label>
+            <select
+              id="transaction_type"
+              value={formData.transaction_type}
+              onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_type ? 'border-red-300' : 'border-gray-300'
+              }`}
+            >
+              <option value="Purchase">Purchase</option>
+              <option value="Return">Return</option>
+            </select>
+            {errors.transaction_type && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            )}
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700">
+              Payment Method *
+            </label>
+            <input
+              type="text"
+              id="payment_method"
+              value={formData.payment_method}
+              onChange={(e) => handleInputChange('payment_method', e.target.value)}
+              placeholder="e.g., 1584 Card, Client Card, Cash, Check"
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.payment_method ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.payment_method && (
+              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            )}
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
+              Amount *
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
+              </div>
+              <input
+                type="text"
+                id="amount"
+                value={formData.amount}
+                onChange={(e) => handleInputChange('amount', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.amount ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+            </div>
+            {errors.amount && (
+              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
+            )}
+          </div>
+
+          {/* Receipt Emailed */}
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="receipt_emailed"
+              checked={formData.receipt_emailed}
+              onChange={(e) => handleInputChange('receipt_emailed', e.target.checked)}
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            />
+            <label htmlFor="receipt_emailed" className="ml-2 block text-sm text-gray-900">
+              Receipt emailed to client
+            </label>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+              Notes
+            </label>
+            <textarea
+              id="notes"
+              rows={3}
+              value={formData.notes}
+              onChange={(e) => handleInputChange('notes', e.target.value)}
+              placeholder="Additional notes about this transaction..."
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.notes ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.notes && (
+              <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
+            )}
+          </div>
+
+          {/* Transaction Images */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Transaction Images
+            </h3>
+
+            {/* Existing Images */}
+            {existingTransactionImages.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-xs font-medium text-gray-600 mb-2">Current Images:</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
+                  {existingTransactionImages.map((image, index) => (
+                    <div key={index} className="relative group">
+                      <div className="aspect-w-4 aspect-h-3 rounded-lg overflow-hidden bg-gray-100">
+                        <img
+                          src={image.url}
+                          alt={image.fileName}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <p className="text-white text-xs opacity-0 group-hover:opacity-100 text-center p-2">
+                            {image.fileName}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* New Image Upload */}
+            <ImageUpload
+              onImagesChange={handleImagesChange}
+              maxImages={5}
+              maxFileSize={10}
+              disabled={isSubmitting || isUploadingImages}
+              className="mb-2"
+            />
+            {errors.transaction_images && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_images}</p>
+            )}
+          </div>
+
+          {/* Form Actions */}
+          <div className="flex justify-end space-x-3 pt-4">
+            <Link
+              to={`/project/${projectId}?tab=transactions`}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting || isUploadingImages}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isSubmitting ? 'Updating...' : isUploadingImages ? 'Uploading Images...' : 'Update Transaction'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

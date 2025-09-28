@@ -1,0 +1,1973 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no">
+    <style>
+      /* Minimal mobile-friendly styles referencing style guide */
+      /* Ensure consistent box-sizing so width:100% plus padding doesn't cause overflow */
+      *, *::before, *::after { box-sizing: border-box; }
+      /* Allow grid children to shrink below global select min-width so form columns don't overflow */
+      .form-row > .form-group, .form-row select.form-input, .form-row input.form-input { min-width: 0; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 16px; color:#222; }
+      .primary { background:#9C8160; color:#fff; padding:12px 16px; border-radius:8px; border:1px solid transparent; }
+      .btn { background:#f7f7f7; color:#222; padding:10px 14px; border-radius:8px; border:1px solid #ddd; cursor:pointer; }
+      .btn:hover { background:#efefef; }
+      .btn.ghost { background:transparent; border-color:#ddd; }
+      .btn.btn-icon { box-sizing: border-box; padding:4px; font-size:14px; height:34px; width:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; }
+      .btn.btn-icon svg { width:26px; height:26px; }
+      /* Bookmark/Return active state: keep button border unchanged; darken SVG fill but preserve stroke so border stays identical */
+      .btn.btn-icon.active svg * { fill: currentColor !important; stroke: none !important; }
+      /* Use red color for bookmark and return when active. Increase specificity so it overrides
+         the base '#content .btn' rule which sets color to #222. */
+      #content .btn.btn-icon.active[data-bookmark-item-id],
+      #content .btn.btn-icon.active[data-return-item-id],
+      #content .btn.btn-icon.active[id="bookmarkItemBtn"],
+      #content .btn.btn-icon.active[id="returnInlineBtn"] {
+        color: #c12b2b;
+      }
+      /* Ensure SVG strokes remain visible and inherit the button border color for consistent appearance */
+      .btn.btn-icon svg * { stroke: currentColor; stroke-width: 1px; }
+      .toolbar { display:flex; gap:8px; align-items:center; }
+      .kv { display:grid; grid-template-columns: 130px 1fr; column-gap:12px; row-gap:8px; align-items:start; }
+      .field-label { color:#555; }
+      .field-value { color:#111; font-weight:500; }
+      .muted { color:#777; font-size:12px; }
+      /* Standard overlapping tab design: tabs sit above content, active tab overlaps content top border */
+      /* Place the tab bar directly above the panel and remove vertical padding so tabs sit flush */
+      #tabBar { display:flex; gap:8px; align-items:center; background:transparent; padding:0; margin-bottom:0; }
+      #tabBar[role="tablist"] { padding:0; }
+      /* Base tab: neutral background, slight inner padding */
+      #tabBar button { background:transparent; border:1px solid transparent; padding:8px 14px; border-radius:6px 6px 0 0; cursor:pointer; font-weight:600; color:#444; box-shadow:none; }
+      /* Inactive tabs: subtle fill to sit on the tab bar background */
+      #tabBar button:not(.primary) { border:1px solid rgba(0,0,0,0.04); background:transparent; color:#444; }
+      /* Active tab: match primary color but keep the persistent outer border; remove translate/inner outline */
+      #tabBar button.primary {
+        background:#9C8160;
+        color:#fff;
+        border:1px solid rgba(0,0,0,0.08); /* persistent subtle border */
+        box-shadow: none; /* ensure no shadow/drop effect */
+        position:relative;
+        z-index:3;
+        transform:none; /* remove the raised effect */
+        padding:10px 16px;
+      }
+      /* Remove the white inner outline that created a pseudo drop-shadow */
+      #tabBar button.primary::after { display:none; }
+      /* Force-remove any remaining inset/outline/shadow from active tab introduced by UA or other rules */
+      #tabBar button.primary { box-shadow: none !important; }
+      #tabBar button.primary::after { box-shadow: none !important; background: transparent !important; }
+      /* Keep keyboard focus visible but remove persistent visual outline on click/activation */
+      #tabBar button:focus { outline: none !important; }
+      #tabBar button:focus-visible { outline: 2px solid rgba(156,129,96,0.18) !important; outline-offset: 2px !important; }
+      /* Content should sit beneath tabs; give it a lower stacking context */
+      /* Bring the content panel up so the active tab overlaps it and appears flush */
+      #content { position:relative; z-index:1; background:#f7f7f7; padding:12px; border-radius:8px; margin-top:4px; margin-bottom:12px; flex: 1 1 auto; display: flex; flex-direction: column; }
+
+      /* Helper fixed/column classes used by JS renderers instead of inline pixel widths */
+      .col-fixed-120 { width: 120px; flex: 0 0 120px; }
+      .col-fixed-80 { width: 80px; flex: 0 0 80px; }
+      @media (max-width: 480px) {
+        .col-fixed-120, .col-fixed-80 { width: auto; flex: 1 1 auto; }
+      }
+      /* Focus visible */
+      #tabBar button:focus { outline:2px solid rgba(156,129,96,0.18); outline-offset:2px; }
+      .row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+      select, input, button { font-size:16px; padding:12px; border-radius:8px; border:1px solid #ddd; }
+      select { min-width:220px; flex:1 1 auto; }
+      .list { margin-top:12px; }
+      /* Make inventory item background match the Generate QR Codes button */
+      .list .card { background:#f7f7f7; border:1px solid #ddd; }
+      .card { padding:12px; border:1px solid #eee; border-radius:8px; margin-bottom:8px; background:#fff; }
+      /* When content follows the tab bar, remove the top border where the active tab overlaps */
+      #content > .card { margin-top:8px; }
+      /* Create a subtle divider to visually tie the active tab to the content without extra outer borders */
+      #tabBar + #content::before { content:''; display:block; height:0; margin-top:-1px; }
+
+      /* Buttons used in inventory header should be white to stand out against the content background */
+      #content .btn { background:#fff; border:1px solid #eaeaea; color:#222; }
+      #content .btn:hover { background:#fbfbfb; }
+
+      /* Inventory list cards should be white to match the buttons and dashboard items */
+      .list .card { background:#fff; border:1px solid #eee; }
+      /* MOBILE-FIRST: Default to mobile layout, override for desktop only */
+      .app-root {
+        width: 100vw !important;
+        min-width: 100vw !important;
+        max-width: 100vw !important;
+        position: fixed !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        margin: 0 !important;
+        padding: 12px !important;
+        box-sizing: border-box !important;
+        min-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: auto !important;
+        background: #f7f7f7 !important;
+      }
+      .app-root h3 { text-align:left; margin-top:8px; margin-bottom:12px; font-size: 16px !important; }
+      /* Project select container: full width on narrow viewports, 50% on desktop. Left-aligned within wrapper */
+      #projectRow {
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        justify-content: flex-start !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+      }
+      /* Enhanced form styling for transaction form */
+      .form-input:focus { border-color: #9C8160; outline: none; box-shadow: 0 0 0 2px rgba(156,129,96,0.1); }
+      .form-input:hover { border-color: #bbb; }
+      
+      /* Radio button enhancements */
+      .radio-option:hover, .radio-grid label:hover, .radio-group label:hover { 
+        background: #f0f0f0 !important; 
+        border-color: #9C8160 !important; 
+      }
+      .radio-option input:checked + *, .radio-grid input:checked, .radio-group input:checked { 
+        background: rgba(156,129,96,0.1) !important; 
+        border-color: #9C8160 !important; 
+      }
+      
+      /* Receipt drop zone enhancements */
+      .receipt-drop:hover { border-color: #9C8160; background: #f9f9f9; }
+      
+      /* Line item card enhancements */
+      .line-item-card:hover { border-color: #ccc; }
+      .line-item-card .form-input:focus { border-color: #9C8160; }
+      
+      /* Button hover states */
+      .btn:hover { background: #efefef; border-color: #ccc; }
+      .primary:hover { background: #8a7052; }
+      
+      /* --- RESPONSIVE LAYOUT OVERRIDES --- */
+
+      /* Small viewports (phones, portrait tablets) */
+      @media (max-width: 900px) {
+        .app-root { 
+          padding: 0 12px; 
+        }
+        /* Stack project selector and buttons vertically */
+        #projectRow { 
+          flex-direction: column; 
+          align-items: stretch; 
+          gap: 8px; 
+        }
+        #projectRow select,
+        #projectRow button { 
+          width: 100%; 
+          min-width: 0;
+        }
+        /* Ensure cards and toolbars use full width and wrap */
+        .card { 
+          margin: 6px 0; 
+        }
+        .toolbar { 
+          flex-wrap: wrap; 
+          gap: 6px; 
+        }
+        #tabBar { 
+          gap: 6px; 
+        }
+        /* Increase touch targets for accessibility */
+        .btn.btn-icon { 
+          height: 44px; 
+          width: 44px; 
+          padding: 8px; 
+        }
+        /* Allow long text to break to prevent horizontal overflow */
+        .card, #content, .list { 
+          overflow-wrap: anywhere; 
+          word-break: break-word; 
+        }
+        .col-fixed-120, .col-fixed-80 { 
+          width: auto; 
+          flex: 1 1 auto; 
+        }
+      }
+
+      /* MOBILE-FIRST APPROACH: Force full width on touch devices or small screens */
+      /* This overrides the desktop media query when on touch devices */
+      @media (min-width: 901px) and (hover: none) and (pointer: coarse) {
+        .app-root {
+          width: 100% !important;
+          max-width: 100% !important;
+          position: fixed !important;
+          left: 0 !important;
+          right: 0 !important;
+          top: 0 !important;
+          bottom: 0 !important;
+          padding: 12px !important;
+          box-sizing: border-box !important;
+          margin: 0 !important;
+          transform: none !important;
+        }
+      }
+
+      /* LAST RESORT: Override any parent container CSS that might be forcing desktop layout */
+      /* This targets any parent container that might have CSS forcing width: 50% or similar */
+
+      /* Override any potential parent iframe or container CSS */
+      html, body, div, iframe {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+      }
+
+      /* Force the app root to break out of any container constraints */
+      .app-root {
+        width: 100vw !important;
+        min-width: 100vw !important;
+        max-width: 100vw !important;
+        position: fixed !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        z-index: 9999 !important;
+        margin: 0 !important;
+        padding: 16px !important;
+        box-sizing: border-box !important;
+        overflow: auto !important;
+        background: #f7f7f7 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        /* Override any parent CSS */
+        transform: none !important;
+        -webkit-transform: none !important;
+        -moz-transform: none !important;
+        -ms-transform: none !important;
+        -o-transform: none !important;
+      }
+
+      /* MOBILE ENHANCEMENTS: Additional mobile-specific styling */
+      @media (max-width: 900px), (hover: none) and (pointer: coarse) {
+        /* Ensure mobile layout on small screens or touch devices */
+        .app-root {
+          padding: 16px !important;
+        }
+        .btn {
+          min-height: 44px !important;
+          padding: 12px 16px !important;
+          font-size: 16px !important;
+        }
+        .btn.btn-icon {
+          height: 44px !important;
+          width: 44px !important;
+          padding: 8px !important;
+        }
+        .form-input {
+          font-size: 16px !important;
+          padding: 12px !important;
+          min-height: 44px !important;
+        }
+        #projectRow select {
+          font-size: 16px !important;
+          padding: 12px !important;
+          min-height: 44px !important;
+        }
+      }
+
+      /* ULTIMATE OVERRIDE: Target any potential Google Apps Script parent containers */
+      /* This should override any CSS from Google's infrastructure */
+      * {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+      }
+
+      /* Specifically target any container that might be constraining the width */
+      [style*="width: 50%"], [style*="max-width: 50%"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+      }
+
+      /* Target any parent containers that might be forcing desktop layout */
+      html > body > div, body > div, html > body, body {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      /* SPECIFICALLY TARGET 50% WIDTH CONTAINERS */
+      /* This should catch any container with width: 50% or similar desktop constraints */
+      div[style*="width: 50%"],
+      div[style*="max-width: 50%"],
+      div[style*="width:468px"],
+      div[style*="width: 50"],
+      [style*="width: 50%"],
+      [style*="max-width: 50%"],
+      [style*="width:468px"] {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        min-width: 100vw !important;
+        position: static !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      /* Also target any parent iframe or container elements */
+      iframe, .app-root, #content {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        min-width: 100vw !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
+      }
+
+      /* Touch-device override: force the app root to occupy the viewport on touch-first devices
+         This addresses cases where the host/container reports a large layout width but the
+         device is touch-based (phones/tablets). Applied only to touch devices to avoid
+         affecting desktop layouts. */
+      @media (hover: none) and (pointer: coarse), (max-width: 500px) {
+        /* OVERRIDE DESKTOP LAYOUT - Force mobile layout on small screens/touch devices */
+        /* Override the desktop media query that constrains app-root to 50% width */
+        @media (min-width: 901px) {
+          .app-root {
+            width: 100% !important;
+            max-width: 100% !important;
+            position: fixed !important;
+            left: 0 !important;
+            right: 0 !important;
+            top: 0 !important;
+            bottom: 0 !important;
+          }
+        }
+
+        /* Force full-screen mobile layout regardless of reported viewport */
+        .app-root {
+          position: fixed !important;
+          left: env(safe-area-inset-left, 0) !important;
+          right: env(safe-area-inset-right, 0) !important;
+          top: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          max-width: 100vw !important;
+          min-height: 100vh !important;
+          box-sizing: border-box !important;
+          padding-left: env(safe-area-inset-left, 12px) !important;
+          padding-right: env(safe-area-inset-right, 12px) !important;
+          padding-top: 12px !important;
+          padding-bottom: 12px !important;
+          overflow: auto !important;
+          background: #f7f7f7 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          /* Override any desktop constraints */
+          margin: 0 auto !important;
+          transform: none !important;
+        }
+        /* Override body styling for mobile */
+        body {
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow-x: hidden !important;
+          background: #f7f7f7 !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial !important;
+        }
+        /* Override project row to stack vertically */
+        #projectRow {
+          flex-direction: column !important;
+          align-items: stretch !important;
+          gap: 8px !important;
+          width: 100% !important;
+          margin: 0 !important;
+        }
+        /* Make project selector full width */
+        #projectRow select {
+          width: 100% !important;
+          min-width: 0 !important;
+          flex: 1 1 auto !important;
+        }
+        /* Make buttons full width */
+        #projectRow button {
+          width: 100% !important;
+          min-height: 44px !important;
+        }
+        /* Increase touch targets for all buttons */
+        .btn {
+          min-height: 44px !important;
+          padding: 10px 14px !important;
+          font-size: 16px !important;
+        }
+        .btn.btn-icon {
+          height: 44px !important;
+          width: 44px !important;
+          padding: 8px !important;
+          min-height: 44px !important;
+          min-width: 44px !important;
+        }
+        /* Make toolbars wrap and stack */
+        .toolbar {
+          gap: 6px !important;
+          flex-wrap: wrap !important;
+          margin-bottom: 12px !important;
+        }
+        /* Override content area */
+        #content {
+          flex: 1 1 auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          background: #f7f7f7 !important;
+          padding: 12px !important;
+          border-radius: 8px !important;
+          margin-top: 4px !important;
+          margin-bottom: 12px !important;
+        }
+        /* Override tab bar */
+        #tabBar {
+          gap: 6px !important;
+          flex-wrap: wrap !important;
+          margin-bottom: 0 !important;
+        }
+        #tabBar button {
+          padding: 8px 14px !important;
+          font-size: 16px !important;
+          min-height: 44px !important;
+        }
+        /* Override form styling */
+        .form-input {
+          font-size: 16px !important;
+          padding: 12px !important;
+          min-height: 44px !important;
+        }
+        /* Override key-value grid for mobile */
+        .kv {
+          grid-template-columns: auto 1fr !important;
+          gap: 8px !important;
+        }
+        /* Override field labels and values */
+        .field-label {
+          font-size: 14px !important;
+        }
+        .field-value {
+          font-size: 16px !important;
+        }
+        /* Make cards and lists mobile-friendly */
+        .card, .list .card {
+          padding: 12px !important;
+          margin-bottom: 12px !important;
+          border-radius: 8px !important;
+        }
+        /* Override list styling */
+        .list {
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+      }
+    </style>
+
+    <!-- Fallback JavaScript override for mobile devices when CSS media queries fail -->
+    <script>
+      (function() {
+        // ULTIMATE MOBILE OVERRIDE: Force mobile layout regardless of parent container
+        function applyLayoutOverrides() {
+          // Multiple detection methods to catch mobile devices in Google Apps Script
+          var isMobileScreen = window.screen && window.screen.width < 500;
+          var isTouchDevice = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+          var isSmallViewport = window.innerWidth < 600;
+          var isGoogleAppsScript = window.location.hostname === 'script.google.com';
+          var isDesktopWithMouse = window.matchMedia && window.matchMedia('(min-width: 901px) and (pointer: fine) and (hover: hover)').matches;
+
+          console.log('ULTIMATE: Screen:', window.screen.width, 'InnerWidth:', window.innerWidth, 'Touch:', isTouchDevice, 'Desktop:', isDesktopWithMouse, 'GAS:', isGoogleAppsScript);
+
+          // Apply mobile overrides if ANY mobile condition is detected
+          if ((isMobileScreen || isTouchDevice || isSmallViewport) && (isGoogleAppsScript || !isDesktopWithMouse)) {
+            console.log('ULTIMATE: Applying aggressive mobile overrides');
+
+            var root = document.querySelector('.app-root');
+            var body = document.body;
+            var projectRow = document.getElementById('projectRow');
+            var allElements = document.querySelectorAll('*');
+
+            // FORCE MOBILE LAYOUT ON ALL ELEMENTS
+            if (root) {
+              var rootStyle = root.style;
+              // Use CSS text override for maximum power
+              root.style.cssText = `
+                width: 100vw !important;
+                max-width: 100vw !important;
+                min-width: 100vw !important;
+                position: fixed !important;
+                left: 0 !important;
+                right: 0 !important;
+                top: 0 !important;
+                bottom: 0 !important;
+                margin: 0 !important;
+                padding: 16px !important;
+                box-sizing: border-box !important;
+                overflow: auto !important;
+                background: #f7f7f7 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                z-index: 9999 !important;
+                transform: none !important;
+                -webkit-transform: none !important;
+                -moz-transform: none !important;
+                -ms-transform: none !important;
+                -o-transform: none !important;
+              `;
+            }
+
+            if (body) {
+              var bodyStyle = body.style;
+              body.style.cssText = `
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow-x: hidden !important;
+                background: #f7f7f7 !important;
+                font-size: 16px !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 100% !important;
+              `;
+            }
+
+            // Override any parent containers that might be constraining width
+            allElements.forEach(function(el) {
+              if (el !== root && el !== body) {
+                var computedStyle = window.getComputedStyle(el);
+                if (computedStyle.width === '50%' || computedStyle.maxWidth === '50%' || computedStyle.width === '468px') {
+                  console.log('ULTIMATE: Overriding parent container:', el.tagName, computedStyle.width);
+                  el.style.setProperty('width', '100%', 'important');
+                  el.style.setProperty('max-width', '100%', 'important');
+                  el.style.setProperty('min-width', '100%', 'important');
+                }
+              }
+            });
+
+            if (projectRow) {
+              var projectRowStyle = projectRow.style;
+              projectRow.style.cssText = `
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 8px !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+              `;
+            }
+
+            // Force all buttons and inputs to mobile size
+            var allButtons = document.querySelectorAll('.btn, button');
+            allButtons.forEach(function(btn) {
+              var btnStyle = btn.style;
+              btnStyle.setProperty('min-height', '44px', 'important');
+              btnStyle.setProperty('padding', '12px 16px', 'important');
+              btnStyle.setProperty('font-size', '16px', 'important');
+              btnStyle.setProperty('width', '100%', 'important');
+            });
+
+            var allInputs = document.querySelectorAll('input, select, textarea');
+            allInputs.forEach(function(input) {
+              var inputStyle = input.style;
+              inputStyle.setProperty('font-size', '16px', 'important');
+              inputStyle.setProperty('padding', '12px', 'important');
+              inputStyle.setProperty('min-height', '44px', 'important');
+              inputStyle.setProperty('width', '100%', 'important');
+            });
+
+            // Force mobile typography
+            var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            headings.forEach(function(h) {
+              h.style.setProperty('font-size', '18px', 'important');
+              h.style.setProperty('margin-top', '8px', 'important');
+              h.style.setProperty('margin-bottom', '12px', 'important');
+            });
+          }
+        }
+
+        // Apply immediately and repeatedly to ensure it takes effect
+        applyLayoutOverrides();
+        setTimeout(applyLayoutOverrides, 50);
+        setTimeout(applyLayoutOverrides, 100);
+        setTimeout(applyLayoutOverrides, 300);
+        setTimeout(applyLayoutOverrides, 1000);
+
+        // Listen for resize and media query changes
+        window.addEventListener('resize', applyLayoutOverrides);
+        window.addEventListener('orientationchange', applyLayoutOverrides);
+
+        // Also listen for media query changes
+        if (window.matchMedia) {
+          var mediaQueries = [
+            window.matchMedia('(min-width: 901px) and (pointer: fine) and (hover: hover)'),
+            window.matchMedia('(hover: none) and (pointer: coarse)'),
+            window.matchMedia('(max-width: 900px)')
+          ];
+
+          mediaQueries.forEach(function(mq) {
+            mq.addListener(applyLayoutOverrides);
+          });
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="app-root">
+    <h3>1584 Design Inventory Management</h3>
+    <!-- debug panel removed for production; use console.debug via writeDebug -->
+    <div class="row" id="projectRow">
+      <select id="projectSelect"><option value="">-- select a project --</option></select>
+      <button class="primary" id="openProject">Open</button>
+      <button id="createProjectBtn" class="btn" style="margin-left:8px">Create Project</button>
+    </div>
+
+    <div id="controlPanel" style="display:none">
+      <h4 id="projectTitle"></h4>
+      <div class="row" id="tabBar" role="tablist" aria-label="Main tabs">
+        <button id="inventoryTab" class="primary" role="tab" aria-selected="true">Inventory</button>
+        <button id="transactionsTab" role="tab" aria-selected="false">Transactions</button>
+      </div>
+      <div id="content"></div>
+    </div>
+
+    <script>
+      // Use google.script.run (Apps Script client API) to avoid CORS in preview and deployed contexts.
+      // writeDebug now logs non-invasively to the browser console only.
+      function writeDebug(msg){ try { console.debug(String(msg)); } catch (e) { /* ignore logging errors */ } }
+      function escapeHtml(str){ return String(str||'').replace(/[&<>\"]/g,function(s){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]; }); }
+      // Track UI state to prevent background loads from overwriting current tab
+      var __activeTabId = null;
+      var __latestInventoryRequestToken = null;
+      // Track which sheetName is currently rendered in the inventory view to avoid redundant reloads
+      var __inventoryRenderedForSheet = null;
+      // Persist selection per sheet (map of sheetName -> { [itemId]: true })
+      var __selectionBySheet = {};
+
+      function handleQrTestDownload(pngUri) {
+        if (!pngUri || typeof pngUri !== 'string' || pngUri.indexOf('data:image/png') !== 0) {
+          console.error('QR Test: Received invalid data URI.');
+          alert('Failed to generate QR test image. Check console for details.');
+          return;
+        }
+        var a = document.createElement('a');
+        a.href = pngUri;
+        a.download = 'qr-google-test.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      function getSelectionMap(sheetName){
+        try { window.__selectionBySheet = window.__selectionBySheet || {}; } catch(e) {}
+        __selectionBySheet = window.__selectionBySheet || __selectionBySheet || {};
+        if (!__selectionBySheet[sheetName]) __selectionBySheet[sheetName] = {};
+        return __selectionBySheet[sheetName];
+      }
+
+      function countSelected(selMap){ var n=0; for (var k in selMap) { if (Object.prototype.hasOwnProperty.call(selMap, k)) n++; } return n; }
+
+      function attachSelectionControls(container, sheetName){
+        var selMap = getSelectionMap(sheetName);
+        function updateSelectedUI(){
+          var btn = container.querySelector('#generateQrBtn');
+          if (btn) btn.disabled = countSelected(selMap) === 0;
+          var boxes = Array.prototype.slice.call(container.querySelectorAll('.item-select'));
+          var allChecked = boxes.length > 0 && boxes.every(function(b){ return !!b.checked; });
+          var master = container.querySelector('#selectAllChk');
+          if (master) master.checked = allChecked;
+        }
+        Array.prototype.slice.call(container.querySelectorAll('.item-select')).forEach(function(cb){
+          var id = cb && cb.getAttribute('data-item-id') ? decodeURIComponent(cb.getAttribute('data-item-id')) : '';
+          cb.checked = !!selMap[id];
+          cb.addEventListener('change', function(ev){
+            if (cb.checked) selMap[id] = true; else delete selMap[id];
+            updateSelectedUI();
+            ev.stopPropagation();
+          });
+        });
+        var master = container.querySelector('#selectAllChk');
+        if (master) {
+          master.addEventListener('change', function(){
+            var boxes = Array.prototype.slice.call(container.querySelectorAll('.item-select'));
+            boxes.forEach(function(b){
+              var id = b && b.getAttribute('data-item-id') ? decodeURIComponent(b.getAttribute('data-item-id')) : '';
+              b.checked = !!master.checked;
+              if (b.checked) selMap[id] = true; else delete selMap[id];
+            });
+            updateSelectedUI();
+          });
+        }
+        // Click handled by the Generate button handler below
+        updateSelectedUI();
+      }
+
+      function populateSelectFromSheets(sheets){
+        var sel = document.getElementById('projectSelect');
+        if (!sel) { console.error('No #projectSelect element found'); writeDebug('No #projectSelect element found'); return; }
+        sel.innerHTML = '<option value="">-- select a project --</option>';
+        if (!sheets || !Array.isArray(sheets) || sheets.length === 0){
+          var none = document.createElement('option'); none.value=''; none.textContent='No projects found'; none.disabled=true; sel.appendChild(none); writeDebug('No projects returned'); return;
+        }
+        sheets.forEach(function(s){
+          var name = (typeof s === 'string') ? s : (s.sheet_name || s.project_name || s.sheetName || '');
+          var display = name || (typeof s === 'object' ? JSON.stringify(s) : String(s));
+          var opt = document.createElement('option'); opt.value = name; opt.textContent = display; sel.appendChild(opt);
+        });
+        writeDebug('Loaded projects: ' + sheets.length + '\nFirst: ' + JSON.stringify(sheets[0]));
+      }
+
+      var BASE_URL = '<?= baseUrl ?>';
+      var PRINTER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12v6H6z"></path><path d="M6 9V6h12v3"></path><rect x="9" y="13" width="6" height="4"></rect></svg>';
+      var BOOKMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v18l-6-4-6 4V2z"></path></svg>';
+      var EDIT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"></path><path d="M20.71 7.04a1.003 1.003 0 0 0 0-1.41L18.37 3.29a1.003 1.003 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>';
+      var RETURN_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4l-8 8 8 8v-5h9v-6h-9z"></path></svg>';
+      // Small emoji used in inline edit toolbar (keeps markup concise)
+      var RETURN_EMOJI = '↩️';
+
+      function renderRowHtml(item, headers, selectionMap){
+        // Expect item to be an object with named fields (no array fallback)
+        var itemId = String((item && item.item_id) || '');
+        var checked = (selectionMap && selectionMap[itemId]) ? ' checked' : '';
+        var qrKey = (item && item.qr_key) ? String(item.qr_key) : '';
+        var desc = escapeHtml(String((item && item.description) || ''));
+        var price = escapeHtml(String((item && item.price) || ''));
+        var src = escapeHtml(String((item && item.source) || ''));
+        var sku = escapeHtml(String((item && item.sku) || ''));
+        var created = escapeHtml(String((item && item.date_created) || ''));
+        var bookmarkState = (item && (item.bookmark === true || String(item.bookmark).toUpperCase() === 'TRUE')) ? 'true' : 'false';
+
+        var html = '';
+        html += '<div class="card" data-item-id="' + encodeURIComponent(itemId) + '" style="cursor:pointer">';
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0">';
+            html += '<div style="display:flex;gap:8px;align-items:center">';
+              html += '<input type="checkbox" class="item-select" data-item-id="' + encodeURIComponent(itemId) + '"' + checked + '>';
+              html += '<div><strong>' + desc + '</strong></div>';
+            html += '</div>';
+            html += '<div style="min-width:40px;display:flex;justify-content:flex-end;gap:8px;align-items:center">';
+              html += '<button class="btn btn-icon' + (bookmarkState === 'true' ? ' active' : '') + '" data-bookmark-item-id="' + encodeURIComponent(itemId) + '" data-bookmark-state="' + bookmarkState + '" title="Bookmark">' + BOOKMARK_SVG + '</button>';
+              html += '<button class="btn btn-icon' + ((item && String(item.disposition || '').toLowerCase() === 'return') ? ' active' : '') + '" data-return-item-id="' + encodeURIComponent(itemId) + '" title="Return">' + RETURN_SVG + '</button>';
+              html += '<button class="btn btn-icon" data-print-item-id="' + encodeURIComponent(itemId) + '" data-qr-key="' + encodeURIComponent(qrKey) + '" title="Print QR">' + PRINTER_SVG + '</button>';
+            html += '</div>';
+          html += '</div>';
+          // compact muted line: source • sku • price
+          html += '<div style="color:#999;font-size:12px;margin-top:0">';
+          html += (src || sku || price) ? (src + (src ? ' • ' : '') + sku + (sku ? ' • ' : '') + price) : '';
+          html += '</div>';
+        html += '</div>';
+        return html;
+      }
+
+      function loadProjects(){
+        writeDebug('Requesting listSheets via google.script.run...');
+        google.script.run.withFailureHandler(function(err){ console.error('listSheets failed', err); writeDebug('listSheets failed: ' + String(err)); })
+          .withSuccessHandler(function(res){
+            var arr = [];
+            if (!res) { writeDebug('listSheets returned empty'); return; }
+            if (Array.isArray(res)) arr = res;
+            else if (Array.isArray(res.sheets)) arr = res.sheets;
+            else arr = res;
+            populateSelectFromSheets(arr);
+          }).listSheets();
+      }
+
+      document.addEventListener('DOMContentLoaded', function(){
+        document.getElementById('openProject').addEventListener('click', function(){
+          var sel = document.getElementById('projectSelect'); var name = sel ? sel.value : '';
+          if (!name) return alert('select a project');
+          document.getElementById('controlPanel').style.display = 'block';
+          document.getElementById('projectTitle').innerText = name;
+          document.getElementById('content').innerHTML = '';
+          // Use addEventListener so handlers can be updated later if needed
+          document.getElementById('inventoryTab').addEventListener('click', function(){ setActiveTab('inventoryTab'); showInventoryList(name); });
+          document.getElementById('transactionsTab').addEventListener('click', function(){ setActiveTab('transactionsTab'); showTransactionsList(name); });
+          // Load inventory by default when opening a project
+          setActiveTab('inventoryTab');
+          showInventoryList(name);
+        });
+        // QR test buttons removed from UI in production build.
+        loadProjects();
+        // Create Project modal setup
+        var createBtn = document.getElementById('createProjectBtn');
+        if (createBtn) createBtn.addEventListener('click', function(){ showCreateProjectModal(); });
+
+        // Robust delegation: handle Add Transaction clicks even if element is re-rendered
+        try {
+          var contentEl = document.getElementById('content');
+          if (contentEl && contentEl.addEventListener) {
+            contentEl.addEventListener('click', function(e){
+              try {
+                var t = e.target || e.srcElement;
+                if (!t) return;
+                var btn = (t.id === 'addTransactionBtn') ? t : (t.closest ? t.closest('#addTransactionBtn') : null);
+                if (btn) {
+                  var pname = (document.getElementById('projectTitle') && document.getElementById('projectTitle').innerText) ? document.getElementById('projectTitle').innerText : '';
+                  writeDebug('Delegated addTransactionBtn click (project=' + pname + ')');
+                  try { showAddTransactionForm(pname); } catch (e) { writeDebug('showAddTransactionForm error: ' + String(e)); }
+                }
+              } catch (err) { /* swallow delegation errors */ }
+            });
+          }
+        } catch (e) {}
+      });
+
+      function showCreateProjectModal(){
+        var modal = document.createElement('div');
+        modal.style.position = 'fixed'; modal.style.left = '0'; modal.style.top = '0'; modal.style.right = '0'; modal.style.bottom = '0'; modal.style.background = 'rgba(0,0,0,0.3)'; modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center';
+        var card = document.createElement('div'); card.className = 'card modal-centered';
+        card.innerHTML = '<div style="font-weight:600;margin-bottom:8px">Create Project</div>' +
+          '<div style="margin-bottom:8px"><label>Project Name</label><br><input id="newProjectName" style="width:100%"></div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end"><button id="cancelCreateProject" class="btn">Cancel</button><button id="submitCreateProject" class="primary">Create</button></div>';
+        modal.appendChild(card);
+        document.body.appendChild(modal);
+        document.getElementById('cancelCreateProject').onclick = function(){ try{ document.body.removeChild(modal); }catch(e){} };
+        document.getElementById('submitCreateProject').onclick = function(){
+          var name = document.getElementById('newProjectName').value || '';
+          if (!name) return alert('Project name required');
+          var btn = this; btn.disabled = true; btn.style.opacity = '0.6';
+          google.script.run.withFailureHandler(function(err){ alert('Create project failed'); try{ btn.disabled=false; btn.style.opacity='1'; }catch(e){}; })
+            .withSuccessHandler(function(res){
+              try{ btn.disabled=false; btn.style.opacity='1'; }catch(e){}
+              try{ document.body.removeChild(modal); }catch(e){}
+              if (!res) return alert('No response from server');
+              // Refresh project list and select new project when present
+              loadProjects();
+              setTimeout(function(){
+                try { var sel = document.getElementById('projectSelect'); if (sel) { for (var i=0;i<sel.options.length;i++){ if (sel.options[i].value === (res.inventory_tab || res.sheet_name || res.inventory_tab)) { sel.selectedIndex = i; break; } } }
+                } catch(e){}
+              }, 500);
+            }).createProject({ project_name: name });
+        };
+        // focus input
+        try { document.getElementById('newProjectName').focus(); } catch(e) {}
+      }
+
+      // Diagnostic helper: fetch raw HTTP response from doGet for getItem
+      function fetchGetItemDiagnostic(itemId, sheetName){
+        writeDebug('Running fetch diagnostic for ' + itemId + '...');
+        var url = BASE_URL + '?action=getItem&itemId=' + encodeURIComponent(itemId) + '&sheetName=' + encodeURIComponent(sheetName || '');
+        // Use fetch to bypass google.script.run bridge and inspect raw response
+        fetch(url).then(function(resp){ return resp.text(); }).then(function(text){
+          writeDebug('fetch diagnostic raw response:\n' + text);
+          try { var parsed = JSON.parse(text); writeDebug('fetch diagnostic parsed: ' + JSON.stringify(parsed)); } catch (e) { /* ignore */ }
+        }).catch(function(err){ writeDebug('fetch diagnostic failed: ' + String(err)); });
+      }
+
+      function showAddInventoryForm(sheetName){
+        var c = document.getElementById('content');
+        c.innerHTML = '\n          <div class="card">\n            <label>Transaction ID</label><br><input id="transaction_id"><br>\n            <label>SKU</label><br><input id="sku"><br>\n            <label>Description</label><br><input id="desc"><br>\n            <label>Price</label><br><input id="price" type="number"><br>\n            <label>1584 Resale Price</label><br><input id="resale_price" type="number" step="0.01"><br>\n            <label>Market Value</label><br><input id="market_value" type="number" step="0.01"><br>\n            <label>Source</label><br><input id="source"><br>\n            <label>Payment Method</label><br><input id="payment_method"><br>\n            <label>Notes</label><br><textarea id="notes" style="min-height:64px"></textarea><br>\n            <div style="margin-top:12px;"><button id="submitInv" class="primary">Create Item</button></div>\n          </div>';
+        try { c.setAttribute('data-view', 'add'); } catch (e) {}
+        document.getElementById('submitInv').onclick = function(){
+          var data = {
+          transaction_id: document.getElementById('transaction_id').value,
+            sku: document.getElementById('sku').value,
+            description: document.getElementById('desc').value,
+            price: document.getElementById('price').value,
+            "1584_resale_price": document.getElementById('resale_price') ? document.getElementById('resale_price').value : '',
+            market_value: document.getElementById('market_value') ? document.getElementById('market_value').value : '',
+            source: document.getElementById('source').value,
+            payment_method: document.getElementById('payment_method').value,
+            notes: document.getElementById('notes').value,
+            project_name: sheetName
+          };
+          writeDebug('Submitting appendInventory...');
+          // Inline creating indicator and button disable (no popup)
+          var btn = document.getElementById('submitInv');
+          var card = c && c.querySelector ? c.querySelector('.card') : null;
+          var existingStatus = card ? card.querySelector('#addStatus') : null;
+          if (existingStatus && existingStatus.parentNode) existingStatus.parentNode.removeChild(existingStatus);
+          var statusEl = document.createElement('div');
+          statusEl.id = 'addStatus';
+          statusEl.style.marginTop = '8px';
+          statusEl.style.color = '#666';
+          statusEl.textContent = 'Creating...';
+          if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+          if (card) card.appendChild(statusEl);
+          google.script.run.withFailureHandler(function(err){ writeDebug('appendInventory failed: ' + String(err)); if (statusEl && statusEl.parentNode) statusEl.parentNode.removeChild(statusEl); if (btn) { btn.disabled = false; btn.style.opacity = '1'; } })
+            .withSuccessHandler(function(res){
+              writeDebug('Created item: ' + JSON.stringify(res));
+              // Invalidate cache for this sheet so next inventory view can reload
+              try { if (window.__sheetCache) { delete window.__sheetCache[sheetName]; } } catch(e) {}
+              __inventoryRenderedForSheet = null;
+              // Reset form fields so user can add another item
+              try {
+                var d = document.getElementById('desc');
+                var p = document.getElementById('price');
+                var s = document.getElementById('source');
+                if (d) d.value = '';
+                if (p) p.value = '';
+                try { var rp = document.getElementById('resale_price'); if (rp) rp.value = ''; } catch(e) {}
+                try { var mv = document.getElementById('market_value'); if (mv) mv.value = ''; } catch(e) {}
+                if (s) s.value = '';
+                if (d) d.focus();
+              } catch(e) { /* ignore */ }
+              // Show inline success indicator briefly
+              if (statusEl) {
+                statusEl.textContent = 'Created!';
+                setTimeout(function(){ try{ if (statusEl && statusEl.parentNode) statusEl.parentNode.removeChild(statusEl); }catch(e){} }, 1500);
+              }
+              if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+            })
+            .appendInventory({ sheet_name: sheetName, data: data });
+        };
+      }
+
+      function showInventoryList(sheetName){
+        var c = document.getElementById('content');
+        // If inventory is already rendered for this sheet and the content is currently inventory, skip
+        var currentView = c ? c.getAttribute('data-view') : null;
+        if (currentView === 'inventory' && __activeTabId === 'inventoryTab' && __inventoryRenderedForSheet === sheetName) {
+          writeDebug('Inventory already rendered for sheet: ' + sheetName + ' — skipping reload');
+          return;
+        }
+        // Fast-path: render from frontend cache if present to avoid unnecessary server reloads
+        try {
+          window.__sheetCache = window.__sheetCache || {};
+          var cached = window.__sheetCache[sheetName];
+          if (cached && Array.isArray(cached.rows) && cached.rows.length) {
+            writeDebug('Rendering inventory from cache for sheet: ' + sheetName);
+            // Only render if Inventory tab is still active
+            if (__activeTabId === 'inventoryTab') {
+              var rows = cached.rows;
+              var headers = cached.headers || [];
+              if (!rows.length) { c.innerHTML = '<div class="card">No items</div>'; return; }
+              var headerHtml = '<div style="display:flex;gap:8px;justify-content:flex-start;align-items:flex-start;margin-bottom:8px">'
+                + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">'
+                + '<div><button id="addInventoryBtn" class="btn">Add Inventory</button></div>'
+                + '<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="selectAllChk"> <span class="muted">Select all</span></label>'
+                
+                + '</div>'
+                + '<div><button id="generateQrBtn" class="btn">Generate QR Codes</button></div>'
+                + '</div>';
+              var html = headerHtml + '<div class="list">';
+              rows.forEach(function(r){
+                html += renderRowHtml(r, headers, getSelectionMap(sheetName));
+              });
+              html += '</div>';
+              c.innerHTML = html;
+              // attach add button handler
+              try {
+                var addBtn = document.getElementById('addInventoryBtn');
+                if (addBtn) { addBtn.onclick = function(){ showAddInventoryForm(sheetName); }; }
+              } catch (e) { console.error('Failed to attach add handler', e); }
+              // attach selection controls and print
+              try { attachSelectionControls(c, sheetName); } catch (e) { console.error('Selection controls failed', e); }
+              // attach generate button handler
+              try {
+                var gen = document.getElementById('generateQrBtn');
+                if (gen) {
+                  gen.onclick = function(){
+                    var selMap = getSelectionMap(sheetName);
+                    var ids = [];
+                    for (var id in selMap) { if (Object.prototype.hasOwnProperty.call(selMap, id)) ids.push(id); }
+                    if (!ids.length) return; // button should be disabled anyway
+                    var params = new URLSearchParams();
+                    params.set('action', 'generateBatchPdf');
+                    params.set('mode', 'batch');
+                    params.set('sheetName', sheetName);
+                    ids.forEach(function(id){ params.append('items[]', id); });
+                    var url = BASE_URL + '?' + params.toString();
+                    window.open(url, '_blank');
+                  }
+                }
+              } catch (e) { console.error('Failed to attach generate handler', e); }
+              try { c.setAttribute('data-view', 'inventory'); } catch (e) {}
+              __inventoryRenderedForSheet = sheetName;
+              var delegate = function onCardClick(e){
+                // Ignore clicks on selection checkbox
+                if (e && e.target && e.target.matches && e.target.matches('input.item-select')) return;
+                // Handle bookmark first to prevent card open
+                var bookmarkBtn = e.target && e.target.closest && e.target.closest('button[data-bookmark-item-id]');
+                if (bookmarkBtn) {
+                  var bid = decodeURIComponent(bookmarkBtn.getAttribute('data-bookmark-item-id') || '');
+                  writeDebug('Toggled bookmark for ' + bid);
+                  // toggle visual state
+                  var newState = bookmarkBtn.classList.contains('active') ? false : true;
+                  if (newState) bookmarkBtn.classList.add('active'); else bookmarkBtn.classList.remove('active');
+                  // persist change to server
+                  try {
+                    google.script.run
+                      .withFailureHandler(function(err){
+                        writeDebug('bookmark update failed: ' + String(err));
+                        // Revert visual state on failure
+                        try { if (bookmarkBtn) { if (newState) bookmarkBtn.classList.remove('active'); else bookmarkBtn.classList.add('active'); } } catch(e) {}
+                        try { console.error('Bookmark save failed: ' + String(err)); } catch(e) {}
+                      })
+                      .withSuccessHandler(function(res){
+                        writeDebug('bookmark updated for ' + bid + ' -> ' + newState);
+                        try {
+                          // update frontend cache if present
+                          if (window.__sheetCache && window.__sheetCache[sheetName] && Array.isArray(window.__sheetCache[sheetName].rows)) {
+                            window.__sheetCache[sheetName].rows.forEach(function(r){ if (String(r.item_id) === String(bid)) r.bookmark = newState; });
+                          }
+                        } catch(e) { writeDebug('cache update failed: ' + String(e)); }
+                      })
+                      .updateItem({ item_id: bid, data: { bookmark: newState }, sheet_name: sheetName });
+                  } catch (e) { writeDebug('bookmark persistence exception: ' + String(e)); }
+                  return;
+                }
+              // Handle clicks on print button or its children (e.g., SVG)
+                var returnBtn = e.target && e.target.closest && e.target.closest('button[data-return-item-id]');
+                if (returnBtn) {
+                  var rid = decodeURIComponent(returnBtn.getAttribute('data-return-item-id') || '');
+                  writeDebug('Return toggle for ' + rid);
+                  var btn = returnBtn;
+                  // Only fill (active) when disposition is 'Return'
+                  var currentlyActive = btn.classList.contains('active');
+                  var newDisposition = currentlyActive ? 'Keep' : 'Return';
+                  // optimistic UI toggle: add active only when setting to 'Return'
+                  try { if (newDisposition === 'Return') btn.classList.add('active'); else btn.classList.remove('active'); } catch(e){}
+                  try {
+                    google.script.run.withFailureHandler(function(err){ writeDebug('return update failed: ' + String(err)); // revert visual state
+                        try { if (newDisposition === 'Return') btn.classList.remove('active'); else btn.classList.add('active'); } catch(e){}
+                        alert('Return update failed');
+                      })
+                      .withSuccessHandler(function(res){ writeDebug('Disposition updated for ' + rid + ' -> ' + newDisposition); try { if (window.__sheetCache && window.__sheetCache[sheetName] && Array.isArray(window.__sheetCache[sheetName].rows)) { window.__sheetCache[sheetName].rows.forEach(function(r){ if (String(r.item_id) === String(rid)) r.disposition = newDisposition; }); } } catch(e){} })
+                      .updateItem({ item_id: rid, data: { disposition: newDisposition }, sheet_name: sheetName });
+                  } catch (e) { writeDebug('return persistence exception: ' + String(e)); }
+                  return;
+                }
+                var returnBtn = e.target && e.target.closest && e.target.closest('button[data-return-item-id]');
+                if (returnBtn) {
+                  var rid = decodeURIComponent(returnBtn.getAttribute('data-return-item-id') || '');
+                  writeDebug('Return toggle for ' + rid);
+                  var btn = returnBtn;
+                  var newDisposition = btn.classList.contains('active') ? 'Keep' : 'Return';
+                  try { if (newDisposition === 'Return') btn.classList.add('active'); else btn.classList.remove('active'); } catch(e){}
+                  try {
+                    google.script.run.withFailureHandler(function(err){ writeDebug('return update failed: ' + String(err));
+                        try { if (newDisposition === 'return') btn.classList.remove('active'); else btn.classList.add('active'); } catch(e){}
+                        alert('Return update failed');
+                      })
+                      .withSuccessHandler(function(res){ writeDebug('Disposition updated for ' + rid + ' -> ' + newDisposition); try { if (window.__sheetCache && window.__sheetCache[sheetName] && Array.isArray(window.__sheetCache[sheetName].rows)) { window.__sheetCache[sheetName].rows.forEach(function(r){ if (String(r.item_id) === String(rid)) r.disposition = newDisposition; }); } } catch(e){} })
+                      .updateItem({ item_id: rid, data: { disposition: newDisposition }, sheet_name: sheetName });
+                  } catch (e) { writeDebug('return persistence exception: ' + String(e)); }
+                  return;
+                }
+                var printBtn = e.target && e.target.closest && e.target.closest('button[data-print-item-id]');
+                if (printBtn) {
+                  var pid = decodeURIComponent(printBtn.getAttribute('data-print-item-id') || '');
+                  // Prefer single-item label endpoint when we have a qr_key attached to the button
+                  var key = printBtn.getAttribute('data-qr-key') ? decodeURIComponent(printBtn.getAttribute('data-qr-key')) : '';
+                  var url;
+                  if (key) {
+                    url = BASE_URL + '?action=qrImage&k=' + encodeURIComponent(key);
+                  } else {
+                    url = BASE_URL + '?action=generateBatchPdf&sheetName=' + encodeURIComponent(sheetName) + '&items[]=' + encodeURIComponent(pid);
+                  }
+                  window.open(url, '_blank');
+                  return;
+                }
+                var card = e.target && e.target.closest && e.target.closest('.card[data-item-id]');
+                if (!card) return;
+                var itemId = decodeURIComponent(card.getAttribute('data-item-id') || '');
+                if (!itemId) return alert('Item has no id');
+                openItemInline(itemId, sheetName);
+              };
+              try { c.removeEventListener('click', c.__delegateHandler || delegate); } catch(e) {}
+              c.addEventListener('click', delegate);
+              c.__delegateHandler = delegate;
+              // Ensure any pending stale server responses are ignored after cache render
+              __latestInventoryRequestToken = null;
+              return;
+            }
+          }
+        } catch (e) { console.error('Cache render failed', e); }
+        // If cache not available, show loading and fetch
+        c.innerHTML = '<div class="card">Loading…</div>';
+        // Tag this request so only the latest response can render, and only if Inventory tab remains active
+        var requestId = 'inventory-' + Date.now();
+        __latestInventoryRequestToken = requestId;
+        writeDebug('Requesting getSheetValues for ' + sheetName);
+        google.script.run.withFailureHandler(function(err){ writeDebug('getSheetValues failed: ' + String(err)); console.error('getSheetValues failed', err); })
+          .withSuccessHandler(function(res){
+            // Guard: ignore if user switched tabs or a newer inventory request exists
+            if (__activeTabId !== 'inventoryTab') { writeDebug('Ignoring inventory render; active tab is ' + __activeTabId); return; }
+            if (__latestInventoryRequestToken !== requestId) { writeDebug('Ignoring stale inventory response ' + requestId); return; }
+            writeDebug('getSheetValues response: ' + JSON.stringify(res));
+            if (res === null) { writeDebug('getSheetValues returned null for sheet: ' + sheetName); document.getElementById('content').innerHTML = '<div class="card">Error: server returned null for sheet "' + escapeHtml(sheetName) + '"</div>'; return; }
+            var rows = (res && res.rows) ? res.rows : [];
+            var headers = (res && res.headers) ? res.headers : [];
+            // Cache the sheet payload for fast single-item lookups
+            try { window.__sheetCache = window.__sheetCache || {}; window.__sheetCache[sheetName] = { headers: headers, rows: rows }; } catch(e) { console.error('Failed to cache sheet payload', e); }
+            // Mark that inventory has been rendered for this sheet
+            __inventoryRenderedForSheet = sheetName;
+            if (!rows.length) { c.innerHTML = '<div class="card">No items</div>'; return; }
+            var headerHtml = '<div style="display:flex;gap:8px;justify-content:flex-start;align-items:flex-start;margin-bottom:8px">'
+              + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">'
+              + '<div><button id="addInventoryBtn" class="btn">Add Inventory</button></div>'
+              + '<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="selectAllChk"> <span class="muted">Select all</span></label>'
+              
+              + '</div>'
+              + '<div><button id="generateQrBtn" class="btn">Generate QR Codes</button></div>'
+              + '</div>';
+            var html = headerHtml + '<div class="list">';
+            rows.forEach(function(r){
+              html += renderRowHtml(r, headers, getSelectionMap(sheetName));
+            });
+            html += '</div>';
+            c.innerHTML = html;
+            // attach add button handler
+            try {
+              var addBtn = document.getElementById('addInventoryBtn');
+              if (addBtn) { addBtn.onclick = function(){ showAddInventoryForm(sheetName); }; }
+            } catch (e) { console.error('Failed to attach add handler', e); }
+            // attach selection controls and print
+            try { attachSelectionControls(c, sheetName); } catch (e) { console.error('Selection controls failed', e); }
+            // attach generate button handler (server-rendered path)
+            try {
+              var gen = document.getElementById('generateQrBtn');
+              if (gen) {
+                gen.onclick = function(){
+                  var selMap = getSelectionMap(sheetName);
+                  var ids = [];
+                  for (var id in selMap) { if (Object.prototype.hasOwnProperty.call(selMap, id)) ids.push(id); }
+                  if (!ids.length) return; // disabled when none selected
+                  var params = new URLSearchParams();
+                  params.set('action', 'generateBatchPdf');
+                  params.set('mode', 'batch');
+                  params.set('sheetName', sheetName);
+                  ids.forEach(function(id){ params.append('items[]', id); });
+                  var url = BASE_URL + '?' + params.toString();
+                  window.open(url, '_blank');
+                };
+              }
+            } catch (e) { console.error('Failed to attach generate handler', e); }
+            try { c.setAttribute('data-view', 'inventory'); } catch (e) {}
+            // attach click handlers -> open item in-screen
+            // Attach click handlers (use event delegation to avoid duplicate listeners)
+            var delegate = function onCardClick(e){
+              if (e && e.target && e.target.matches && e.target.matches('input.item-select')) return;
+                var bookmarkBtn = e.target && e.target.closest && e.target.closest('button[data-bookmark-item-id]');
+                if (bookmarkBtn) {
+                  var bid = decodeURIComponent(bookmarkBtn.getAttribute('data-bookmark-item-id') || '');
+                  writeDebug('Toggled bookmark for ' + bid);
+                  // toggle visual state
+                  var newState = bookmarkBtn.classList.contains('active') ? false : true;
+                  if (newState) bookmarkBtn.classList.add('active'); else bookmarkBtn.classList.remove('active');
+                  // persist change to server and update frontend cache
+                  try {
+                    google.script.run.withFailureHandler(function(err){ writeDebug('bookmark update failed: ' + String(err)); })
+                      .withSuccessHandler(function(res){
+                        writeDebug('bookmark updated for ' + bid + ' -> ' + newState);
+                        try {
+                          if (window.__sheetCache && window.__sheetCache[sheetName] && Array.isArray(window.__sheetCache[sheetName].rows)) {
+                            window.__sheetCache[sheetName].rows.forEach(function(r){ if (String(r.item_id) === String(bid)) r.bookmark = newState; });
+                          }
+                        } catch(e) { writeDebug('cache update failed: ' + String(e)); }
+                      })
+                      .updateItem({ item_id: bid, data: { bookmark: newState }, sheet_name: sheetName });
+                  } catch (e) { writeDebug('bookmark persistence exception: ' + String(e)); }
+                  return;
+                }
+                var printBtn = e.target && e.target.closest && e.target.closest('button[data-print-item-id]');
+                if (printBtn) {
+                  var pid = decodeURIComponent(printBtn.getAttribute('data-print-item-id') || '');
+                  var key = printBtn.getAttribute('data-qr-key') ? decodeURIComponent(printBtn.getAttribute('data-qr-key')) : '';
+                  var url;
+                  if (key) {
+                    url = BASE_URL + '?action=qrImage&k=' + encodeURIComponent(key);
+                  } else {
+                    url = BASE_URL + '?action=generateBatchPdf&sheetName=' + encodeURIComponent(sheetName) + '&items[]=' + encodeURIComponent(pid);
+                  }
+                  window.open(url, '_blank');
+                  return;
+                }
+              var card = e.target && e.target.closest && e.target.closest('.card[data-item-id]');
+              if (!card) return;
+              var itemId = decodeURIComponent(card.getAttribute('data-item-id') || '');
+              if (!itemId) return alert('Item has no id');
+              openItemInline(itemId, sheetName);
+            };
+            // Remove any previous listener we may have attached to avoid duplicates
+            try { c.removeEventListener('click', c.__delegateHandler || delegate); } catch(e) {}
+            c.addEventListener('click', delegate);
+            c.__delegateHandler = delegate;
+          }).getSheetValues(sheetName);
+      }
+
+      function setActiveTab(tabId){
+        var tabs = ['inventoryTab','transactionsTab'];
+        __activeTabId = tabId;
+        // When leaving inventory tab, invalidate the latest request token to ignore in-flight responses
+        if (tabId !== 'inventoryTab') { __latestInventoryRequestToken = null; }
+        tabs.forEach(function(t){
+          var el = document.getElementById(t);
+          if (!el) return;
+          if (t === tabId) {
+            el.classList.add('primary');
+            el.setAttribute('aria-selected', 'true');
+            el.setAttribute('tabindex', '0');
+          } else {
+            el.classList.remove('primary');
+            el.setAttribute('aria-selected', 'false');
+            el.setAttribute('tabindex', '-1');
+          }
+        });
+      }
+
+      // Transactions view: minimal list + add form, mirrors inventory layout patterns
+      function showTransactionsList(sheetName){
+        var c = document.getElementById('content');
+        // If already on transactions view for this sheet, skip
+        var currentView = c ? c.getAttribute('data-view') : null;
+        if (currentView === 'transactions' && __activeTabId === 'transactionsTab') { writeDebug('Transactions already active; skipping reload'); return; }
+        c.innerHTML = '<div class="card">Loading transactions…</div>';
+        try {
+          // Attempt to read a dedicated transactions sheet if present via backend endpoint
+          google.script.run.withFailureHandler(function(err){ writeDebug('getSheetValues (transactions) failed: ' + String(err)); c.innerHTML = '<div class="card">Failed to load transactions</div>'; })
+            .withSuccessHandler(function(res){
+              writeDebug('getSheetValues (transactions) response: ' + JSON.stringify(res));
+              var rows = (res && res.rows) ? res.rows : [];
+              var headers = (res && res.headers) ? res.headers : [];
+              var headerHtml = '<div style="display:flex;gap:8px;justify-content:flex-start;align-items:flex-start;margin-bottom:8px">'
+                + '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">'
+                + '<div><button id="addTransactionBtn" class="btn">Add Transaction</button></div>'
+                + '</div>'
+                + '</div>';
+              if (!rows.length) {
+                c.innerHTML = headerHtml + '<div class="card">No transactions</div>';
+                try { var addBtn = document.getElementById('addTransactionBtn'); if (addBtn) addBtn.onclick = function(){ showAddTransactionForm(sheetName); }; } catch(e) {}
+                try{ c.setAttribute('data-view','transactions'); }catch(e){};
+                return;
+              }
+              var html = headerHtml + '<div class="list">';
+              rows.forEach(function(r){
+                // Render minimal transaction card using common fields if present
+                var tid = r.transaction_id || r.transactionId || r.id || r.item_id || '';
+                var desc = r.description || r.desc || '';
+                var amount = r.price || r.amount || '';
+                var date = r.date_created || r.date || '';
+                html += '<div class="card">'<
+                  + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+                  + '<div><strong>' + escapeHtml(desc) + '</strong><div class="muted">' + escapeHtml(date) + '</div></div>'
+                  + '<div style="text-align:right">' + escapeHtml(amount) + '<div class="muted">' + escapeHtml(tid) + '</div></div>'
+                  + '</div>'
+                  + '</div>';
+              });
+              html += '</div>';
+              c.innerHTML = html;
+              try { var addBtn = document.getElementById('addTransactionBtn'); if (addBtn) addBtn.onclick = function(){ showAddTransactionForm(sheetName); }; } catch(e){}
+              try{ c.setAttribute('data-view','transactions'); }catch(e){}
+            }).getSheetValues(sheetName + '-transactions');
+        } catch (e) { console.error('Transactions render failed', e); c.innerHTML = '<div class="card">Error loading transactions</div>'; }
+      }
+
+      function showAddTransactionForm(sheetName){
+        var c = document.getElementById('content');
+        // Build a well-styled transaction form with proper spacing and visual hierarchy
+        c.innerHTML = '<div class="card" style="max-width: 100%; margin: 0 auto;">' +
+          '<h2 style="margin: 0 0 24px 0; color: #222; font-weight: 600;">Log Transaction</h2>' +
+          
+          // Project Name Section
+          '<div class="form-group" style="margin-bottom: 24px;">' +
+            '<label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Project Name *</label>' +
+            '<input id="tx_project" value="'+escapeHtml(sheetName)+'" disabled class="form-input" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; color: #666;">' +
+          '</div>' +
+
+          // Transaction Date Section  
+          '<div class="form-group" style="margin-bottom: 24px;">' +
+            '<label class="form-label" style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">Transaction Date</label>' +
+            '<div class="radio-group" style="display: flex; gap: 16px; margin-bottom: 12px;">' +
+              '<label class="radio-option" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">' +
+                '<input type="radio" name="tx_date_choice" value="today" checked style="margin: 0;"> Today' +
+              '</label>' +
+              '<label class="radio-option" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">' +
+                '<input type="radio" name="tx_date_choice" value="different" style="margin: 0;"> Different Date' +
+              '</label>' +
+            '</div>' +
+            '<input id="tx_date" type="date" value="'+(new Date().toISOString().substr(0,10))+'" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; display: none;">' +
+          '</div>' +
+
+          // Transaction Source Section
+          '<div class="form-group" style="margin-bottom: 24px;">' +
+            '<label class="form-label" style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">Transaction Source *</label>' +
+            '<div id="tx_source_radios" class="radio-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px;"></div>' +
+            '<input id="tx_source_custom" placeholder="Press enter to add custom option" class="form-input" style="display: none; width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-top: 8px;">' +
+          '</div>' +
+
+          // Transaction Type and Method Section
+          '<div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">' +
+            '<div class="form-group">' +
+              '<label class="form-label" style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">Transaction Type *</label>' +
+              '<div id="tx_type_radios" class="radio-group" style="display: flex; flex-direction: column; gap: 8px;"></div>' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label class="form-label" style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">Transaction Method *</label>' +
+              '<div id="tx_method_radios" class="radio-group" style="display: flex; flex-direction: column; gap: 8px;"></div>' +
+            '</div>' +
+          '</div>' +
+
+          // Location Section
+          '<div class="form-group" style="margin-bottom: 24px;">' +
+            '<label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Location</label>' +
+            '<input id="tx_location" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">' +
+          '</div>' +
+
+          // Amount and Receipt Email Section
+          '<div class="form-row" style="display: grid; grid-template-columns: 1fr auto; gap: 24px; margin-bottom: 24px; align-items: end;">' +
+            '<div class="form-group">' +
+              '<label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Amount</label>' +
+              '<input id="tx_amount" type="number" step="0.01" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Receipt Email Copy</label>' +
+              '<select id="tx_emailed" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">' +
+                '<option value="No">No</option>' +
+                '<option value="Yes">Yes</option>' +
+              '</select>' +
+            '</div>' +
+          '</div>' +
+
+          // Transaction Notes Section
+          '<div class="form-group" style="margin-bottom: 24px;">' +
+            '<label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Transaction Notes</label>' +
+            '<textarea id="tx_notes" class="form-input" style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; resize: vertical;"></textarea>' +
+          '</div>' +
+
+          // Receipt Image Section
+          '<div class="form-group" style="margin-bottom: 32px;">' +
+            '<label class="form-label" style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Receipt Image</label>' +
+            '<div id="receiptDrop" class="receipt-drop" style="border: 2px dashed #ddd; border-radius: 12px; padding: 24px; text-align: center; color: #777; background: #fafafa; transition: border-color 0.2s;">' +
+              '<svg style="width: 48px; height: 48px; margin: 0 auto 12px; opacity: 0.5;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">' +
+                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>' +
+                '<polyline points="7,10 12,15 17,10"></polyline>' +
+                '<line x1="12" y1="15" x2="12" y2="3"></line>' +
+              '</svg>' +
+              '<div style="font-size: 14px; margin-bottom: 12px;">Upload or paste a receipt image URL</div>' +
+              '<input id="tx_receipt" placeholder="Receipt Image (URL)" class="form-input" style="width: 100%; padding: 12px; border: 1px solid #eee; border-radius: 8px; background: white;">' +
+            '</div>' +
+          '</div>' +
+
+          // Line Items Section
+          '<div id="lineItemsRoot" class="line-items-section" style="border-top: 1px solid #eee; padding-top: 24px; margin-bottom: 32px;">' +
+            '<div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">' +
+              '<h3 style="margin: 0; font-weight: 600; color: #333;">Line Items</h3>' +
+              '<button id="addLineItemBtn" class="btn" style="background: #f7f7f7; color: #333; padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer;">Add Item</button>' +
+            '</div>' +
+            '<div id="lineItems" class="line-items-container"></div>' +
+          '</div>' +
+
+          // Submit Button
+          '<div class="form-actions" style="text-align: center; padding-top: 16px; border-top: 1px solid #eee;">' +
+            '<button id="submitTx" class="primary" style="padding: 14px 32px; font-size: 16px; font-weight: 500;">Log Transaction</button>' +
+          '</div>' +
+        '</div>';
+
+        try { c.setAttribute('data-view', 'transactions-add'); } catch (e) {}
+
+        // Date toggle behavior
+        Array.prototype.slice.call(c.querySelectorAll('input[name="tx_date_choice"]')).forEach(function(r){
+          r.addEventListener('change', function(){
+            var d = document.getElementById('tx_date');
+            if (!d) return;
+            d.style.display = (document.querySelector('input[name="tx_date_choice"]:checked').value === 'different') ? 'block' : 'none';
+          });
+        });
+
+        // Helper to create a new line item row with improved styling
+        function addLineItem(defaults){
+          var container = document.getElementById('lineItems');
+          var div = document.createElement('div');
+          div.className = 'line-item-card';
+          div.style.background = '#fafafa';
+          div.style.border = '1px solid #eee';
+          div.style.borderRadius = '8px';
+          div.style.padding = '16px';
+          div.style.marginBottom = '12px';
+          div.style.transition = 'border-color 0.2s';
+          
+          div.innerHTML = 
+            '<div style="display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: end;">' +
+              '<div style="flex: 1; min-width: 0;">' +
+                '<label style="display: block; margin-bottom: 8px; font-weight: 500; color: #333; font-size: 14px;">Description</label>' +
+                '<input class="li_desc form-input" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">' +
+              '</div>' +
+              '<div class="col-fixed-120">' +
+                '<label style="display: block; margin-bottom: 8px; font-weight: 500; color: #333; font-size: 14px;">Price</label>' +
+                '<input class="li_price form-input" type="number" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">' +
+              '</div>' +
+              '<div class="col-fixed-80">' +
+                '<button class="btn removeLineBtn" style="background: #fff; color: #dc3545; border: 1px solid #dc3545; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;">Remove</button>' +
+              '</div>' +
+            '</div>';
+          
+          container.appendChild(div);
+          
+          try{
+            if (defaults) {
+              var dd = div.querySelector('.li_desc'); if (dd) dd.value = defaults.description || '';
+              var pp = div.querySelector('.li_price'); if (pp) pp.value = defaults.price || '';
+            }
+            var removeBtn = div.querySelector('.removeLineBtn');
+            if (removeBtn) {
+              removeBtn.onmouseover = function() { this.style.background = '#dc3545'; this.style.color = '#fff'; };
+              removeBtn.onmouseout = function() { this.style.background = '#fff'; this.style.color = '#dc3545'; };
+              removeBtn.onclick = function(){ 
+                div.style.opacity = '0.5';
+                div.style.transform = 'scale(0.95)';
+                setTimeout(function() {
+                  try{ container.removeChild(div); }catch(e){} 
+                }, 150);
+              };
+            }
+          } catch(e) {}
+        }
+        document.getElementById('addLineItemBtn').onclick = function(){ addLineItem(); };
+
+        // Populate enums for type/method and source (radios) and provide simple custom-source entry
+        // Only populate if not already populated to prevent duplicates
+        var tRoot = document.getElementById('tx_type_radios');
+        if (tRoot && tRoot.children.length > 0) {
+          writeDebug('Enums already populated, skipping...');
+          return;
+        }
+        
+        google.script.run.withFailureHandler(function(err){ writeDebug('listTransactionEnums failed: '+String(err)); })
+          .withSuccessHandler(function(en){ try{
+            var enums = en || {};
+            // Types and methods: render as styled radio buttons
+            var tRoot = document.getElementById('tx_type_radios');
+            var mRoot = document.getElementById('tx_method_radios');
+            var sRoot = document.getElementById('tx_source_radios');
+            
+            // Clear existing content to prevent duplicates
+            if (tRoot) tRoot.innerHTML = '';
+            if (mRoot) mRoot.innerHTML = '';
+            if (sRoot) sRoot.innerHTML = '';
+            
+            if (Array.isArray(enums.types) && tRoot) {
+              enums.types.forEach(function(x,i){ 
+                var el = document.createElement('label'); 
+                el.style.display = 'flex';
+                el.style.alignItems = 'center';
+                el.style.gap = '8px';
+                el.style.cursor = 'pointer';
+                el.style.padding = '8px 12px';
+                el.style.border = '1px solid #ddd';
+                el.style.borderRadius = '6px';
+                el.style.background = i === 0 ? 'rgba(156,129,96,0.1)' : '#fafafa';
+                el.style.borderColor = i === 0 ? '#9C8160' : '#ddd';
+                el.style.transition = 'all 0.2s';
+                el.innerHTML = '<input type="radio" name="tx_type" value="'+escapeHtml(x)+'" '+(i===0?'checked':'')+'> '+escapeHtml(x); 
+                el.addEventListener('click', function() {
+                  Array.prototype.slice.call(tRoot.querySelectorAll('label')).forEach(function(lbl) {
+                    lbl.style.background = '#fafafa';
+                    lbl.style.borderColor = '#ddd';
+                  });
+                  el.style.background = 'rgba(156,129,96,0.1)';
+                  el.style.borderColor = '#9C8160';
+                });
+                tRoot.appendChild(el); 
+              });
+            }
+            if (Array.isArray(enums.methods) && mRoot) {
+              enums.methods.forEach(function(x,i){ 
+                var el = document.createElement('label'); 
+                el.style.display = 'flex';
+                el.style.alignItems = 'center';
+                el.style.gap = '8px';
+                el.style.cursor = 'pointer';
+                el.style.padding = '8px 12px';
+                el.style.border = '1px solid #ddd';
+                el.style.borderRadius = '6px';
+                el.style.background = i === 0 ? 'rgba(156,129,96,0.1)' : '#fafafa';
+                el.style.borderColor = i === 0 ? '#9C8160' : '#ddd';
+                el.style.transition = 'all 0.2s';
+                el.innerHTML = '<input type="radio" name="tx_method" value="'+escapeHtml(x)+'" '+(i===0?'checked':'')+'> '+escapeHtml(x); 
+                el.addEventListener('click', function() {
+                  Array.prototype.slice.call(mRoot.querySelectorAll('label')).forEach(function(lbl) {
+                    lbl.style.background = '#fafafa';
+                    lbl.style.borderColor = '#ddd';
+                  });
+                  el.style.background = 'rgba(156,129,96,0.1)';
+                  el.style.borderColor = '#9C8160';
+                });
+                mRoot.appendChild(el); 
+              });
+            }
+            // Sources: render as styled radio buttons in grid
+            if (Array.isArray(enums.sources) && sRoot) {
+              enums.sources.forEach(function(x,i){ 
+                var el = document.createElement('label'); 
+                el.style.display = 'flex';
+                el.style.alignItems = 'center';
+                el.style.gap = '8px';
+                el.style.cursor = 'pointer';
+                el.style.padding = '8px 12px';
+                el.style.border = '1px solid #ddd';
+                el.style.borderRadius = '6px';
+                el.style.background = '#fafafa';
+                el.style.transition = 'all 0.2s';
+                el.innerHTML = '<input type="radio" name="tx_source" value="'+escapeHtml(x)+'"> '+escapeHtml(x); 
+                el.addEventListener('click', function() {
+                  Array.prototype.slice.call(sRoot.querySelectorAll('label')).forEach(function(lbl) {
+                    lbl.style.background = '#fafafa';
+                    lbl.style.borderColor = '#ddd';
+                  });
+                  el.style.background = 'rgba(156,129,96,0.1)';
+                  el.style.borderColor = '#9C8160';
+                });
+                sRoot.appendChild(el); 
+              });
+              // add final 'Other' option that shows custom input when selected
+              var other = document.createElement('label'); 
+              other.style.display = 'flex';
+              other.style.alignItems = 'center';
+              other.style.gap = '8px';
+              other.style.cursor = 'pointer';
+              other.style.padding = '8px 12px';
+              other.style.border = '1px solid #ddd';
+              other.style.borderRadius = '6px';
+              other.style.background = '#fafafa';
+              other.style.transition = 'all 0.2s';
+              other.innerHTML = '<input type="radio" name="tx_source" value="__other__"> Other'; 
+              other.addEventListener('click', function() {
+                Array.prototype.slice.call(sRoot.querySelectorAll('label')).forEach(function(lbl) {
+                  lbl.style.background = '#fafafa';
+                  lbl.style.borderColor = '#ddd';
+                });
+                other.style.background = 'rgba(156,129,96,0.1)';
+                other.style.borderColor = '#9C8160';
+              });
+              sRoot.appendChild(other);
+              var custom = document.getElementById('tx_source_custom');
+              sRoot.addEventListener('change', function(){ try{ var v = document.querySelector('input[name="tx_source"]:checked'); if (!v) return; if (v.value === '__other__') { custom.style.display='block'; custom.focus(); } else { custom.style.display='none'; custom.value=''; } }catch(e){} });
+              // allow Enter to select custom value as chosen source
+              custom.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); var val = custom.value.trim(); if (!val) return; // add as a selected value
+                  // create a temporary radio and select it
+                  var tmp = document.createElement('input'); tmp.type='radio'; tmp.name='tx_source'; tmp.value=val; tmp.checked=true; tmp.style.display='none'; sRoot.appendChild(tmp); custom.style.display='none'; } });
+            }
+          }catch(e){ writeDebug('enum population failed: '+String(e)); } }).listTransactionEnums();
+
+        // Submit handler
+        document.getElementById('submitTx').onclick = function(){
+          var dateChoice = document.querySelector('input[name="tx_date_choice"]:checked');
+          var txDate = (dateChoice && dateChoice.value === 'different') ? document.getElementById('tx_date').value : (new Date().toISOString().substr(0,10));
+          var sourceEl = document.querySelector('input[name="tx_source"]:checked');
+          var sourceVal = sourceEl ? sourceEl.value : (document.getElementById('tx_source_custom') ? document.getElementById('tx_source_custom').value : '');
+          if (sourceVal === '__other__') sourceVal = document.getElementById('tx_source_custom').value || '';
+          var tx = {
+            project_id: sheetName,
+            project_name: sheetName,
+            transaction_date: txDate,
+            source: sourceVal,
+            location: document.getElementById('tx_location').value,
+            transaction_type: (document.querySelector('input[name="tx_type"]:checked') || {}).value || '',
+            payment_method: (document.querySelector('input[name="tx_method"]:checked') || {}).value || '',
+            amount: parseFloat(document.getElementById('tx_amount').value) || 0,
+            notes: document.getElementById('tx_notes').value,
+            receipt_image: document.getElementById('tx_receipt').value,
+            receipt_emailed: document.getElementById('tx_emailed').value
+          };
+          // Collect line items
+          var items = [];
+          var lis = document.getElementById('lineItems').children;
+          for (var i=0;i<lis.length;i++){ try{
+            var d = lis[i].querySelector('.li_desc').value;
+            var p = parseFloat(lis[i].querySelector('.li_price').value) || 0;
+            if (!d) continue; // skip empty
+            items.push({ description: d, price: p, source: tx.source || '' });
+          } catch(e){} }
+          var btn = document.getElementById('submitTx'); btn.disabled = true; btn.style.opacity = '0.6';
+          writeDebug('Creating transaction...');
+          google.script.run.withFailureHandler(function(err){ writeDebug('createTransaction failed: '+String(err)); alert('Failed to create transaction'); btn.disabled=false; btn.style.opacity='1'; })
+            .withSuccessHandler(function(res){
+              writeDebug('createTransaction returned: '+JSON.stringify(res));
+              if (!res || !res.transaction_id) { alert('Failed to create transaction'); btn.disabled=false; btn.style.opacity='1'; return; }
+              var txId = res.transaction_id;
+              if (!items.length) { btn.disabled=false; btn.style.opacity='1'; setActiveTab('transactionsTab'); showTransactionsList(sheetName); return; }
+              google.script.run.withFailureHandler(function(err){ writeDebug('appendInventoryForTransaction failed: '+String(err)); alert('Failed to append inventory'); btn.disabled=false; btn.style.opacity='1'; })
+                .withSuccessHandler(function(ar){ writeDebug('appendInventoryForTransaction result: '+JSON.stringify(ar)); btn.disabled=false; btn.style.opacity='1'; setActiveTab('transactionsTab'); showTransactionsList(sheetName); })
+                .appendInventoryForTransaction({ project_id: sheetName, transaction_id: txId, items: items });
+            }).createTransaction(tx);
+        };
+      }
+
+      var __latestGetItemRequestToken = null;
+
+      function openItemInline(itemId, sheetName){
+        var c = document.getElementById('content');
+        c.innerHTML = '<div class="card">\
+          <div class="toolbar" style="justify-content:space-between;margin-bottom:8px">\
+            <button id="backToList" class="btn ghost">← Back</button>\
+            <div class="muted">ID: ' + escapeHtml(itemId) + '</div>\
+          </div>\
+          <div id="itemInlineRoot">Loading item…</div>\
+        </div>';
+        try { c.setAttribute('data-view', 'item'); } catch (e) {}
+        document.getElementById('backToList').onclick = function(){ showInventoryList(sheetName); };
+        // Debug: show which itemId is being opened
+        writeDebug('Opening item: ' + itemId + ' (sheet: ' + sheetName + ')');
+        // Load item JSON via server endpoint and render an inline edit form
+        var itemRoot = document.getElementById('itemInlineRoot');
+        if (itemRoot) itemRoot.innerText = 'Loading item… (ID: ' + itemId + ')';
+        // Note: Avoid fetch-based diagnostics here due to cross-origin restrictions in HtmlService.
+        // Instrumentation: attach a call id and MutationObserver to detect unexpected clears
+        try {
+          var getItemCallId = 'getItem-' + Date.now();
+          __latestGetItemRequestToken = getItemCallId;
+          if (itemRoot) { itemRoot.dataset.getItemCallId = getItemCallId; }
+          writeDebug('getItem call id: ' + getItemCallId + ' (opened)');
+          if (itemRoot && !itemRoot.__getItemObserverAttached) {
+            try {
+              var prevContent = itemRoot.innerText;
+              var mo = new MutationObserver(function(muts){
+                muts.forEach(function(m){
+                  var newContent = itemRoot.innerText;
+                  console.warn('MutationObserver detected change for', getItemCallId, 'prev:', prevContent, 'new:', newContent);
+                  writeDebug('MutationObserver [' + getItemCallId + ']: prev: "' + prevContent + '" -> new: "' + newContent + '"');
+                  prevContent = newContent;
+                });
+              });
+              mo.observe(itemRoot, { childList: true, subtree: true, characterData: true });
+              itemRoot.__getItemObserverAttached = true;
+              itemRoot.__getItemObserver = mo;
+            } catch (e) { console.error('Failed to attach MutationObserver', e); }
+          }
+        } catch (e) { console.error('Instrumentation failed', e); }
+        // View/Edit render helpers
+        function renderItemView(item){
+          var root = document.getElementById('itemInlineRoot');
+          var html = '';
+          html += '<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center">';
+          html +=   '<div style="font-size:18px;font-weight:600">' + escapeHtml(item.description || '(No description)') + '</div>';
+          var inlineBookmarkState = (item && (item.bookmark === true || String(item.bookmark).toUpperCase() === 'TRUE')) ? ' active' : '';
+          html +=   '<div class="toolbar">' +
+                     '<button id="editItemBtn" class="btn btn-icon" title="Edit">' + EDIT_SVG + '</button>' +
+                     '<button id="bookmarkItemBtn" class="btn btn-icon' + inlineBookmarkState + '" data-item-id="' + encodeURIComponent(item.item_id || '') + '" title="Bookmark">' + BOOKMARK_SVG + '</button>' +
+                     '<button id="returnInlineBtn" class="btn btn-icon' + ((item && String(item.disposition || '').toLowerCase() === 'return') ? ' active' : '') + '" data-item-id="' + encodeURIComponent(item.item_id || '') + '" title="Return">' + RETURN_SVG + '</button>' +
+                     '<button id="printQrBtn" class="btn btn-icon" data-item-id="' + encodeURIComponent(item.item_id || '') + '" data-qr-key="' + encodeURIComponent(item.qr_key || '') + '" title="Print QR">' + PRINTER_SVG + '</button>' +
+                    '</div>';
+          html += '</div>';
+          // Detailed key/value view
+          html += '<div class="kv" style="margin-top:8px">';
+          html += '<div class="field-label">Description</div><div class="field-value">' + escapeHtml(item.description || '') + '</div>';
+          html += '<div class="field-label">Source</div><div class="field-value">' + escapeHtml(item.source || '') + '</div>';
+          html += '<div class="field-label">SKU</div><div class="field-value">' + escapeHtml(item.sku || '') + '</div>';
+          html += '<div class="field-label">Price</div><div class="field-value">' + escapeHtml(item.price || '') + '</div>';
+          html += '<div class="field-label">1584 Resale Price</div><div class="field-value">' + escapeHtml(item["1584_resale_price"] || item.resale_price || '') + '</div>';
+          html += '<div class="field-label">Market Value</div><div class="field-value">' + escapeHtml(item.market_value || '') + '</div>';
+          html += '<div class="field-label">Payment Method</div><div class="field-value">' + escapeHtml(item.payment_method || '') + '</div>';
+          html += '<div class="field-label">Disposition</div><div class="field-value">' + escapeHtml(item.disposition || '') + '</div>';
+          html += '<div class="field-label">Notes</div><div class="field-value">' + escapeHtml(item.notes || '') + '</div>';
+          html += '<div class="field-label">Item ID</div><div class="field-value">' + escapeHtml(item.item_id || '') + '</div>';
+          html += '<div class="field-label">Transaction ID</div><div class="field-value">' + escapeHtml(item.transaction_id || '') + '</div>';
+          html += '<div class="field-label">Project ID</div><div class="field-value">' + escapeHtml(item.project_id || '') + '</div>';
+          html += '<div class="field-label">Date Created</div><div class="field-value">' + escapeHtml(item.date_created || '') + '</div>';
+          html += '<div class="field-label">Last Updated</div><div class="field-value">' + escapeHtml(item.last_updated || '') + '</div>';
+          html += '</div>';
+          root.innerHTML = html;
+          var __editBtn = document.getElementById('editItemBtn');
+          if (__editBtn) {
+            __editBtn.onclick = function(ev){ ev && ev.stopPropagation && ev.stopPropagation(); renderItemEdit(item); };
+          }
+          try {
+            var pbtn = document.getElementById('printQrBtn');
+            if (pbtn) pbtn.onclick = function(ev){ ev && ev.stopPropagation && ev.stopPropagation();
+              var id = decodeURIComponent((ev.currentTarget.getAttribute('data-item-id')||''));
+              var key = ev.currentTarget.getAttribute('data-qr-key') || '';
+              var url = key ? (BASE_URL + '?action=qrImage&k=' + encodeURIComponent(key)) : (BASE_URL + '?action=generateBatchPdf&sheetName=' + encodeURIComponent(item._sheet || sheetName) + '&items[]=' + encodeURIComponent(id));
+              window.open(url, '_blank');
+              // event already stopped above
+            };
+          } catch(e) { console.error('Failed to attach inline print handler', e); }
+          try {
+            var bbtn = document.getElementById('bookmarkItemBtn');
+            if (bbtn) bbtn.onclick = function(ev){ ev && ev.stopPropagation && ev.stopPropagation();
+              var id = decodeURIComponent((ev.currentTarget.getAttribute('data-item-id')||''));
+              var btn = ev.currentTarget;
+              var newState = btn.classList.contains('active') ? false : true;
+              if (newState) btn.classList.add('active'); else btn.classList.remove('active');
+              try {
+                google.script.run.withFailureHandler(function(err){ writeDebug('bookmark update failed: ' + String(err)); try { if (btn) { if (newState) btn.classList.remove('active'); else btn.classList.add('active'); } } catch(e){} })
+                  .withSuccessHandler(function(res){ writeDebug('bookmark updated for ' + id + ' -> ' + newState); try { if (window.__sheetCache && window.__sheetCache[sheetName] && Array.isArray(window.__sheetCache[sheetName].rows)) { window.__sheetCache[sheetName].rows.forEach(function(r){ if (String(r.item_id) === String(id)) r.bookmark = newState; }); } } catch(e) { writeDebug('cache update failed: ' + String(e)); } })
+                  .updateItem({ item_id: id, data: { bookmark: newState }, sheet_name: item._sheet || sheetName });
+              } catch (e) { writeDebug('bookmark persistence exception: ' + String(e)); }
+              // event propagation prevented above
+            };
+          } catch(e) { console.error('Failed to attach inline bookmark handler', e); }
+          try {
+            var rtn = document.getElementById('returnInlineBtn');
+            if (rtn) rtn.onclick = function(ev){ ev && ev.stopPropagation && ev.stopPropagation();
+              var id = decodeURIComponent((ev.currentTarget.getAttribute('data-item-id')||''));
+              var btn = ev.currentTarget;
+              var currentlyActive = btn.classList.contains('active');
+              var newDisposition = currentlyActive ? 'keep' : 'return';
+              // optimistic UI
+              try { if (newDisposition === 'return') btn.classList.add('active'); else btn.classList.remove('active'); } catch(e){}
+              try {
+                google.script.run.withFailureHandler(function(err){ writeDebug('inline return update failed: ' + String(err)); // revert
+                    try { if (newDisposition === 'return') btn.classList.remove('active'); else btn.classList.add('active'); } catch(e){}
+                    alert('Return update failed');
+                  })
+                  .withSuccessHandler(function(res){ writeDebug('Inline disposition updated for ' + id + ' -> ' + newDisposition); try { if (window.__sheetCache && window.__sheetCache[sheetName] && Array.isArray(window.__sheetCache[sheetName].rows)) { window.__sheetCache[sheetName].rows.forEach(function(r){ if (String(r.item_id) === String(id)) r.disposition = newDisposition; }); } } catch(e){} })
+                  .updateItem({ item_id: id, data: { disposition: newDisposition }, sheet_name: item._sheet || sheetName });
+              } catch(e){ writeDebug('inline return persistence exception: ' + String(e)); }
+            };
+          } catch(e){ console.error('Failed to attach inline return handler', e); }
+        }
+
+        function renderItemEdit(item){
+          var root = document.getElementById('itemInlineRoot');
+          var html = '';
+          html += '<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center">';
+          html +=   '<div style="font-size:18px;font-weight:600">Edit Item</div>';
+          html +=   '<div class="toolbar"><button id="cancelEditBtn" class="btn">Cancel</button><button id="saveBtnInline" class="primary">Save</button></div>';
+          html += '</div>';
+          html += '<div class="row" style="flex-direction:column; align-items:stretch">';
+          // Fields in requested order
+          html +=   '<label>Description</label><input id="f_description_inline" value="'+escapeHtml(item.description||'')+'">';
+          html +=   '<label>Source</label><input id="f_source_inline" value="'+escapeHtml(item.source||'')+'">';
+          html +=   '<label>SKU</label><input id="f_sku_inline" value="'+escapeHtml(item.sku||'')+'">';
+          html +=   '<label>Price</label><input id="f_price_inline" type="number" step="0.01" value="'+escapeHtml(item.price||'')+'">';
+          html +=   '<label>1584 Resale Price</label><input id="f_1584_resale_price_inline" type="number" step="0.01" value="'+escapeHtml(item["1584_resale_price"]||item.resale_price||'')+'">';
+          html +=   '<label>Market Value</label><input id="f_market_value_inline" type="number" step="0.01" value="'+escapeHtml(item.market_value||'')+'">';
+          html +=   '<label>Payment Method</label><input id="f_payment_method_inline" value="'+escapeHtml(item.payment_method||'')+'">';
+          html +=   '<label>Disposition</label><select id="f_disposition_inline"><option value="">(none)</option><option value="keep">Keep</option><option value="return">Return</option><option value="1584">1584</option></select>';
+          html +=   '<label>Notes</label><textarea id="f_notes_inline" style="min-height:96px">'+escapeHtml(item.notes||'')+'</textarea>';
+          html +=   '<label>Item ID</label><input id="f_item_id_inline" value="'+escapeHtml(item.item_id||'')+'" readonly>';
+          html +=   '<label>Transaction ID</label><input id="f_transaction_id_inline" value="'+escapeHtml(item.transaction_id||'')+'">';
+          html +=   '<label>Project ID</label><input id="f_project_id_inline" value="'+escapeHtml(item.project_id||'')+'">';
+          html +=   '<label>Date Created</label><input id="f_date_created_inline" value="'+escapeHtml(item.date_created||'')+'" disabled>';
+          html +=   '<label>Last Updated</label><input id="f_last_updated_inline" value="'+escapeHtml(item.last_updated||'')+'" disabled>';
+          html += '</div>';
+          root.innerHTML = html;
+          // initialize disposition select to current value
+          try { if (document.getElementById('f_disposition_inline')) document.getElementById('f_disposition_inline').value = item.disposition || ''; } catch (e) {}
+          document.getElementById('cancelEditBtn').onclick = function(){ renderItemView(item); };
+          // Return button removed from inline edit view per user request
+          document.getElementById('saveBtnInline').onclick = function(){
+            var data = {
+              description: document.getElementById('f_description_inline').value,
+            price: document.getElementById('f_price_inline').value,
+              "1584_resale_price": (document.getElementById('f_1584_resale_price_inline') ? document.getElementById('f_1584_resale_price_inline').value : ''),
+              market_value: (document.getElementById('f_market_value_inline') ? document.getElementById('f_market_value_inline').value : ''),
+              source: document.getElementById('f_source_inline').value,
+              notes: document.getElementById('f_notes_inline').value,
+              disposition: document.getElementById('f_disposition_inline') ? document.getElementById('f_disposition_inline').value : ''
+            };
+            // Show inline saving indicator and disable the save button while request is in-flight
+            var saveBtn = document.getElementById('saveBtnInline');
+            var rootEl = document.getElementById('itemInlineRoot');
+            var savingEl = document.createElement('div');
+            savingEl.style.marginTop = '8px';
+            savingEl.style.color = '#666';
+            savingEl.textContent = 'Saving...';
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.6'; }
+            if (rootEl) rootEl.appendChild(savingEl);
+            writeDebug('Saving inline...');
+            google.script.run.withFailureHandler(function(err){
+                writeDebug('Save failed: ' + String(err));
+                if (savingEl && savingEl.parentNode) savingEl.parentNode.removeChild(savingEl);
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+              })
+              .withSuccessHandler(function(res){
+                writeDebug('Saved.');
+                item.description = data.description; item.price = data.price; item.source = data.source; item.notes = data.notes;
+                if (savingEl && savingEl.parentNode) savingEl.parentNode.removeChild(savingEl);
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+                // Re-render item view (no alert)
+                renderItemView(item);
+              })
+              .updateItem({ item_id: itemId, data: data, sheet_name: item._sheet || sheetName });
+          };
+        }
+        // Attempt to render from frontend cache first
+        try {
+          window.__sheetCache = window.__sheetCache || {};
+          var cached = window.__sheetCache[sheetName];
+          if (cached && Array.isArray(cached.rows) && cached.rows.length) {
+            var hid = cached.headers.indexOf('item_id');
+            if (hid !== -1) {
+              for (var ri = 0; ri < cached.rows.length; ri++) {
+                var row = cached.rows[ri];
+                var rid = (row[hid] === null || row[hid] === undefined) ? '' : String(row[hid]);
+                if (rid === String(itemId)) {
+                  writeDebug('Found item in cache (sheet: ' + sheetName + ', row: ' + (ri+2) + ') — rendering from cache');
+                  var item = {};
+                  for (var hi = 0; hi < cached.headers.length; hi++) { item[cached.headers[hi]] = cached.rows[ri][hi]; }
+                  renderItemView(item);
+                  return;
+                }
+              }
+            }
+          }
+        } catch (e) { console.error('Cache lookup failed', e); }
+        // Encapsulate the request to allow a single, guarded retry on null
+        (function doRequest(attempt){
+          google.script.run.withFailureHandler(function(err){
+              var root = document.getElementById('itemInlineRoot');
+              var attachedId = root && root.dataset ? root.dataset.getItemCallId : '(none)';
+              if (attachedId !== __latestGetItemRequestToken) { console.warn('Ignoring failure from stale request', attachedId); return; }
+              writeDebug('getItem failed: ' + String(err));
+              if (root) root.innerText = 'Failed to load item';
+            })
+            .withSuccessHandler(function(res){
+              writeDebug('getItem response: ' + JSON.stringify(res));
+              var root = document.getElementById('itemInlineRoot');
+              var attachedId = root && root.dataset ? root.dataset.getItemCallId : '(none)';
+              if (attachedId !== __latestGetItemRequestToken) { console.warn('Ignoring response from stale request', attachedId); return; }
+              if (!res || !res.item) {
+                if (attempt === 0) {
+                  writeDebug('No item returned; retrying once...');
+                  return doRequest(1);
+                }
+                writeDebug('No item after retry for call id: ' + attachedId);
+                if (root && !root.__hasRenderedFallback) {
+                  root.__hasRenderedFallback = true;
+                  var warn = document.createElement('div');
+                  warn.style.color = '#b00';
+                  warn.style.marginTop = '8px';
+                  warn.textContent = 'Warning: No item returned for ID ' + itemId + '. Keeping current view.';
+                  root.appendChild(warn);
+                }
+                return;
+              }
+              var item = res.item;
+              renderItemView(item);
+              try { if (root && root.__getItemObserver) { setTimeout(function(){ try{ root.__getItemObserver.disconnect(); root.__getItemObserverAttached = false; }catch(e){} }, 5000); } } catch(e){}
+            }).getItem(itemId, sheetName);
+        })(0);
+      }
+</script>
+    </div>
+    <!-- Mobile debug banner (always-on for debugging) -->
+    <script>
+    (function(){
+        try {
+          function readInfo(){
+            var root = document.querySelector('.app-root');
+            var cs = root ? window.getComputedStyle(root) : null;
+            var vv = (window.visualViewport || null);
+            var m1 = window.matchMedia ? window.matchMedia('(min-width:901px)').matches : null;
+            var m2 = window.matchMedia ? window.matchMedia('(pointer: fine)').matches : null;
+            var m3 = window.matchMedia ? window.matchMedia('(hover: none) and (pointer: coarse)').matches : null;
+            return {
+              innerWidth: window.innerWidth,
+              docClientWidth: document.documentElement ? document.documentElement.clientWidth : null,
+              screenWidth: window.screen ? window.screen.width : null,
+              dpr: window.devicePixelRatio || 1,
+              appRootComputedWidth: cs ? cs.width : null,
+              appRootInlineWidth: root ? (root.style && root.style.width ? root.style.width : '') : null,
+              hasDebugClass: root ? root.classList.contains('debug-forcing-fullwidth') : false,
+              vvWidth: vv ? vv.width : null,
+              vvScale: vv ? vv.scale : null,
+              mqMin901: m1,
+              mqPointerFine: m2,
+              mqTouch: m3,
+              scaled: root ? root.classList.contains('scaled-for-viewport') : false,
+              scaleFactor: root ? root.getAttribute('data-scale-factor') : null
+            };
+          }
+          var banner = document.getElementById('mobileDebugBanner') || (function(){
+            var b = document.createElement('div');
+            b.id = 'mobileDebugBanner';
+            b.style.position = 'fixed';
+            b.style.left = '8px';
+            b.style.right = '8px';
+            b.style.bottom = '8px';
+            b.style.zIndex = '2147483647';
+            b.style.background = 'rgba(0,0,0,0.8)';
+            b.style.color = '#fff';
+            b.style.fontSize = '13px';
+            b.style.padding = '8px';
+            b.style.borderRadius = '8px';
+            b.style.maxWidth = 'calc(100% - 16px)';
+            b.style.boxSizing = 'border-box';
+            b.style.fontFamily = 'monospace';
+            b.style.lineHeight = '1.2';
+            b.style.whiteSpace = 'pre-wrap';
+            b.style.pointerEvents = 'none';
+            document.body.appendChild(b);
+            return b;
+          })();
+          function render(){
+            var d = readInfo();
+            banner.textContent = 'innerWidth=' + d.innerWidth + ' | docClient=' + d.docClientWidth + ' | screen=' + d.screenWidth + ' | dpr=' + d.dpr
+              + ' | vv.width=' + d.vvWidth + ' | vv.scale=' + d.vvScale
+              + '\nappRoot.computedWidth=' + d.appRootComputedWidth + ' | appRoot.inline=' + d.appRootInlineWidth
+              + ' | mq(min901)=' + d.mqMin901 + ' | mq(pointer:fine)=' + d.mqPointerFine + ' | mq(touch)=' + d.mqTouch
+              + ' | scaled=' + d.scaled + ' | scaleFactor=' + d.scaleFactor;
+          }
+          render();
+          window.addEventListener('resize', render);
+          // Also refresh when visualViewport changes (more accurate on mobile browsers)
+          if (window.visualViewport) {
+            try {
+              window.visualViewport.addEventListener('resize', render);
+              window.visualViewport.addEventListener('scroll', render);
+            } catch (e) { /* some older browsers restrict visualViewport events */ }
+          }
+          window.addEventListener('orientationchange', render);
+          console.info('[debug banner] attached (always)');
+        } catch (e) { console.error('failed to attach debug banner', e); }
+      })();
+    </script>
+    <script>
+    (function(){
+      try {
+        var root = document.querySelector('.app-root');
+        var phys = (window.screen && window.screen.width) ? window.screen.width : 0;
+
+        function applyForceFullWidth(){
+          try {
+            if (!root) return;
+            root.style.setProperty('width','100%','important');
+            root.style.setProperty('max-width','100%','important');
+            root.classList.add('force-mobile');
+          } catch(e) {}
+        }
+
+        // Force full-width on small physical screens (phones) where CSS min-width breakpoints can mis-fire
+        if (phys && phys <= 480) applyForceFullWidth();
+
+        // Allow manual forcing via query param for testing: ?debug_force_fullwidth=1
+        try { if ((new URLSearchParams(window.location.search)).get('debug_force_fullwidth') === '1') applyForceFullWidth(); } catch(e) {}
+
+        // Robust visualViewport-aware scaling: run on load and when visualViewport/layout changes
+        function updateViewportScaling(){
+          try {
+            if (!root) return;
+            var layoutW = window.innerWidth || document.documentElement.clientWidth || 0;
+            var vw = (window.visualViewport && window.visualViewport.width) ? window.visualViewport.width : null;
+
+            // Remove previous scaling if any
+            if (root.classList.contains('scaled-for-viewport') && (!vw || Math.abs(layoutW - vw) < 2 || layoutW <= vw * 1.2)) {
+              root.style.transform = '';
+              root.style.transformOrigin = '';
+              root.style.width = '';
+              root.removeAttribute('data-scale-factor');
+              root.classList.remove('scaled-for-viewport');
+              return;
+            }
+
+            if (vw && layoutW && layoutW > vw * 1.2) {
+              var s = vw / layoutW;
+              root.style.transformOrigin = 'top left';
+              root.style.transform = 'scale(' + s + ')';
+              // Keep the computed layout width so scaled content aligns with touch coordinates
+              root.style.width = layoutW + 'px';
+              root.setAttribute('data-scale-factor', String(s.toFixed(3)));
+              root.classList.add('scaled-for-viewport');
+            }
+          } catch (e) { console.error('updateViewportScaling failed', e); }
+        }
+
+        // Initial run
+        updateViewportScaling();
+
+        // Recalculate on relevant events for mobile browsers
+        window.addEventListener('resize', updateViewportScaling);
+        window.addEventListener('orientationchange', updateViewportScaling);
+        if (window.visualViewport) {
+          try {
+            window.visualViewport.addEventListener('resize', updateViewportScaling);
+            window.visualViewport.addEventListener('scroll', updateViewportScaling);
+          } catch (e) { /* ignore if not supported */ }
+        }
+      } catch(e) {}
+    })();
+    </script>
+  </body>
+</html>
+
+
