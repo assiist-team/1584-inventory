@@ -4,7 +4,6 @@ compatibility_date = "2024-01-01"
 [build]
 command = "npm run build"
 cwd = "."
-watch_dir = "src"
 
 [build.upload]
 format = "modules"
@@ -12,6 +11,10 @@ format = "modules"
 [[build.upload.rules]]
 type = "ESModule"
 globs = ["**/*.js"]
+
+[[build.upload.rules]]
+type = "ESModule"
+globs = ["**/*.mjs"]
 
 [vars]
 NODE_VERSION = "18"
