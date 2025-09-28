@@ -1,26 +1,47 @@
 *.js
+  Content-Type: application/javascript
+  Cache-Control: max-age=31536000
+
+*.mjs
+  Content-Type: application/javascript
   Cache-Control: max-age=31536000
 
 *.css
+  Content-Type: text/css
   Cache-Control: max-age=31536000
 
 *.jpg
+  Content-Type: image/jpeg
   Cache-Control: max-age=31536000
 
 *.jpeg
+  Content-Type: image/jpeg
   Cache-Control: max-age=31536000
 
 *.gif
+  Content-Type: image/gif
   Cache-Control: max-age=31536000
 
 *.png
+  Content-Type: image/png
   Cache-Control: max-age=31536000
 
 *.svg
+  Content-Type: image/svg+xml
   Cache-Control: max-age=31536000
 
 *.webp
+  Content-Type: image/webp
   Cache-Control: max-age=31536000
 
 *.ico
+  Content-Type: image/x-icon
+  Cache-Control: max-age=31536000
+
+*.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: max-age=31536000
+
+manifest.webmanifest
+  Content-Type: application/manifest+json
   Cache-Control: max-age=31536000

@@ -556,4 +556,4 @@
 - **Scalable Foundation**: Ready for future feature additions
 - **Cross-Platform**: Works perfectly on all devices
 
-This style guide successfully recreates and enhances the original 1584 Design Inventory Management visual identity while providing a modern, mobile-first foundation for future development.
+This style guide successfully recreates and enhances the original 1584 Design visual identity while providing a modern, mobile-first foundation for future development.
