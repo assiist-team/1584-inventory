@@ -318,15 +318,6 @@ export default function AddTransaction() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Link>
-          <div className="flex items-center space-x-3">
-            <Link
-              to={`/project/${projectId}?tab=inventory`}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              View Inventory
-            </Link>
-          </div>
         </div>
 
       </div>
@@ -351,62 +342,28 @@ export default function AddTransaction() {
             </div>
           )}
 
-          {/* Transaction Date */}
+          {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Date *
+            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
+              Amount *
             </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="date_today"
-                  name="transaction_date_option"
-                  checked={formData.transaction_date === (() => {
-                    const today = new Date()
-                    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-                  })()}
-                  onChange={() => handleInputChange('transaction_date', (() => {
-                    const today = new Date()
-                    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-                  })())}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="date_today" className="ml-2 block text-sm text-gray-900">
-                  Today
-                </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
               </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="date_different"
-                  name="transaction_date_option"
-                  checked={formData.transaction_date !== (() => {
-                    const today = new Date()
-                    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-                  })()}
-                  onChange={() => {/* Allow custom date selection */}}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="date_different" className="ml-2 block text-sm text-gray-900">
-                  Different Date
-                </label>
-              </div>
+              <input
+                type="text"
+                id="amount"
+                value={formData.amount}
+                onChange={(e) => handleInputChange('amount', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.amount ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
             </div>
-            <input
-              type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => {
-                // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
-              }}
-              className={`mt-3 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            {errors.amount && (
+              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
             )}
           </div>
 
@@ -467,46 +424,6 @@ export default function AddTransaction() {
             )}
             {errors.source && (
               <p className="mt-1 text-sm text-red-600">{errors.source}</p>
-            )}
-          </div>
-
-          {/* Transaction Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Type *
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="type_purchase"
-                  name="transaction_type"
-                  value="Purchase"
-                  checked={formData.transaction_type === 'Purchase'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
-                  Purchase
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="type_return"
-                  name="transaction_type"
-                  value="Return"
-                  checked={formData.transaction_type === 'Return'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
-                  Return
-                </label>
-              </div>
-            </div>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
             )}
           </div>
 
@@ -578,28 +495,65 @@ export default function AddTransaction() {
             )}
           </div>
 
-          {/* Amount */}
+          {/* Transaction Date */}
           <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-              Amount *
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
             </label>
-            <div className="mt-1 relative rounded-md shadow-sm">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">$</span>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            )}
+          </div>
+
+          {/* Transaction Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Type *
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_purchase"
+                  name="transaction_type"
+                  value="Purchase"
+                  checked={formData.transaction_type === 'Purchase'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
+                  Purchase
+                </label>
               </div>
-              <input
-                type="text"
-                id="amount"
-                value={formData.amount}
-                onChange={(e) => handleInputChange('amount', e.target.value)}
-                placeholder="0.00"
-                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.amount ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_return"
+                  name="transaction_type"
+                  value="Return"
+                  checked={formData.transaction_type === 'Return'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
+                  Return
+                </label>
+              </div>
             </div>
-            {errors.amount && (
-              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
+            {errors.transaction_type && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
             )}
           </div>
 

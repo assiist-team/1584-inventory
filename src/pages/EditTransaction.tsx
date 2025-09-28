@@ -198,15 +198,6 @@ export default function EditTransaction() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Link>
-          <div className="flex items-center space-x-3">
-            <Link
-              to={`/project/${projectId}/transaction/${transactionId}`}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              View Transaction
-            </Link>
-          </div>
         </div>
 
       </div>
@@ -230,90 +221,6 @@ export default function EditTransaction() {
               </div>
             </div>
           )}
-
-          {/* Transaction Date */}
-          <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
-            </label>
-            <input
-              type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => {
-                // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
-              }}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
-            )}
-          </div>
-
-          {/* Source */}
-          <div>
-            <label htmlFor="source" className="block text-sm font-medium text-gray-700">
-              Source/Vendor *
-            </label>
-            <input
-              type="text"
-              id="source"
-              value={formData.source}
-              onChange={(e) => handleInputChange('source', e.target.value)}
-              placeholder="e.g., Home Depot, Amazon, Local Store"
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.source ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.source && (
-              <p className="mt-1 text-sm text-red-600">{errors.source}</p>
-            )}
-          </div>
-
-
-          {/* Transaction Type */}
-          <div>
-            <label htmlFor="transaction_type" className="block text-sm font-medium text-gray-700">
-              Transaction Type *
-            </label>
-            <select
-              id="transaction_type"
-              value={formData.transaction_type}
-              onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_type ? 'border-red-300' : 'border-gray-300'
-              }`}
-            >
-              <option value="Purchase">Purchase</option>
-              <option value="Return">Return</option>
-            </select>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
-            )}
-          </div>
-
-          {/* Payment Method */}
-          <div>
-            <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700">
-              Payment Method *
-            </label>
-            <input
-              type="text"
-              id="payment_method"
-              value={formData.payment_method}
-              onChange={(e) => handleInputChange('payment_method', e.target.value)}
-              placeholder="e.g., 1584 Card, Client Card, Cash, Check"
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.payment_method ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
-            )}
-          </div>
 
           {/* Amount */}
           <div>
@@ -339,6 +246,90 @@ export default function EditTransaction() {
               <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
             )}
           </div>
+
+          {/* Source */}
+          <div>
+            <label htmlFor="source" className="block text-sm font-medium text-gray-700">
+              Source/Vendor *
+            </label>
+            <input
+              type="text"
+              id="source"
+              value={formData.source}
+              onChange={(e) => handleInputChange('source', e.target.value)}
+              placeholder="e.g., Home Depot, Amazon, Local Store"
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.source ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.source && (
+              <p className="mt-1 text-sm text-red-600">{errors.source}</p>
+            )}
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700">
+              Payment Method *
+            </label>
+            <input
+              type="text"
+              id="payment_method"
+              value={formData.payment_method}
+              onChange={(e) => handleInputChange('payment_method', e.target.value)}
+              placeholder="e.g., 1584 Card, Client Card, Cash, Check"
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.payment_method ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.payment_method && (
+              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            )}
+          </div>
+
+          {/* Transaction Date */}
+          <div>
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
+            </label>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            )}
+          </div>
+
+          {/* Transaction Type */}
+          <div>
+            <label htmlFor="transaction_type" className="block text-sm font-medium text-gray-700">
+              Transaction Type *
+            </label>
+            <select
+              id="transaction_type"
+              value={formData.transaction_type}
+              onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_type ? 'border-red-300' : 'border-gray-300'
+              }`}
+            >
+              <option value="Purchase">Purchase</option>
+              <option value="Return">Return</option>
+            </select>
+            {errors.transaction_type && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            )}
+          </div>
+
 
           {/* Receipt Emailed */}
           <div className="flex items-center">

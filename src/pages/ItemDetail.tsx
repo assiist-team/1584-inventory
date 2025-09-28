@@ -455,7 +455,7 @@ export default function ItemDetail() {
                       ? 'bg-red-100 text-red-800'
                       : 'bg-green-100 text-green-800'
                   }`}>
-                    {item.disposition === 'return' ? 'Return' : item.disposition === 'keep' ? 'Keep' : item.disposition === '1584' ? '1584' : item.disposition}
+                    {item.disposition === 'return' ? 'Return' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
                   </span>
                 </dd>
               </div>
@@ -510,24 +510,23 @@ export default function ItemDetail() {
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
               <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Item ID</dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.item_id}</dd>
+                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
+                <dd className="mt-1 text-sm text-gray-900">{projectName}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction ID</dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.transaction_id}</dd>
+                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  <Link
+                    to={`/project/${projectId}/transaction/${item.transaction_id}`}
+                    className="text-primary-600 hover:text-primary-800 underline"
+                  >
+                    {item.transaction_id}
+                  </Link>
+                </dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project ID</dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.project_id}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Date Created</dt>
+                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
                 <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Last Updated</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDate(item.last_updated)}</dd>
               </div>
             </dl>
           </div>

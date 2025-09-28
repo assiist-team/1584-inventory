@@ -62,6 +62,9 @@ export interface Item {
   date_created: string;
   last_updated: string;
   images?: ItemImage[];         // Images associated with this item
+
+  // Optional transaction selection for form UI
+  selectedTransactionId?: string; // UI field for selecting transaction
 }
 
 // Note: ItemCategory and ItemStatus enums have been removed as they don't align

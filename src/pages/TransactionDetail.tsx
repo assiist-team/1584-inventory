@@ -222,6 +222,21 @@ export default function TransactionDetail() {
         <div className="px-6 py-4">
           <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
             <div>
+              <dt className="text-sm font-medium text-gray-500">
+                Amount
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(transaction.amount)}</dd>
+            </div>
+
+            <div>
+              <dt className="text-sm font-medium text-gray-500 flex items-center">
+                <CreditCard className="h-4 w-4 mr-1" />
+                Payment Method
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
+            </div>
+
+            <div>
               <dt className="text-sm font-medium text-gray-500 flex items-center">
                 <Calendar className="h-4 w-4 mr-1" />
                 Transaction Date
@@ -244,21 +259,6 @@ export default function TransactionDetail() {
                   {transaction.transaction_type}
                 </span>
               </dd>
-            </div>
-
-            <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
-                <CreditCard className="h-4 w-4 mr-1" />
-                Payment Method
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
-            </div>
-
-            <div>
-              <dt className="text-sm font-medium text-gray-500">
-                Amount
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(transaction.amount)}</dd>
             </div>
 
             {transaction.receipt_emailed && (

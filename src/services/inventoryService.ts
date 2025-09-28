@@ -544,7 +544,7 @@ export const itemService = {
         price: itemData.price,
         market_value: itemData.market_value || '',
         payment_method: 'Client Card', // Default payment method
-        disposition: 'active',
+        disposition: 'keep',
         notes: itemData.notes || '',
         qr_key: qrKey,
         bookmark: false,

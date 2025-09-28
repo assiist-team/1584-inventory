@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Edit, X } from 'lucide-react'
+import { Edit, X } from 'lucide-react'
 import { TransactionItemFormData } from '@/types'
 import TransactionItemForm from './TransactionItemForm'
 
@@ -14,11 +14,6 @@ interface TransactionItemsListProps {
 export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange }: TransactionItemsListProps) {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
-
-  const handleAddItem = () => {
-    setIsAddingItem(true)
-    setEditingItemId(null)
-  }
 
   const handleSaveItem = (item: TransactionItemFormData) => {
     if (editingItemId) {
@@ -85,33 +80,11 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium text-gray-900">Transaction Items</h3>
-        <button
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            handleAddItem()
-          }}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Item
-        </button>
       </div>
 
       {items.length === 0 ? (
         <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg">
           <p className="text-gray-500">No items added to this transaction yet.</p>
-          <button
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              handleAddItem()
-            }}
-            className="mt-4 inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Item
-          </button>
         </div>
       ) : (
         <div className="space-y-3">

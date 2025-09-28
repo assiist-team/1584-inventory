@@ -190,6 +190,9 @@ export default function ProjectDetail() {
         {/* Project information */}
         <div className="bg-white rounded-lg shadow p-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">{project.name}</h1>
+          {project.clientName && (
+            <p className="text-lg text-gray-600 mb-4">{project.clientName}</p>
+          )}
           {(project.budget || project.designFee) && (
             <div className="flex flex-wrap items-center gap-4">
               {project.budget && (

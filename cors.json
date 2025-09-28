@@ -6,7 +6,8 @@
       "https://localhost:3000",
       "https://localhost:3004",
       "http://127.0.0.1:3000",
-      "http://127.0.0.1:3004"
+      "http://127.0.0.1:3004",
+      "https://inventory.1584design.com"
     ],
     "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "responseHeader": [

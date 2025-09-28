@@ -113,3 +113,93 @@ span.bg-purple-100::after {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+
+/* Fix date input alignment and styling */
+input[type="date"] {
+  /* Center the text within the input */
+  text-align: center;
+  /* Use symmetric padding for better alignment */
+  padding-left: 12px;
+  padding-right: 12px;
+  /* Ensure proper vertical alignment */
+  vertical-align: middle;
+  /* Ensure the input itself is properly sized */
+  min-width: 0;
+  /* Fix for Firefox date input */
+  -moz-appearance: textfield;
+  /* Ensure consistent line height */
+  line-height: 1.5;
+}
+
+/* Additional styling for webkit browsers (Chrome, Safari, Edge) */
+input[type="date"]::-webkit-datetime-edit {
+  text-align: center;
+  /* Ensure the calendar icon doesn't affect text alignment */
+  padding: 0;
+  /* Center text vertically */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Target the actual text field within webkit date inputs */
+input[type="date"]::-webkit-datetime-edit-text {
+  text-align: center;
+  color: inherit;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+/* Ensure date input containers are properly aligned */
+input[type="date"]:focus {
+  /* Maintain center alignment on focus */
+  text-align: center;
+}
+
+/* Mobile-specific date input styling */
+@media (max-width: 768px) {
+  input[type="date"] {
+    /* Ensure mobile browsers respect our styling */
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    appearance: none;
+    /* Make sure the input is large enough to be easily tappable */
+    min-height: 44px;
+    /* Ensure text remains centered on mobile */
+    text-align: center;
+  }
+
+  /* Additional mobile webkit styling */
+  input[type="date"]::-webkit-datetime-edit {
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  input[type="date"]::-webkit-datetime-edit-text {
+    text-align: center;
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+
+  /* Handle iOS specific date input styling */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 1;
+    filter: invert(0.5);
+    cursor: pointer;
+  }
+
+  /* Ensure the date input maintains proper alignment on mobile */
+  input[type="date"]::-webkit-inner-spin-button,
+  input[type="date"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* Additional styling for very small screens */
+@media (max-width: 480px) {
+  input[type="date"] {
+    font-size: 16px; /* Prevent zoom on iOS */
+    padding: 12px;
+  }
+}

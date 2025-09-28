@@ -1,8 +1,9 @@
 import { ArrowLeft, Save, X, Bookmark, RotateCcw, Printer } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect } from 'react'
-import { itemService } from '@/services/inventoryService'
+import { itemService, transactionService } from '@/services/inventoryService'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
+import { Transaction } from '@/types'
 
 export default function EditItem() {
   const { id: projectId, itemId } = useParams<{ id: string; itemId: string }>()
@@ -19,7 +20,8 @@ export default function EditItem() {
     disposition: '',
     notes: '',
     bookmark: false,
-    qr_key: ''
+    qr_key: '',
+    selectedTransactionId: ''
   })
 
   const [isCustomSource, setIsCustomSource] = useState(false)
@@ -27,6 +29,8 @@ export default function EditItem() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
 
   console.log('EditItem - URL params:', { projectId, itemId })
 
@@ -69,7 +73,8 @@ export default function EditItem() {
               disposition: String(fetchedItem.disposition || ''),
               notes: String(fetchedItem.notes || ''),
               bookmark: Boolean(fetchedItem.bookmark || false),
-              qr_key: String(fetchedItem.qr_key || '')
+              qr_key: String(fetchedItem.qr_key || ''),
+              selectedTransactionId: String(fetchedItem.transaction_id || '')
             })
             console.log('Form data set:', {
               description: String(fetchedItem.description || ''),
@@ -95,6 +100,25 @@ export default function EditItem() {
 
     fetchItem()
   }, [itemId, projectId])
+
+  // Fetch transactions when component mounts
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (projectId) {
+        setLoadingTransactions(true)
+        try {
+          const fetchedTransactions = await transactionService.getTransactions(projectId)
+          setTransactions(fetchedTransactions)
+        } catch (error) {
+          console.error('Error fetching transactions:', error)
+        } finally {
+          setLoadingTransactions(false)
+        }
+      }
+    }
+
+    fetchTransactions()
+  }, [projectId])
 
   // Validation function
   const validateForm = (): boolean => {
@@ -141,6 +165,7 @@ export default function EditItem() {
     try {
       const itemData = {
         ...formData,
+        transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
         last_updated: new Date().toISOString()
       }
 
@@ -165,6 +190,15 @@ export default function EditItem() {
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
+    }
+  }
+
+  const handleTransactionChange = (transactionId: string) => {
+    setFormData(prev => ({ ...prev, selectedTransactionId: transactionId }))
+
+    // Clear error when user makes selection
+    if (errors.selectedTransactionId) {
+      setErrors(prev => ({ ...prev, selectedTransactionId: '' }))
     }
   }
 
@@ -208,15 +242,6 @@ export default function EditItem() {
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
             </Link>
-            <div className="flex items-center space-x-3">
-              <Link
-                to={`/project/${projectId}/item/${itemId}`}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                View Item
-              </Link>
-            </div>
           </div>
         </div>
         <div className="bg-white shadow rounded-lg">
@@ -248,15 +273,6 @@ export default function EditItem() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Link>
-          <div className="flex items-center space-x-3">
-            <Link
-              to={`/project/${projectId}/item/${itemId}`}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              View Item
-            </Link>
-          </div>
         </div>
       </div>
 
@@ -264,7 +280,7 @@ export default function EditItem() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900">Edit Item</h1>
         </div>
-        <div className="p-8">
+        <div className="px-6 py-4">
           <div className="flex space-x-2 mb-8">
             <button
               onClick={toggleBookmark}
@@ -533,7 +549,7 @@ export default function EditItem() {
                   Disposition *
                 </label>
                 <div className="flex items-center space-x-6">
-                  {['keep', 'return', '1584'].map((disposition) => (
+                  {['keep', 'return', 'inventory'].map((disposition) => (
                     <div key={disposition} className="flex items-center">
                       <input
                         type="radio"
@@ -545,13 +561,46 @@ export default function EditItem() {
                         className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                       />
                       <label htmlFor={`disposition_${disposition.toLowerCase()}`} className="ml-2 block text-sm text-gray-900">
-                        {disposition === '1584' ? '1584 Design' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                        {disposition.charAt(0).toUpperCase() + disposition.slice(1)}
                       </label>
                     </div>
                   ))}
                 </div>
                 {errors.disposition && (
                   <p className="mt-1 text-sm text-red-600">{errors.disposition}</p>
+                )}
+              </div>
+
+              {/* Transaction Selection */}
+              <div>
+                <label htmlFor="selectedTransactionId" className="block text-sm font-medium text-gray-700 mb-3">
+                  Associate with Transaction (Optional)
+                </label>
+                <select
+                  id="selectedTransactionId"
+                  value={formData.selectedTransactionId}
+                  onChange={(e) => handleTransactionChange(e.target.value)}
+                  className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                    errors.selectedTransactionId ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  disabled={loadingTransactions}
+                >
+                  <option value="">Select a transaction (optional)</option>
+                  {loadingTransactions ? (
+                    <option disabled>Loading transactions...</option>
+                  ) : (
+                    transactions.map((transaction) => (
+                      <option key={transaction.transaction_id} value={transaction.transaction_id}>
+                        {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
+                      </option>
+                    ))
+                  )}
+                </select>
+                {errors.selectedTransactionId && (
+                  <p className="mt-1 text-sm text-red-600">{errors.selectedTransactionId}</p>
+                )}
+                {!loadingTransactions && transactions.length === 0 && (
+                  <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
                 )}
               </div>
 
