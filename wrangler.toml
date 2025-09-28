@@ -32,7 +32,7 @@ for = "/assets/*.js"
 [[headers]]
 for = "/assets/*.mjs"
 [headers.values]
-  Content-Type = "application/javascript; charset=utf-8"
+  Content-Type = "text/javascript; charset=utf-8"
   Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
@@ -61,17 +61,17 @@ for = "/*.js"
 [[headers]]
 for = "/*.mjs"
 [headers.values]
-  Content-Type = "application/javascript; charset=utf-8"
+  Content-Type = "text/javascript; charset=utf-8"
 
 [[headers]]
 for = "/**/*.mjs"
 [headers.values]
-  Content-Type = "application/javascript; charset=utf-8"
+  Content-Type = "text/javascript; charset=utf-8"
 
 [[headers]]
 for = "/pdfjs-dist/**/*.mjs"
 [headers.values]
-  Content-Type = "application/javascript; charset=utf-8"
+  Content-Type = "text/javascript; charset=utf-8"
 
 [vars]
 NODE_VERSION = "18"
