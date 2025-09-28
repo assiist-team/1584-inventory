@@ -74,7 +74,11 @@ export default defineConfig({
           firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth', 'firebase/storage'],
           router: ['react-router-dom'],
           ui: ['lucide-react', 'clsx']
-        }
+        },
+        // Ensure proper MIME types
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name].[ext]'
       }
     }
   }
