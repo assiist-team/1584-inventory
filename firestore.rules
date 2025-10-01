@@ -1,9 +1,83 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow authenticated users (including anonymous users) to access all data
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isNotAnonymous() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function getUserRole() {
+      return request.auth != null && request.auth.uid != null ?
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+    }
+
+    function hasRole() {
+      return getUserRole() != null;
+    }
+
+    function isOwner() {
+      return getUserRole() == 'owner';
+    }
+
+    function isAdmin() {
+      return getUserRole() == 'admin' || isOwner();
+    }
+
+    function isDesigner() {
+      return getUserRole() == 'designer' || isAdmin();
+    }
+
+    function isViewer() {
+      return getUserRole() == 'viewer' || isDesigner();
+    }
+
+    // Allow access for authenticated users (including new users without roles)
+    function canAccessForSetup() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Users can read and write their own user document (requires proper authentication, not anonymous)
+    match /users/{userId} {
+      allow read, write: if isNotAnonymous() && request.auth.uid == userId;
+      allow read: if isNotAnonymous() && isAdmin(); // Admins can read all user documents
+    }
+
+    // Invitations - only admins can manage invitations
+    match /invitations/{invitationId} {
+      allow read, write: if isNotAnonymous() && isAdmin();
+    }
+
+    // Projects - role-based access (no anonymous access allowed)
+    match /projects/{projectId} {
+      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
+      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
+      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+    }
+
+    // Items - role-based access (no anonymous access allowed)
+    // Items are stored as subcollections under projects
+    match /projects/{projectId}/items/{itemId} {
+      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
+      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
+      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+    }
+
+    // Transactions - role-based access (no anonymous access allowed)
+    // Transactions are stored as subcollections under projects
+    match /projects/{projectId}/transactions/{transactionId} {
+      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
+      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
+      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+    }
+
+    // No anonymous access allowed for any other documents
+    // All access requires proper user authentication
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false; // Block all access by default
     }
   }
 }

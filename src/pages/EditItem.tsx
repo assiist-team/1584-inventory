@@ -4,10 +4,37 @@ import { useState, FormEvent, useEffect } from 'react'
 import { itemService, transactionService } from '@/services/inventoryService'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { Transaction } from '@/types'
+import { useAuth } from '../contexts/AuthContext'
+import { UserRole } from '../types'
+import { Shield } from 'lucide-react'
 
 export default function EditItem() {
   const { id: projectId, itemId } = useParams<{ id: string; itemId: string }>()
   const navigate = useNavigate()
+  const { hasRole } = useAuth()
+
+  // Check if user has permission to edit items (DESIGNER role or higher)
+  if (!hasRole(UserRole.DESIGNER)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-red-100">
+            <Shield className="h-6 w-6 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">
+            You don't have permission to edit items. Please contact an administrator if you need access.
+          </p>
+          <Link
+            to={`/project/${projectId}`}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+          >
+            Back to Project
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   const [formData, setFormData] = useState({
     description: '',

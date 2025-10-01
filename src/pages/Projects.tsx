@@ -4,10 +4,12 @@ import { Link } from 'react-router-dom'
 import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
 import { formatDate } from '@/utils/dateUtils'
+import { useAuth } from '@/contexts/AuthContext'
 import ProjectForm from '@/components/ProjectForm'
 import { CompactBudgetProgress } from '@/components/ui/BudgetProgress'
 
 export default function Projects() {
+  const { user } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Record<string, Transaction[]>>({})
   const [isLoading, setIsLoading] = useState(true)
@@ -18,10 +20,14 @@ export default function Projects() {
   }, [])
 
   const handleCreateProject = async (projectData: any) => {
+    if (!user?.email) {
+      throw new Error('User must be authenticated to create projects')
+    }
+
     try {
       await projectService.createProject({
         ...projectData,
-        createdBy: 'user@example.com'
+        createdBy: user.email
       })
 
       // Reload projects and transactions

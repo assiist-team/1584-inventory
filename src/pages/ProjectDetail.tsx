@@ -16,6 +16,7 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -34,26 +35,32 @@ export default function ProjectDetail() {
   useEffect(() => {
     const loadProjectAndTransactions = async () => {
       if (!id) {
+        console.warn('No project ID provided, redirecting to projects')
         navigate('/projects')
         return
       }
 
       try {
+        console.log('Loading project data for ID:', id)
         // Load project data
         const projectData = await projectService.getProject(id)
         if (projectData) {
+          console.log('Project loaded successfully:', projectData.name)
           setProject(projectData)
 
           // Load transactions for budget calculation
           const transactionsData = await transactionService.getTransactions(id)
+          console.log('Transactions loaded:', transactionsData.length)
           setTransactions(transactionsData)
         } else {
+          console.warn('Project not found:', id)
           // Project not found
           navigate('/projects')
         }
       } catch (error) {
         console.error('Error loading project:', error)
-        navigate('/projects')
+        setError('Failed to load project. Please try again.')
+        setIsLoading(false)
       } finally {
         setIsLoading(false)
       }
@@ -61,6 +68,13 @@ export default function ProjectDetail() {
 
     loadProjectAndTransactions()
   }, [id, navigate])
+
+  // Retry function for failed loads
+  const retryLoadProject = () => {
+    setError(null)
+    setIsLoading(true)
+    loadProjectAndTransactions()
+  }
 
   // Subscribe to real-time transaction updates
   useEffect(() => {
@@ -132,6 +146,31 @@ export default function ProjectDetail() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
           <p className="mt-2 text-sm text-gray-600">Loading project...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="mx-auto h-12 w-12 text-red-400">⚠️</div>
+        <h3 className="mt-2 text-sm font-medium text-gray-900">Error Loading Project</h3>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
+        <div className="mt-6 flex justify-center space-x-3">
+          <button
+            onClick={retryLoadProject}
+            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+          >
+            Try Again
+          </button>
+          <Link
+            to="/projects"
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Projects
+          </Link>
         </div>
       </div>
     )

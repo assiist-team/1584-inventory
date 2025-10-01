@@ -18,7 +18,7 @@ interface TransactionItemFormProps {
 export default function TransactionItemForm({ item, onSave, onCancel, isEditing = false, onImageFilesChange }: TransactionItemFormProps) {
   const [formData, setFormData] = useState<TransactionItemFormData>(
     item || {
-      id: `temp_${Date.now()}`,
+      id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       description: '',
       sku: '',
       price: '',

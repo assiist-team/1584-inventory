@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { ArrowLeft, Bookmark, Printer, RotateCcw, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, Camera } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
@@ -10,7 +10,7 @@ import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 
 export default function ItemDetail() {
-  const { id } = useParams<{ id: string }>()
+  const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [item, setItem] = useState<Item | null>(null)
@@ -19,9 +19,36 @@ export default function ItemDetail() {
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const { showError } = useToast()
 
+  // Use itemId if available (from /project/:id/item/:itemId), otherwise use id (from /item/:id)
+  const actualItemId = itemId || id
+
+  // Get project ID from URL path (for /project/:id/item/:itemId) or search parameters (for /item/:id)
+  const projectId = id || searchParams.get('project')
+
+  // Determine back navigation destination based on item's transaction association
+  const backDestination = useMemo(() => {
+    // If item is not loaded yet (null), default to inventory
+    if (!item) {
+      return `/project/${projectId}?tab=inventory`
+    }
+
+    // If item is the sample item (error/loading state), default to inventory
+    if (item.item_id === 'I-1' && item.description === 'Marble Countertop Sample') {
+      return `/project/${projectId}?tab=inventory`
+    }
+
+    // If item is loaded and has a transaction_id, go back to transaction detail
+    if (item.transaction_id && projectId) {
+      return `/project/${projectId}/transaction/${item.transaction_id}`
+    }
+
+    // Otherwise, go to inventory
+    return `/project/${projectId}?tab=inventory`
+  }, [item, projectId])
+
   // Initialize with sample data for demo
   const sampleItem: Item = {
-    item_id: id || 'I-1',
+    item_id: actualItemId || 'I-1',
     description: 'Marble Countertop Sample',
     source: 'Home Depot',
     sku: 'MCT-001',
@@ -41,21 +68,18 @@ export default function ItemDetail() {
 
   useEffect(() => {
     const fetchItem = async () => {
-      if (id) {
+      if (actualItemId) {
         try {
-          // Get the project ID from URL search parameters
-          const projectId = searchParams.get('project')
-
           if (projectId) {
             const [fetchedItem, project] = await Promise.all([
-              itemService.getItem(projectId, id),
+              itemService.getItem(projectId, actualItemId),
               projectService.getProject(projectId)
             ])
 
             if (fetchedItem) {
               setItem(fetchedItem)
             } else {
-              console.error('Item not found in project:', projectId, 'with ID:', id)
+              console.error('Item not found in project:', projectId, 'with ID:', actualItemId)
               setItem(sampleItem)
             }
 
@@ -76,20 +100,20 @@ export default function ItemDetail() {
     }
 
     fetchItem()
-  }, [id, searchParams])
+  }, [actualItemId, id, searchParams])
 
   // Set up real-time listener for item updates
   useEffect(() => {
-    const currentProjectId = searchParams.get('project')
-    if (!currentProjectId || !id) return
+    const currentProjectId = id || searchParams.get('project')
+    if (!currentProjectId || !actualItemId) return
 
-    console.log('Setting up real-time listener for item:', id)
+    console.log('Setting up real-time listener for item:', actualItemId)
 
     const unsubscribe = itemService.subscribeToItems(
       currentProjectId,
       (items) => {
         console.log('Real-time items update:', items.length, 'items')
-        const updatedItem = items.find(item => item.item_id === id)
+        const updatedItem = items.find(item => item.item_id === actualItemId)
         if (updatedItem) {
           console.log('Found updated item with', updatedItem.images?.length || 0, 'images')
           setItem(updatedItem)
@@ -98,10 +122,10 @@ export default function ItemDetail() {
     )
 
     return () => {
-      console.log('Cleaning up real-time listener for item:', id)
+      console.log('Cleaning up real-time listener for item:', actualItemId)
       unsubscribe()
     }
-  }, [searchParams, id])
+  }, [searchParams, actualItemId, id])
 
   const toggleBookmark = async () => {
     if (!item) return
@@ -289,26 +313,23 @@ export default function ItemDetail() {
     }
   }
 
-  // Get project ID from search parameters
-  const projectId = searchParams.get('project')
-
   if (!item) {
     return (
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
           <Link
-            to={projectId ? `/project/${projectId}?tab=inventory` : '/projects'}
+            to={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to {projectId ? 'Project' : 'Projects'}
+            Back
           </Link>
         </div>
         <div className="bg-white shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
             <p className="text-gray-500">Item not found.</p>
             {projectId && <p className="text-sm text-gray-400 mt-2">Project ID: {projectId}</p>}
-            <p className="text-sm text-gray-400 mt-1">Item ID: {id || 'unknown'}</p>
+            <p className="text-sm text-gray-400 mt-1">Item ID: {actualItemId || 'unknown'}</p>
           </div>
         </div>
       </div>
@@ -322,7 +343,7 @@ export default function ItemDetail() {
         {/* Back button row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <Link
-            to={`/project/${projectId}?tab=inventory`}
+            to={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />

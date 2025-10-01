@@ -1,10 +1,10 @@
-import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
-import { Transaction, Project } from '@/types'
-import { transactionService, projectService } from '@/services/inventoryService'
+import { Transaction, Project, Item } from '@/types'
+import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
 
@@ -30,7 +30,9 @@ export default function TransactionDetail() {
   const navigate = useNavigate()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [project, setProject] = useState<Project | null>(null)
+  const [transactionItems, setTransactionItems] = useState<Item[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingItems, setIsLoadingItems] = useState(true)
   const [showGallery, setShowGallery] = useState(false)
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
   const { showError } = useToast()
@@ -41,10 +43,11 @@ export default function TransactionDetail() {
       if (!projectId || !transactionId) return
 
       try {
-        // Fetch both transaction and project data
-        const [transactionData, projectData] = await Promise.all([
+        // Fetch transaction, project data, and transaction items
+        const [transactionData, projectData, itemIds] = await Promise.all([
           transactionService.getTransaction(projectId, transactionId),
-          projectService.getProject(projectId)
+          projectService.getProject(projectId),
+          itemService.getTransactionItems(projectId, transactionId)
         ])
 
         const convertedTransaction: Transaction = {
@@ -54,14 +57,27 @@ export default function TransactionDetail() {
 
         console.log('TransactionDetail - loaded transactionData:', transactionData)
         console.log('TransactionDetail - convertedTransaction:', convertedTransaction)
+        console.log('TransactionDetail - item IDs:', itemIds)
         setTransaction(convertedTransaction)
         setProject(projectData)
 
+        // Fetch the actual item details
+        if (itemIds.length > 0) {
+          const itemsPromises = itemIds.map(itemId => itemService.getItem(projectId, itemId))
+          const items = await Promise.all(itemsPromises)
+          const validItems = items.filter(item => item !== null) as Item[]
+          console.log('TransactionDetail - fetched items:', validItems.length)
+          setTransactionItems(validItems)
+        } else {
+          setTransactionItems([])
+        }
 
       } catch (error) {
         console.error('Error loading transaction:', error)
+        setTransactionItems([])
       } finally {
         setIsLoading(false)
+        setIsLoadingItems(false)
       }
     }
 
@@ -323,6 +339,69 @@ export default function TransactionDetail() {
           </div>
         )}
 
+        {/* Transaction Items */}
+        {isLoadingItems ? (
+          <div className="px-6 py-6 border-t border-gray-200">
+            <div className="flex justify-center items-center h-16">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+              <span className="ml-2 text-sm text-gray-600">Loading items...</span>
+            </div>
+          </div>
+        ) : transactionItems.length > 0 ? (
+          <div className="px-6 py-6 border-t border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+              <Package className="h-5 w-5 mr-2" />
+              Items in this Transaction ({transactionItems.length})
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {transactionItems.map((item) => (
+                <Link
+                  key={item.item_id}
+                  to={`/project/${projectId}/item/${item.item_id}`}
+                  className="block p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-primary-600">
+                        {item.description}
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {formatCurrency(item.price)}
+                      </p>
+                      {item.sku && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          SKU: {item.sku}
+                        </p>
+                      )}
+                      {item.disposition && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-2 ${
+                          item.disposition === 'keep'
+                            ? 'bg-green-100 text-green-800'
+                            : item.disposition === 'return'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {item.disposition}
+                        </span>
+                      )}
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-primary-500 flex-shrink-0 ml-2" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="px-6 py-6 border-t border-gray-200">
+            <div className="text-center py-8">
+              <Package className="mx-auto h-8 w-8 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No items linked</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Items created separately can be linked to this transaction when adding them to inventory.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Metadata */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">

@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app'
-import { getFirestore, Timestamp } from 'firebase/firestore'
-import { getAuth, signInAnonymously, User } from 'firebase/auth'
+import { getFirestore, Timestamp, doc, setDoc, getDoc, collection, getDocs, query, where, updateDoc } from 'firebase/firestore'
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User, onAuthStateChanged } from 'firebase/auth'
 import { getStorage } from 'firebase/storage'
 import { getAnalytics } from 'firebase/analytics'
+import { User as AppUser, UserRole } from '../types'
 
 // Firebase configuration
 const firebaseConfig = {
@@ -145,40 +146,8 @@ export const convertTimestamps = (data: any): any => {
   return finalResult
 }
 
-// Initialize anonymous authentication
-export const initializeAnonymousAuth = async () => {
-  try {
-    const currentUser = auth.currentUser
-    if (!currentUser) {
-      console.log('Initializing anonymous authentication...')
-      await signInAnonymously(auth)
-
-      // Wait for auth state to propagate
-      await new Promise((resolve, reject) => {
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-          unsubscribe()
-          if (user && user.uid) {
-            console.log('Anonymous authentication initialized successfully:', user.uid)
-            resolve(user)
-          } else {
-            reject(new Error('Anonymous authentication failed - no user returned'))
-          }
-        })
-
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          unsubscribe()
-          reject(new Error('Anonymous authentication timeout'))
-        }, 5000)
-      })
-    } else {
-      console.log('User already authenticated:', currentUser.uid)
-    }
-  } catch (error) {
-    console.error('Anonymous authentication failed:', error)
-    throw error
-  }
-}
+// Removed anonymous authentication - all users must sign in with Google
+// This ensures all actions are traceable to specific users
 
 // Get current authenticated user (waits for auth state to be ready)
 export const getCurrentUserAsync = async (): Promise<any> => {
@@ -201,49 +170,241 @@ export const ensureAuthenticatedForStorage = async (): Promise<void> => {
   try {
     console.log('Ensuring authentication for storage operations...')
 
-    // Wait for authentication to be ready
-    let user = await getCurrentUserAsync()
+    // Wait for authentication to be ready (with timeout)
+    const user = await getCurrentUserAsync()
 
     if (!user) {
-      console.log('No current user, initializing anonymous auth...')
-      await initializeAnonymousAuth()
-      user = await getCurrentUserAsync()
+      console.warn('No authenticated user found for storage operations')
+      // Don't throw error immediately - allow operations to proceed and fail naturally if needed
+      return
     }
 
-    if (!user) {
-      throw new Error('Failed to initialize authentication')
-    }
-
-    // Verify the user has a valid ID token
+    // Verify the user has a valid ID token (but don't fail hard if token refresh fails)
     try {
       const token = await user.getIdToken()
       if (!token) {
-        console.warn('User authenticated but no valid token, refreshing...')
-        await user.reload()
-        const newToken = await user.getIdToken()
-        if (!newToken) {
-          throw new Error('Unable to get valid authentication token')
+        console.warn('User authenticated but no valid token, attempting refresh...')
+        try {
+          await user.reload()
+          const newToken = await user.getIdToken()
+          if (!newToken) {
+            console.warn('Token refresh failed, but proceeding with current auth state')
+          }
+        } catch (refreshError) {
+          console.warn('Token refresh error:', refreshError)
+          // Continue anyway - the operation might still work
         }
       }
     } catch (tokenError) {
-      console.warn('Token error, trying to re-authenticate:', tokenError)
-      await initializeAnonymousAuth()
-      const refreshedUser = await getCurrentUserAsync()
-      if (!refreshedUser) {
-        throw new Error('Failed to refresh authentication')
-      }
+      console.warn('Token verification error:', tokenError)
+      // Don't throw - allow the operation to proceed
     }
 
-    console.log('Storage authentication verified for user:', user.uid)
+    console.log('Storage authentication check completed for user:', user.uid)
   } catch (error) {
-    console.error('Failed to ensure storage authentication:', error)
-    throw new Error('Failed to authenticate for storage operations. Please check your connection and try again.')
+    console.error('Error during storage authentication check:', error)
+    // Don't throw - allow operations to proceed and fail naturally if needed
   }
 }
 
 // Get current authenticated user synchronously
 export const getCurrentUserSync = (): User | null => {
   return auth.currentUser
+}
+
+// Google Authentication Provider
+const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+})
+
+// Sign in with Google
+export const signInWithGoogle = async (): Promise<User> => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider)
+    const user = result.user
+
+    // Create or update user document in Firestore
+    await createOrUpdateUserDocument(user)
+
+    return user
+  } catch (error) {
+    console.error('Google sign-in error:', error)
+    throw error
+  }
+}
+
+// Sign out
+export const signOutUser = async (): Promise<void> => {
+  try {
+    await signOut(auth)
+  } catch (error) {
+    console.error('Sign-out error:', error)
+    throw error
+  }
+}
+
+// Create or update user document in Firestore
+export const createOrUpdateUserDocument = async (firebaseUser: User): Promise<void> => {
+  try {
+    const userDocRef = doc(db, 'users', firebaseUser.uid)
+    const userDoc = await getDoc(userDocRef)
+
+    const userData: Partial<AppUser> = {
+      id: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+      lastLogin: new Date(),
+    }
+
+    if (userDoc.exists()) {
+      // Update existing user
+      await setDoc(userDocRef, userData, { merge: true })
+    } else {
+      // Check for pending invitation
+      let assignedRole = UserRole.VIEWER // Default role
+
+      if (firebaseUser.email) {
+        const invitation = await checkUserInvitation(firebaseUser.email)
+        if (invitation) {
+          assignedRole = invitation.role
+          // Accept the invitation
+          await acceptUserInvitation(invitation.invitationId)
+          console.log('User invited with role:', assignedRole)
+        } else {
+          // Check if this is the first user (for owner assignment)
+          const usersCollection = collection(db, 'users')
+          const usersSnapshot = await getDocs(usersCollection)
+          const isFirstUser = usersSnapshot.empty
+
+          if (isFirstUser) {
+            assignedRole = UserRole.OWNER // First user becomes owner
+          }
+        }
+      }
+
+      // Create new user
+      const newUserData: AppUser = {
+        ...userData as AppUser,
+        role: assignedRole,
+        createdAt: new Date(),
+        lastLogin: new Date(),
+      }
+      await setDoc(userDocRef, newUserData)
+    }
+  } catch (error) {
+    console.error('Error creating/updating user document:', error)
+    throw error
+  }
+}
+
+// Create user invitation
+export const createUserInvitation = async (email: string, role: UserRole, invitedBy: string): Promise<void> => {
+  try {
+    const invitationId = `${email.replace('@', '_').replace('.', '_')}_${Date.now()}`
+    const invitationRef = doc(db, 'invitations', invitationId)
+
+    await setDoc(invitationRef, {
+      email,
+      role,
+      invitedBy,
+      status: 'pending',
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    })
+
+    console.log('Invitation created for:', email)
+  } catch (error) {
+    console.error('Error creating invitation:', error)
+    throw error
+  }
+}
+
+// Check if user has pending invitation
+export const checkUserInvitation = async (email: string): Promise<{ role: UserRole; invitationId: string } | null> => {
+  try {
+    const invitationsRef = collection(db, 'invitations')
+    const q = query(
+      invitationsRef,
+      where('email', '==', email),
+      where('status', '==', 'pending')
+    )
+
+    const querySnapshot = await getDocs(q)
+    if (!querySnapshot.empty) {
+      const invitation = querySnapshot.docs[0].data()
+      const invitationId = querySnapshot.docs[0].id
+
+      // Check if invitation is expired
+      if (invitation.expiresAt.toDate() < new Date()) {
+        // Mark as expired
+        await updateDoc(doc(db, 'invitations', invitationId), {
+          status: 'expired'
+        })
+        return null
+      }
+
+      return {
+        role: invitation.role,
+        invitationId
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Error checking invitation:', error)
+    return null
+  }
+}
+
+// Accept user invitation
+export const acceptUserInvitation = async (invitationId: string): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'invitations', invitationId), {
+      status: 'accepted',
+      acceptedAt: new Date(),
+    })
+
+    console.log('Invitation accepted:', invitationId)
+  } catch (error) {
+    console.error('Error accepting invitation:', error)
+    throw error
+  }
+}
+
+// Get user data from Firestore
+export const getUserData = async (uid: string): Promise<AppUser | null> => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', uid))
+    if (userDoc.exists()) {
+      return userDoc.data() as AppUser
+    }
+    return null
+  } catch (error) {
+    console.error('Error fetching user data:', error)
+    return null
+  }
+}
+
+// Auth state observer
+export const onAuthStateChange = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback)
+}
+
+// Check if user is authenticated
+export const isAuthenticated = (): boolean => {
+  return auth.currentUser !== null
+}
+
+// Get current user with app user data
+export const getCurrentUserWithData = async (): Promise<{ firebaseUser: User | null; appUser: AppUser | null }> => {
+  const firebaseUser = auth.currentUser
+  if (!firebaseUser) {
+    return { firebaseUser: null, appUser: null }
+  }
+
+  const appUser = await getUserData(firebaseUser.uid)
+  return { firebaseUser, appUser }
 }
 
 

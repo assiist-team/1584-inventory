@@ -1,14 +1,42 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, FormEvent } from 'react'
-import { TransactionFormData, TransactionValidationErrors, TransactionImage } from '@/types'
-import { transactionService, projectService } from '@/services/inventoryService'
+import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, ItemImage } from '@/types'
+import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
+import TransactionItemsList from '@/components/TransactionItemsList'
+import { useAuth } from '../contexts/AuthContext'
+import { UserRole } from '../types'
+import { Shield } from 'lucide-react'
 
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
   const navigate = useNavigate()
+  const { hasRole } = useAuth()
+
+  // Check if user has permission to edit transactions (DESIGNER role or higher)
+  if (!hasRole(UserRole.DESIGNER)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full space-y-8 text-center">
+          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-red-100">
+            <Shield className="h-6 w-6 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Access Denied</h2>
+          <p className="text-gray-600">
+            You don't have permission to edit transactions. Please contact an administrator if you need access.
+          </p>
+          <Link
+            to={`/project/${projectId}`}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+          >
+            Back to Project
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   const [projectName, setProjectName] = useState<string>('')
 
@@ -28,6 +56,10 @@ export default function EditTransaction() {
   const [isLoading, setIsLoading] = useState(true)
   const [isUploadingImages, setIsUploadingImages] = useState(false)
   const [existingTransactionImages, setExistingTransactionImages] = useState<TransactionImage[]>([])
+
+  // Transaction items state
+  const [items, setItems] = useState<TransactionItemFormData[]>([])
+  const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
 
   // Load transaction and project data
   useEffect(() => {
@@ -57,6 +89,42 @@ export default function EditTransaction() {
           })
           const images = transaction.transaction_images || []
           setExistingTransactionImages(Array.isArray(images) ? images : [])
+
+          // Load transaction items
+          try {
+            const transactionItemIds = await itemService.getTransactionItems(projectId, transactionId)
+            console.log('Loaded transaction item IDs:', transactionItemIds)
+
+            const transactionItems = await Promise.all(
+              transactionItemIds.map(async (itemId) => {
+                const item = await itemService.getItem(projectId, itemId)
+                console.log(`Loaded item ${itemId}:`, {
+                  id: itemId,
+                  description: item?.description || '',
+                  hasValidFormat: itemId.startsWith('I-') && itemId.length > 10
+                })
+
+                return {
+                  id: itemId,
+                  description: item?.description || '',
+                  price: item?.price?.toString() || '',
+                  sku: item?.sku || '',
+                  market_value: item?.market_value?.toString() || '',
+                  notes: item?.notes || '',
+                  imageFiles: [],
+                  images: item?.images || []
+                }
+              })
+            )
+            console.log('Loaded transaction items:', transactionItems.map(item => ({
+              id: item.id,
+              description: item.description,
+              isTempId: item.id.startsWith('temp-')
+            })))
+            setItems(transactionItems)
+          } catch (itemError) {
+            console.error('Error loading transaction items:', itemError)
+          }
         }
       } catch (error) {
         console.error('Error loading transaction:', error)
@@ -106,7 +174,142 @@ export default function EditTransaction() {
     setIsSubmitting(true)
 
     try {
-      // First, upload any new transaction images
+      // First, handle item updates and creations
+      if (items.length > 0) {
+        // Debug: Log all items to understand the issue
+        console.log('All items before processing:', items.map(item => ({
+          id: item.id,
+          description: item.description,
+          price: item.price,
+          sku: item.sku,
+          isTempId: item.id.startsWith('temp-'),
+          idFormat: item.id.startsWith('I-') ? 'database' : item.id.startsWith('temp-') ? 'temp' : 'unknown'
+        })))
+        // Separate existing items from new items using robust classification
+        // Existing items have real database IDs (format: "I-" prefix followed by timestamp and random string)
+        // New items have temporary IDs (format: "temp-" prefix followed by timestamp and random string)
+        const existingItems: TransactionItemFormData[] = []
+        const newItems: TransactionItemFormData[] = []
+
+        items.forEach(item => {
+          // Robust classification logic
+          if (item.id.startsWith('temp-')) {
+            // Definitely a temp item
+            newItems.push(item)
+          } else if (item.id.startsWith('I-') && item.id.length > 10) {
+            // Likely a real database item (format: I-timestamp-randomstring)
+            existingItems.push(item)
+          } else if (item.id.length > 5 && !item.id.includes('_')) {
+            // Could be a real database item with different format, treat as existing for safety
+            console.warn(`Item with ambiguous ID treated as existing: ${item.id} - ${item.description}`)
+            existingItems.push(item)
+          } else {
+            // Default to treating as new item if ID format is unclear
+            console.warn(`Item with unclear ID format treated as new: ${item.id} - ${item.description}`)
+            newItems.push(item)
+          }
+        })
+
+        console.log(`Separated ${existingItems.length} existing items and ${newItems.length} new items`)
+
+        // Update existing items (classification is now robust, so no additional safety checks needed)
+        for (const item of existingItems) {
+          await itemService.updateItem(projectId, item.id, {
+            description: item.description,
+            price: item.price,
+            sku: item.sku,
+            market_value: item.market_value,
+            notes: item.notes,
+            transaction_id: transactionId
+          })
+        }
+
+        // Create new items using the same batch infrastructure as new transactions
+        let createdItemIds: string[] = []
+        if (newItems.length > 0) {
+          createdItemIds = await itemService.createTransactionItems(
+            projectId,
+            transactionId,
+            formData.transaction_date,
+            formData.source,
+            newItems
+          )
+          console.log('Created new items:', createdItemIds)
+
+          // Update the item IDs in our local state (map temp IDs to real IDs)
+          setItems(prevItems => prevItems.map(prevItem => {
+            // Only update items that were in our newItems array (have temp IDs)
+            const newItemIndex = newItems.findIndex(item => item.id === prevItem.id)
+            if (newItemIndex >= 0 && newItemIndex < createdItemIds.length) {
+              return { ...prevItem, id: createdItemIds[newItemIndex] }
+            }
+            return prevItem
+          }))
+        }
+
+        // Upload item images for newly created items
+        if (imageFilesMap.size > 0 && newItems.length > 0) {
+          try {
+            console.log('Starting item image upload process for new items...')
+
+            // Get the updated item list with real IDs
+            const updatedItems = await itemService.getTransactionItems(projectId, transactionId)
+            console.log('Updated item IDs after creation:', updatedItems)
+
+            // Upload images for each new item that has image files
+            for (let i = 0; i < newItems.length && i < createdItemIds.length; i++) {
+              const tempItem = newItems[i]
+              const realItemId = createdItemIds[i] // Use the IDs returned from batch creation
+              const imageFiles = imageFilesMap.get(tempItem.id)
+
+              if (imageFiles && imageFiles.length > 0) {
+                console.log(`Uploading ${imageFiles.length} images for new item ${realItemId}`)
+
+                // Upload each image file with the real item ID
+                const uploadPromises = imageFiles.map(async (file, fileIndex) => {
+                  try {
+                    console.log(`Uploading file ${fileIndex + 1}/${imageFiles.length}: ${file.name}`)
+                    const uploadResult = await ImageUploadService.uploadItemImage(
+                      file,
+                      projectName,
+                      realItemId
+                    )
+                    console.log(`Upload successful for ${file.name}:`, uploadResult)
+
+                    const uploadedImage: ItemImage = {
+                      url: uploadResult.url,
+                      alt: file.name,
+                      isPrimary: false, // For now, make all uploaded images non-primary
+                      uploadedAt: new Date(),
+                      fileName: file.name,
+                      size: file.size,
+                      mimeType: file.type
+                    }
+                    return uploadedImage
+                  } catch (uploadError) {
+                    console.error(`Failed to upload ${file.name}:`, uploadError)
+                    return null
+                  }
+                })
+
+                const uploadedImages = await Promise.all(uploadPromises)
+                const validImages = uploadedImages.filter(img => img !== null) as ItemImage[]
+
+                if (validImages.length > 0) {
+                  // Update the item with the uploaded images
+                  await itemService.updateItemImages(projectId, realItemId, validImages)
+                  console.log(`Successfully updated new item ${realItemId} with ${validImages.length} images`)
+                }
+              }
+            }
+          } catch (imageError) {
+            console.error('Error in item image upload process:', imageError)
+            // Don't fail the transaction if image upload fails - just log the error
+          }
+        }
+      }
+
+      // Upload transaction images
       let transactionImages: TransactionImage[] = [...existingTransactionImages]
       if (formData.transaction_images && formData.transaction_images.length > 0) {
         setIsUploadingImages(true)
@@ -136,6 +339,7 @@ export default function EditTransaction() {
         transactionImages = existingTransactionImages
       }
 
+      // Update transaction with new data and images
       const updateData = {
         ...formData,
         transaction_images: transactionImages
@@ -172,6 +376,22 @@ export default function EditTransaction() {
   const handleImageUploadProgress = (fileIndex: number, progress: UploadProgress) => {
     // Progress tracking removed to fix TypeScript errors
     console.log(`Upload progress for file ${fileIndex}: ${progress.percentage}%`)
+  }
+
+  const handleImageFilesChange = (itemId: string, imageFiles: File[]) => {
+    // Update the imageFilesMap
+    setImageFilesMap(prev => {
+      const newMap = new Map(prev)
+      newMap.set(itemId, imageFiles)
+      return newMap
+    })
+
+    // Also update the item in the items array with the imageFiles
+    setItems(prevItems => prevItems.map(item =>
+      item.id === itemId
+        ? { ...item, imageFiles }
+        : item
+    ))
   }
 
   if (isLoading) {
@@ -363,6 +583,19 @@ export default function EditTransaction() {
             {errors.notes && (
               <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
             )}
+          </div>
+
+          {/* Transaction Items */}
+          <div>
+            <TransactionItemsList
+              items={items}
+              onItemsChange={(newItems) => {
+                setItems(newItems)
+              }}
+              projectId={projectId}
+              projectName={projectName}
+              onImageFilesChange={handleImageFilesChange}
+            />
           </div>
 
           {/* Transaction Images */}
