@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore, Timestamp, doc, setDoc, getDoc, collection, getDocs, query, where, updateDoc } from 'firebase/firestore'
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User, onAuthStateChanged } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth'
 import { getStorage } from 'firebase/storage'
 import { getAnalytics } from 'firebase/analytics'
 import { User as AppUser, UserRole } from '../types'
@@ -23,6 +23,18 @@ const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 export const auth = getAuth(app)
 export const storage = getStorage(app)
+
+// Configure Firebase Auth to use local persistence for persistent login
+// This ensures users stay logged in across browser sessions
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+      console.log('Firebase Auth persistence set to LOCAL - users will stay logged in across browser sessions')
+    })
+    .catch((error) => {
+      console.error('Error setting Firebase Auth persistence:', error)
+    })
+}
 
 
 // Initialize Analytics (only in browser)
