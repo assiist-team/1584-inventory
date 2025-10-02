@@ -31,6 +31,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let isInitialLoad = true
+
     // Listen for auth state changes
     const unsubscribe = onAuthStateChange(async (firebaseUser) => {
       setFirebaseUser(firebaseUser)
@@ -59,7 +61,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(null)
       }
 
-      setLoading(false)
+      // Only set loading to false on the initial load
+      if (isInitialLoad) {
+        setLoading(false)
+        isInitialLoad = false
+      }
     })
 
     return unsubscribe
