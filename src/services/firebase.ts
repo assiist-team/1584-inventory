@@ -16,6 +16,37 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 }
 
+// Clear any potentially corrupted Firebase cache
+const clearFirebaseCache = async (): Promise<void> => {
+  if (typeof window !== 'undefined') {
+    try {
+      // Clear localStorage Firebase entries
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && (key.includes('firebase') || key.includes('firebaseLocalStorageDb'))) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+
+      // Clear sessionStorage Firebase entries
+      const sessionKeysToRemove: string[] = []
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i)
+        if (key && key.includes('firebase')) {
+          sessionKeysToRemove.push(key)
+        }
+      }
+      sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key))
+
+      console.log('Cleared Firebase cache from localStorage and sessionStorage')
+    } catch (error) {
+      console.warn('Error clearing Firebase cache:', error)
+    }
+  }
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig)
 
@@ -27,6 +58,16 @@ export const storage = getStorage(app)
 // Ensure Firebase app is ready before using services
 export const isFirebaseReady = (): boolean => {
   return app !== null && typeof app === 'object'
+}
+
+// Initialize Firebase with cache clearing
+export const initializeFirebase = async (): Promise<void> => {
+  if (typeof window !== 'undefined') {
+    await clearFirebaseCache()
+
+    // Small delay to ensure cache is cleared before Firebase operations
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
 }
 
 // Configure Firebase Auth to use local persistence for persistent login

@@ -6,7 +6,8 @@ import {
   signOutUser,
   getCurrentUserWithData,
   createOrUpdateUserDocument,
-  initializeAuthPersistence
+  initializeAuthPersistence,
+  initializeFirebase
 } from '../services/firebase'
 import { User, UserRole } from '../types'
 
@@ -34,14 +35,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     let isInitialLoad = true
 
-    // Initialize auth persistence first, then set up auth state listener
+    // Initialize Firebase first (clears cache), then auth persistence, then set up auth state listener
     const initializeAuth = async () => {
       try {
+        // Clear any corrupted Firebase cache first
+        await initializeFirebase()
+        console.log('Firebase cache cleared and initialized')
+
         // Ensure auth persistence is properly configured before listening to auth state
         await initializeAuthPersistence()
         console.log('Auth persistence initialized successfully')
       } catch (error) {
-        console.error('Failed to initialize auth persistence:', error)
+        console.error('Failed to initialize Firebase/auth persistence:', error)
         // Continue anyway - the auth state listener should still work
       }
 
