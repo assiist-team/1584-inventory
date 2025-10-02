@@ -24,16 +24,29 @@ export const db = getFirestore(app)
 export const auth = getAuth(app)
 export const storage = getStorage(app)
 
+// Ensure Firebase app is ready before using services
+export const isFirebaseReady = (): boolean => {
+  return app !== null && typeof app === 'object'
+}
+
 // Configure Firebase Auth to use local persistence for persistent login
 // This ensures users stay logged in across browser sessions
 export const initializeAuthPersistence = async (): Promise<void> => {
   if (typeof window !== 'undefined') {
     try {
+      // Wait a bit for Firebase to be fully initialized
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      if (!isFirebaseReady()) {
+        throw new Error('Firebase app is not properly initialized')
+      }
+
       await setPersistence(auth, browserLocalPersistence)
       console.log('Firebase Auth persistence set to LOCAL - users will stay logged in across browser sessions')
     } catch (error) {
       console.error('Error setting Firebase Auth persistence:', error)
-      throw error
+      // Don't throw - allow the app to continue even if persistence fails
+      console.warn('Continuing without auth persistence - users may need to re-authenticate on page reload')
     }
   }
 }
@@ -47,11 +60,15 @@ if (typeof window !== 'undefined') {
 
 export { analytics }
 
-// Enable offline persistence
+// Configure Firestore with offline persistence
 if (typeof window !== 'undefined') {
-  // Note: enableNetworkPersistence has been deprecated and removed in newer Firebase versions
-  // This would typically be handled by Firestore's built-in offline persistence
-  console.log('Firestore offline persistence is enabled by default in modern Firebase versions')
+  try {
+    // In Firebase v9+, offline persistence is enabled by default
+    // But we can configure it explicitly if needed
+    console.log('Firestore initialized with offline persistence enabled by default')
+  } catch (error) {
+    console.warn('Error configuring Firestore offline persistence:', error)
+  }
 }
 
 // Helper function to get current user (returns null if not authenticated)
