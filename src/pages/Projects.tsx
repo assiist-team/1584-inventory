@@ -75,20 +75,16 @@ export default function Projects() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-        </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={handleShowCreateForm}
-            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New
-          </button>
-        </div>
+      {/* Action Bar */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleShowCreateForm}
+          className="inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          <span className="hidden sm:inline">New Project</span>
+          <span className="sm:hidden">New</span>
+        </button>
       </div>
 
       {/* Projects Grid */}

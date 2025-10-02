@@ -9,40 +9,35 @@ export default function Header() {
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 justify-between items-center">
+        <div className="flex h-16 justify-between items-center flex-wrap gap-2">
           {/* Left side */}
           <div className="flex items-center">
             {/* Logo/Brand */}
             <Link to="/" className="text-xl font-bold text-gray-900">
-              1584 Design Inventory & Transactions
+              1584
             </Link>
           </div>
 
           {/* Right side */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center">
             {user && (
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2">
                 <Link
                   to="/settings"
-                  className="flex items-center space-x-1 text-sm text-gray-700 hover:text-gray-900"
+                  className="flex items-center text-sm text-gray-700 hover:text-gray-900"
+                  title="Settings"
                 >
                   <Settings className="h-4 w-4" />
-                  <span>Settings</span>
                 </Link>
-                <div className="flex items-center space-x-2 text-sm text-gray-700">
-                  <User className="h-4 w-4" />
-                  <span className="font-medium">{user.displayName}</span>
-                  <span className="text-gray-500">({user.email})</span>
-                </div>
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={signOut}
                   disabled={loading}
-                  className="flex items-center space-x-1"
+                  className="flex items-center"
+                  title="Sign Out"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span>Sign Out</span>
                 </Button>
               </div>
             )}

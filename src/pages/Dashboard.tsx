@@ -31,20 +31,23 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">1584 Design Inventory & Transactions</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+          <span className="block sm:hidden">1584 Design</span>
+          <span className="hidden sm:block">1584 Design Inventory & Transactions</span>
+        </h1>
+        <div className="text-sm text-gray-600">
+          team@1584design.com
+        </div>
       </div>
 
       {/* Project Selection */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-            Select Project
-          </h3>
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <label htmlFor="projectSelect" className="block text-sm font-medium text-gray-700 mb-1">
-                Choose a project
+                Project
               </label>
               <select
                 id="projectSelect"
@@ -52,7 +55,7 @@ export default function Dashboard() {
                 onChange={(e) => setSelectedProject(e.target.value)}
                 className="w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500"
               >
-                <option value="">-- select a project --</option>
+                <option value="">Select project...</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
@@ -60,21 +63,21 @@ export default function Dashboard() {
                 ))}
               </select>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={handleOpenProject}
                 disabled={!selectedProject}
-                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                className="inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
               >
-                <FolderOpen className="h-4 w-4 mr-2" />
-                Open Project
+                <FolderOpen className="h-4 w-4" />
+                <span className="ml-1 hidden sm:inline">Open</span>
               </button>
               <button
                 onClick={handleCreateProject}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Project
+                <Plus className="h-4 w-4" />
+                <span className="ml-1 hidden sm:inline">New</span>
               </button>
             </div>
           </div>
