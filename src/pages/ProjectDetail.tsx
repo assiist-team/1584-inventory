@@ -22,8 +22,8 @@ export default function ProjectDetail() {
   const [isDeleting, setIsDeleting] = useState(false)
   const { showError } = useToast()
 
-  // Get active tab from URL parameters, default to 'inventory'
-  const activeTab = searchParams.get('tab') || 'inventory'
+  // Get active tab from URL parameters, default to 'transactions'
+  const activeTab = searchParams.get('tab') || 'transactions'
 
   // Update URL when tab changes
   const handleTabChange = (tabId: string) => {
@@ -137,8 +137,8 @@ export default function ProjectDetail() {
   }
 
   const tabs = [
-    { id: 'inventory', name: 'Inventory', icon: Package },
-    { id: 'transactions', name: 'Transactions', icon: FileText }
+    { id: 'transactions', name: 'Transactions', icon: FileText },
+    { id: 'inventory', name: 'Inventory', icon: Package }
   ]
 
   if (isLoading) {

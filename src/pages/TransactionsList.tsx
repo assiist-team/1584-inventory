@@ -86,7 +86,6 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <h2 className="text-xl font-semibold text-gray-900">Transactions</h2>
         <Link
           to={`/project/${projectId}/transaction/add`}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
@@ -121,7 +120,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
               <li key={transaction.transaction_id} className="relative">
                 <Link
                   to={`/project/${projectId}/transaction/${transaction.transaction_id}`}
-                  className="block transition-colors duration-200 hover:bg-gray-50 active:bg-gray-100"
+                  className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200"
                 >
                   <div className="px-4 py-4 sm:px-6">
                     {/* Top row: Header with source and type */}

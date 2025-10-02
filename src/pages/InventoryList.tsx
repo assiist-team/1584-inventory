@@ -255,7 +255,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <h2 className="text-xl font-semibold text-gray-900">Project Inventory</h2>
         <Link
           to={`/project/${projectId}/item/add`}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
@@ -266,7 +265,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       </div>
 
       {/* Search and Controls */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {/* Search Bar */}
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -281,45 +280,49 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           />
         </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center space-x-3">
-            <button
-              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
-              disabled={selectedItems.size === 0}
-            >
-              <Printer className="h-4 w-4 mr-2" />
-              Generate QR
-            </button>
+        {/* Select All and Bulk Actions */}
+        <div className="flex items-center justify-between gap-4 p-3 rounded-lg">
+          {/* Select All */}
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+              onChange={(e) => handleSelectAll(e.target.checked)}
+              checked={selectedItems.size === items.length && items.length > 0}
+            />
+            <span className="ml-3 text-sm font-medium text-gray-700">Select all</span>
+          </label>
 
-            <button
-              onClick={handleBulkDelete}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
-              disabled={selectedItems.size === 0}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </button>
+          {/* Right section - counter and buttons */}
+          <div className="flex items-center gap-3">
+            {/* Counter (when visible) */}
+            {selectedItems.size > 0 && (
+              <span className="text-sm text-gray-500">
+                {selectedItems.size} of {items.length} selected
+              </span>
+            )}
+
+            {/* Bulk action buttons */}
+            <div className="flex items-center space-x-2">
+              <button
+                className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
+                disabled={selectedItems.size === 0}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                QR
+              </button>
+
+              <button
+                onClick={handleBulkDelete}
+                className="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
+                disabled={selectedItems.size === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                All
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Select All */}
-      <div className="flex items-center justify-between">
-        <label className="flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
-            onChange={(e) => handleSelectAll(e.target.checked)}
-            checked={selectedItems.size === items.length && items.length > 0}
-          />
-          <span className="ml-3 text-sm font-medium text-gray-700">Select all</span>
-        </label>
-        {selectedItems.size > 0 && (
-          <span className="text-sm text-gray-500">
-            {selectedItems.size} of {items.length} selected
-          </span>
-        )}
       </div>
 
       {/* Loading State */}
@@ -378,7 +381,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (
                 <li key={item.item_id} className="relative">
-                  <div className="block transition-colors duration-200 hover:bg-gray-50 active:bg-gray-100">
+                  <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200">
                     <div className="px-4 py-4 sm:px-6">
                       {/* Top row: Controls */}
                       <div className="flex items-center justify-between mb-3">

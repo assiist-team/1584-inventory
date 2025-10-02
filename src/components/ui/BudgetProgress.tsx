@@ -167,8 +167,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 mb-6">
-
+    <div className="mb-6">
       {/* Category Budget Progress */}
       {categoryData.length > 0 && (
         <div>
