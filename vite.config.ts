@@ -40,7 +40,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Force cache invalidation by modifying cache names with timestamp
+        // Use shorter cache times for app files to ensure updates
         cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
           {
@@ -50,13 +50,25 @@ export default defineConfig({
               cacheName: `firebase-storage-cache-${timestamp}`,
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year for images
+              }
+            }
+          },
+          // Cache app shell files with shorter expiration
+          {
+            urlPattern: /\.(?:js|css|html)$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: `app-shell-${timestamp}`,
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days for app files
               }
             }
           }
         ]
       },
-      // Force service worker to skip waiting and claim clients immediately
+      // Force service worker updates
       devOptions: {
         enabled: false // Disable in development to avoid caching issues
       }
