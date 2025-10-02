@@ -3,10 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Generate a timestamp for aggressive cache busting
+// Generate a timestamp for cache busting
 const timestamp = Date.now()
-// Generate a random version string for even more aggressive cache busting
-const version = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -27,13 +25,13 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: 'icon-192x192.png',
+            src: '/icon-192x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'maskable any'
           },
           {
-            src: 'icon-512x512.png',
+            src: '/icon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable any'
@@ -42,52 +40,36 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Aggressive cache busting for immediate updates
-        cacheId: `1584-inventory-${version}`,
-        mode: 'development',
-        // Force service worker to skip waiting and claim clients immediately
-        skipWaiting: true,
-        clientsClaim: true,
-        // Additional options for more aggressive cache management
-        additionalManifestEntries: [
-          {
-            url: '/?version=' + version,
-            revision: version
-          }
-        ],
+        // Use shorter cache times for app files to ensure updates
+        cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
-            handler: 'NetworkFirst',
+            handler: 'CacheFirst',
             options: {
-              cacheName: `firebase-storage-${version}`,
+              cacheName: `firebase-storage-cache-${timestamp}`,
               expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 30 // 30 minutes for images
-              },
-              networkTimeoutSeconds: 3
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 5 // 5 minutes for images - reasonable compromise
+              }
             }
           },
-          // Network-first for all app assets to ensure fresh content
+          // Cache app shell files with shorter expiration
           {
-            urlPattern: /\.(?:js|css|html|ico|png|svg|woff|woff2)$/i,
+            urlPattern: /\.(?:js|css|html)$/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: `app-assets-${version}`,
+              cacheName: `app-shell-${timestamp}`,
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 30 // 30 minutes max cache
-              },
-              networkTimeoutSeconds: 3
+                maxAgeSeconds: 60 // 1 minute for app files - see changes immediately
+              }
             }
           }
         ]
       },
-      // Enable PWA in development for consistent behavior
-      devOptions: {
-        enabled: true,
-        type: 'module'
-      }
+      // PWA enabled in both dev and prod for consistent behavior
+      // Use short cache times to ensure changes are visible immediately
     })
   ],
   resolve: {
@@ -105,11 +87,6 @@ export default defineConfig({
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0'
-    },
-    // Handle service worker requests in development
-    middlewareMode: false,
-    fs: {
-      allow: ['..']
     }
   },
   build: {
