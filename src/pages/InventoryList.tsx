@@ -484,7 +484,11 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                               handleAddImage(item.item_id)
                             }}
                             disabled={uploadingImages.has(item.item_id)}
-                            className="p-2 rounded-full text-primary-600 hover:text-primary-700 hover:bg-primary-50 transition-colors disabled:opacity-50"
+                            className={`p-2 rounded-full transition-colors disabled:opacity-50 ${
+                              item.images && item.images.length > 0
+                                ? 'text-primary-600 hover:text-primary-700 hover:bg-primary-50'
+                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                            }`}
                             title="Add image (camera or gallery)"
                           >
                             <Camera className="h-4 w-4" />
