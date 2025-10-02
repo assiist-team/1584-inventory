@@ -193,65 +193,57 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     return null
   }
 
-  // In preview mode, use compact styling
+  // In preview mode, use same format as full mode but without toggle and only showing primary budget
   if (previewMode) {
     return (
-      <div className="bg-gray-50 rounded-lg p-3">
-        {(categoryData.length > 0 || overallBudgetCategory) ? (
-          <div className="space-y-3">
-            {[...categoryData, ...(overallBudgetCategory ? [overallBudgetCategory] : [])].map((category) => {
-              const isDesignFee = category.category === BudgetCategory.DESIGN_FEE
-              return (
-                <div key={category.category}>
-                  {/* Header with amount and percentage */}
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="text-sm font-medium text-gray-700">
-                      {formatCategoryName(category.category)}
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-gray-900">
-                        ${Math.round(category.spent).toLocaleString('en-US')}
-                      </div>
-                      <div className={`text-xs ${isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
-                        {category.percentage.toFixed(0)}%
-                      </div>
-                    </div>
-                  </div>
+      <div className="mb-6">
+        {/* Category Budget Progress */}
+        {(categoryData.length > 0 || overallBudgetCategory) && (
+          <div>
 
-                  {/* Compact Progress Bar */}
-                  <div className="relative">
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
-                        }`}
-                        style={{ width: `${Math.min(category.percentage, 100)}%` }}
-                      />
+            <div className="space-y-4">
+              {[...categoryData, ...(overallBudgetCategory ? [overallBudgetCategory] : [])].map((category) => {
+                const isDesignFee = category.category === BudgetCategory.DESIGN_FEE
+                return (
+                  <div key={category.category}>
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-base font-medium text-gray-900">{formatCategoryName(category.category)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-500">
+                          ${Math.round(category.spent).toLocaleString('en-US')} {isDesignFee ? 'received' : 'spent'}
+                        </span>
+                        <span className={`text-sm ${isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
+                          <span className="font-bold">${Math.round((category.budget || 0) - category.spent).toLocaleString('en-US')}</span> remaining
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Status indicator */}
-                  <div className="mt-1 flex justify-between items-center text-xs">
-                    <span className="text-gray-500">${category.budget.toLocaleString('en-US')}</span>
-                    <div className="flex items-center">
-                      {category.percentage >= 100 ? (
-                        <span className="text-red-600">⚠️ Over budget</span>
-                      ) : category.percentage >= 75 ? (
-                        <span className="text-red-600">⚠️ {((100 - category.percentage)).toFixed(0)}% left</span>
-                      ) : category.percentage >= 50 ? (
-                        <span className="text-yellow-600">⚠️ {((100 - category.percentage)).toFixed(0)}% left</span>
-                      ) : (
-                        <span className="text-green-600">✅ ${((category.budget || 0) - category.spent).toLocaleString('en-US')} left</span>
-                      )}
+                    {/* Progress Bar */}
+                    <div className="relative">
+                      <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                        <div
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
+                          }`}
+                          style={{ width: `${Math.min(category.percentage, 100)}%` }}
+                        />
+                      </div>
+
                     </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+
           </div>
-        ) : (
-          <div className="text-center py-2">
-            <div className="text-xs text-gray-500">No budget set</div>
+        )}
+
+        {/* Show message if no budgets are configured */}
+        {!budget && !designFee && (!budgetCategories || Object.values(budgetCategories).every(v => v === 0)) && (
+          <div className="text-center py-4 text-gray-500">
+            <p>No budgets configured for this project.</p>
           </div>
         )}
       </div>
