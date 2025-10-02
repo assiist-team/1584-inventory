@@ -32,47 +32,48 @@ export default function ProjectDetail() {
     setSearchParams(newSearchParams)
   }
 
-  useEffect(() => {
-    const loadProjectAndTransactions = async () => {
-      if (!id) {
-        console.warn('No project ID provided, redirecting to projects')
-        navigate('/projects')
-        return
-      }
-
-      try {
-        console.log('Loading project data for ID:', id)
-        // Load project data
-        const projectData = await projectService.getProject(id)
-        if (projectData) {
-          console.log('Project loaded successfully:', projectData.name)
-          setProject(projectData)
-
-          // Load transactions for budget calculation
-          const transactionsData = await transactionService.getTransactions(id)
-          console.log('Transactions loaded:', transactionsData.length)
-          setTransactions(transactionsData)
-        } else {
-          console.warn('Project not found:', id)
-          // Project not found
-          navigate('/projects')
-        }
-      } catch (error) {
-        console.error('Error loading project:', error)
-        setError('Failed to load project. Please try again.')
-        setIsLoading(false)
-      } finally {
-        setIsLoading(false)
-      }
+  const loadProjectAndTransactions = async () => {
+    if (!id) {
+      console.warn('No project ID provided, redirecting to projects')
+      navigate('/projects')
+      return
     }
 
+    setIsLoading(true)
+
+    try {
+      console.log('Loading project data for ID:', id)
+      // Load project data
+      const projectData = await projectService.getProject(id)
+      if (projectData) {
+        console.log('Project loaded successfully:', projectData.name)
+        setProject(projectData)
+
+        // Load transactions for budget calculation
+        const transactionsData = await transactionService.getTransactions(id)
+        console.log('Transactions loaded:', transactionsData.length)
+        setTransactions(transactionsData)
+      } else {
+        console.warn('Project not found:', id)
+        // Project not found
+        navigate('/projects')
+      }
+    } catch (error) {
+      console.error('Error loading project:', error)
+      setError('Failed to load project. Please try again.')
+      setIsLoading(false)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
     loadProjectAndTransactions()
   }, [id, navigate])
 
   // Retry function for failed loads
   const retryLoadProject = () => {
     setError(null)
-    setIsLoading(true)
     loadProjectAndTransactions()
   }
 
