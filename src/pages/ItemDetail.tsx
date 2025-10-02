@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Bookmark, Printer, RotateCcw, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, Camera } from 'lucide-react'
+import { ArrowLeft, Bookmark, Printer, RotateCcw, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
@@ -501,7 +501,7 @@ export default function ItemDetail() {
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
                 title="Add images from gallery or camera"
               >
-                <Camera className="h-3 w-3 mr-1" />
+                <ImagePlus className="h-3 w-3 mr-1" />
                 {isUploadingImage
                   ? uploadProgress > 0 && uploadProgress < 100
                     ? `Uploading... ${Math.round(uploadProgress)}%`

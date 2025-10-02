@@ -5,7 +5,8 @@ import {
   signInWithGoogle,
   signOutUser,
   getCurrentUserWithData,
-  createOrUpdateUserDocument
+  createOrUpdateUserDocument,
+  initializeAuthPersistence
 } from '../services/firebase'
 import { User, UserRole } from '../types'
 
@@ -33,42 +34,60 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     let isInitialLoad = true
 
-    // Listen for auth state changes
-    const unsubscribe = onAuthStateChange(async (firebaseUser) => {
-      setFirebaseUser(firebaseUser)
+    // Initialize auth persistence first, then set up auth state listener
+    const initializeAuth = async () => {
+      try {
+        // Ensure auth persistence is properly configured before listening to auth state
+        await initializeAuthPersistence()
+        console.log('Auth persistence initialized successfully')
+      } catch (error) {
+        console.error('Failed to initialize auth persistence:', error)
+        // Continue anyway - the auth state listener should still work
+      }
 
-      if (firebaseUser) {
-        try {
-          // First, ensure the user document exists
-          await createOrUpdateUserDocument(firebaseUser)
+      // Listen for auth state changes
+      const unsubscribe = onAuthStateChange(async (firebaseUser) => {
+        setFirebaseUser(firebaseUser)
 
-          // Then fetch the user data - this is critical for proper authentication
-          const { appUser } = await getCurrentUserWithData()
-          setUser(appUser)
+        if (firebaseUser) {
+          try {
+            // First, ensure the user document exists
+            await createOrUpdateUserDocument(firebaseUser)
 
-          // Ensure we have a valid user with email before considering auth complete
-          if (appUser?.email) {
-            console.log('User authentication completed successfully:', appUser.email)
-          } else {
-            console.warn('User document created but no email found in user data')
+            // Then fetch the user data - this is critical for proper authentication
+            const { appUser } = await getCurrentUserWithData()
+            setUser(appUser)
+
+            // Ensure we have a valid user with email before considering auth complete
+            if (appUser?.email) {
+              console.log('User authentication completed successfully:', appUser.email)
+            } else {
+              console.warn('User document created but no email found in user data')
+              setUser(null)
+            }
+          } catch (error) {
+            console.error('Error fetching user data:', error)
             setUser(null)
           }
-        } catch (error) {
-          console.error('Error fetching user data:', error)
+        } else {
           setUser(null)
         }
-      } else {
-        setUser(null)
-      }
 
-      // Only set loading to false on the initial load
-      if (isInitialLoad) {
-        setLoading(false)
-        isInitialLoad = false
-      }
-    })
+        // Only set loading to false on the initial load
+        if (isInitialLoad) {
+          setLoading(false)
+          isInitialLoad = false
+        }
+      })
 
-    return unsubscribe
+      return unsubscribe
+    }
+
+    const cleanup = initializeAuth()
+
+    return () => {
+      cleanup.then(unsubscribe => unsubscribe?.())
+    }
   }, [])
 
   const signIn = async () => {

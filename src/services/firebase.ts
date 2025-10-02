@@ -26,14 +26,16 @@ export const storage = getStorage(app)
 
 // Configure Firebase Auth to use local persistence for persistent login
 // This ensures users stay logged in across browser sessions
-if (typeof window !== 'undefined') {
-  setPersistence(auth, browserLocalPersistence)
-    .then(() => {
+export const initializeAuthPersistence = async (): Promise<void> => {
+  if (typeof window !== 'undefined') {
+    try {
+      await setPersistence(auth, browserLocalPersistence)
       console.log('Firebase Auth persistence set to LOCAL - users will stay logged in across browser sessions')
-    })
-    .catch((error) => {
+    } catch (error) {
       console.error('Error setting Firebase Auth persistence:', error)
-    })
+      throw error
+    }
+  }
 }
 
 
