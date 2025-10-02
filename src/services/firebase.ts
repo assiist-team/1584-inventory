@@ -169,9 +169,6 @@ export const timestampToDate = (timestamp: any): Date => {
 
 // Utility function to convert Firestore document data with Timestamp conversion
 export const convertTimestamps = (data: any): any => {
-  console.log('convertTimestamps - input data:', data)
-  console.log('convertTimestamps - transaction_images in input:', data.transaction_images)
-
   if (!data || typeof data !== 'object') {
     return data
   }
@@ -190,9 +187,7 @@ export const convertTimestamps = (data: any): any => {
 
     // Handle arrays of objects FIRST
     if (Array.isArray(result)) {
-      console.log('convertTimestamps - processing array:', result)
       return result.map((item: any) => {
-        console.log('convertTimestamps - processing array item:', item)
         return convertObject(item)
       })
     }
@@ -200,7 +195,6 @@ export const convertTimestamps = (data: any): any => {
     // Convert timestamp fields
     timestampFields.forEach(field => {
       if (result[field]) {
-        console.log('convertTimestamps - converting timestamp field:', field, result[field])
         result[field] = timestampToDate(result[field])
       }
     })
@@ -209,10 +203,8 @@ export const convertTimestamps = (data: any): any => {
     Object.keys(result).forEach(key => {
       if (result[key] && typeof result[key] === 'object') {
         if (Array.isArray(result[key])) {
-          console.log('convertTimestamps - processing array field:', key, result[key])
           result[key] = result[key].map((item: any) => convertObject(item))
         } else {
-          console.log('convertTimestamps - recursing into nested object:', key, result[key])
           result[key] = convertObject(result[key])
         }
       }
@@ -222,8 +214,6 @@ export const convertTimestamps = (data: any): any => {
   }
 
   const finalResult = convertObject(converted)
-  console.log('convertTimestamps - final result:', finalResult)
-  console.log('convertTimestamps - transaction_images in final result:', finalResult.transaction_images)
   return finalResult
 }
 
