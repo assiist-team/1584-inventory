@@ -5,7 +5,7 @@ import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
 import { useAuth } from '@/contexts/AuthContext'
 import ProjectForm from '@/components/ProjectForm'
-import { CompactBudgetProgress } from '@/components/ui/BudgetProgress'
+import BudgetProgress from '@/components/ui/BudgetProgress'
 
 export default function Projects() {
   const { user } = useAuth()
@@ -145,11 +145,12 @@ export default function Projects() {
 
                 {/* Budget Progress */}
                 <div className="mb-4">
-                  <CompactBudgetProgress
+                  <BudgetProgress
                     budget={project.budget}
                     designFee={project.designFee}
                     budgetCategories={project.budgetCategories}
                     transactions={transactions[project.id] || []}
+                    previewMode={true}
                   />
                 </div>
 

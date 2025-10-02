@@ -25,13 +25,13 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/icon-192x192.png',
+            src: 'icon-192x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'maskable any'
           },
           {
-            src: '/icon-512x512.png',
+            src: 'icon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable any'
@@ -40,37 +40,41 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Use shorter cache times for app files to ensure updates
+        // Aggressive cache busting for immediate updates
         cacheId: `1584-inventory-${timestamp}`,
+        mode: 'development',
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: `firebase-storage-cache-${timestamp}`,
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year for images
-              }
+                maxAgeSeconds: 60 * 60 * 1 // 1 hour for images
+              },
+              networkTimeoutSeconds: 3
             }
           },
-          // Cache app shell files with shorter expiration
+          // Network-first for all app assets to ensure fresh content
           {
-            urlPattern: /\.(?:js|css|html)$/i,
+            urlPattern: /\.(?:js|css|html|ico|png|svg|woff|woff2)$/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: `app-shell-${timestamp}`,
+              cacheName: `app-assets-${timestamp}`,
               expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days for app files
-              }
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 1 // 1 hour max cache
+              },
+              networkTimeoutSeconds: 3
             }
           }
         ]
       },
-      // Force service worker updates
+      // Enable PWA in development for consistent behavior
       devOptions: {
-        enabled: false // Disable in development to avoid caching issues
+        enabled: true,
+        type: 'module'
       }
     })
   ],
@@ -84,6 +88,17 @@ export default defineConfig({
     host: true,
     https: false, // Set to true if you want HTTPS in development
     cors: true,   // Enable CORS for development
+    // Disable ALL browser caching in development
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    },
+    // Handle service worker requests in development
+    middlewareMode: false,
+    fs: {
+      allow: ['..']
+    }
   },
   build: {
     outDir: 'dist',

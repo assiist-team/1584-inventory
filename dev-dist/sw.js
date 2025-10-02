@@ -70,7 +70,7 @@ if (!self.define) {
 define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
 
   workbox.setCacheNameDetails({
-    prefix: "1584-inventory-1759429994512"
+    prefix: "1584-inventory-1759430018498"
   });
   self.skipWaiting();
   workbox.clientsClaim();
@@ -81,106 +81,18 @@ define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
    * See https://goo.gl/S9QRab
    */
   workbox.precacheAndRoute([{
-    "url": "assets/AddItem.js",
-    "revision": null
-  }, {
-    "url": "assets/AddTransaction.js",
-    "revision": null
-  }, {
-    "url": "assets/BudgetProgress.js",
-    "revision": null
-  }, {
-    "url": "assets/dateUtils.js",
-    "revision": null
-  }, {
-    "url": "assets/EditItem.js",
-    "revision": null
-  }, {
-    "url": "assets/EditTransaction.js",
-    "revision": null
-  }, {
-    "url": "assets/firebase.js",
-    "revision": null
-  }, {
-    "url": "assets/ImageGallery.js",
-    "revision": null
-  }, {
-    "url": "assets/ImagePreview.js",
-    "revision": null
-  }, {
-    "url": "assets/imageService.js",
-    "revision": null
-  }, {
-    "url": "assets/index.css",
-    "revision": null
-  }, {
-    "url": "assets/index.js",
-    "revision": null
-  }, {
-    "url": "assets/inventoryService.js",
-    "revision": null
-  }, {
-    "url": "assets/ItemDetail.js",
-    "revision": null
-  }, {
-    "url": "assets/ProjectDetail.js",
-    "revision": null
-  }, {
-    "url": "assets/Projects.js",
-    "revision": null
-  }, {
-    "url": "assets/router.js",
-    "revision": null
-  }, {
-    "url": "assets/Settings.js",
-    "revision": null
-  }, {
-    "url": "assets/TransactionDetail.js",
-    "revision": null
-  }, {
-    "url": "assets/TransactionItemsList.js",
-    "revision": null
-  }, {
-    "url": "assets/transactionSources.js",
-    "revision": null
-  }, {
-    "url": "assets/ui.js",
-    "revision": null
-  }, {
-    "url": "assets/vendor.js",
-    "revision": null
-  }, {
-    "url": "icon-192x192.png",
-    "revision": "281ae70ed7cb4dc914c4ec5ed5c02b3d"
-  }, {
-    "url": "icon-192x192.svg",
-    "revision": "d6cdf2b9e5aabcae08cfc76d17ffd8a6"
-  }, {
-    "url": "icon-512x512.png",
-    "revision": "0f8fd4c52a058aed16e004771175702e"
-  }, {
-    "url": "icon-512x512.svg",
-    "revision": "b84e1517595f5be332066241b3bd0dd1"
+    "url": "registerSW.js",
+    "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "c38a8378e3699dc38e421c327d0bf3a3"
-  }, {
-    "url": "registerSW.js",
-    "revision": "1872c500de691dce40960bb85481de07"
-  }, {
-    "url": "icon-192x192.png",
-    "revision": "281ae70ed7cb4dc914c4ec5ed5c02b3d"
-  }, {
-    "url": "icon-512x512.png",
-    "revision": "0f8fd4c52a058aed16e004771175702e"
-  }, {
-    "url": "manifest.webmanifest",
-    "revision": "ae65e57c5d23b54f4dcb275e1d98e531"
+    "revision": "0.jhh0s4a3gj"
   }], {});
   workbox.cleanupOutdatedCaches();
-  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html")));
+  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
+    allowlist: [/^\/$/]
+  }));
   workbox.registerRoute(/^https:\/\/firebasestorage\.googleapis\.com\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "firebase-storage-cache-1759429994512",
+    "cacheName": "firebase-storage-cache-1759430018498",
     "networkTimeoutSeconds": 3,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 100,
@@ -188,7 +100,7 @@ define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
     })]
   }), 'GET');
   workbox.registerRoute(/\.(?:js|css|html|ico|png|svg|woff|woff2)$/i, new workbox.NetworkFirst({
-    "cacheName": "app-assets-1759429994512",
+    "cacheName": "app-assets-1759430018498",
     "networkTimeoutSeconds": 3,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 100,

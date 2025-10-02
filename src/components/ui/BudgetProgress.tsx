@@ -7,6 +7,7 @@ interface BudgetProgressProps {
   designFee?: number
   budgetCategories?: ProjectBudgetCategories
   transactions: Transaction[]
+  previewMode?: boolean // If true, only show primary budget (furnishings or overall) without toggle
 }
 
 interface CategoryBudgetData {
@@ -16,14 +17,8 @@ interface CategoryBudgetData {
   percentage: number
 }
 
-interface CompactBudgetProgressProps {
-  budget?: number
-  designFee?: number
-  budgetCategories?: ProjectBudgetCategories
-  transactions: Transaction[]
-}
 
-export default function BudgetProgress({ budget, designFee, budgetCategories, transactions }: BudgetProgressProps) {
+export default function BudgetProgress({ budget, designFee, budgetCategories, transactions, previewMode = false }: BudgetProgressProps) {
   const [showAllCategories, setShowAllCategories] = useState(false)
 
   // Calculate total spent (purchases + design fee, excluding returns)
@@ -111,49 +106,77 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   const percentage = budget && budget > 0 ? (spent / budget) * 100 : 0
   const allCategoryData = calculateCategoryBudgetData()
 
-  // Filter categories based on toggle state - show only furnishings by default, overall budget only when expanded
-  const categoryData = allCategoryData.filter(category =>
-    category.category === BudgetCategory.FURNISHINGS || showAllCategories
-  )
+  // In preview mode, determine what to show: furnishings budget if it exists, otherwise overall budget
+  let categoryData = allCategoryData
+  let overallBudgetCategory = null
 
-  // Add overall budget as a category if it exists and should be shown
-  const shouldShowOverallBudget = budget !== null && budget !== undefined && budget > 0 && showAllCategories
-  const overallBudgetCategory = shouldShowOverallBudget ? {
-    category: 'Overall Budget' as BudgetCategory,
-    budget: budget,
-    spent: spent,
-    percentage: percentage
-  } : null
+  if (previewMode) {
+    // In preview mode, show only the primary budget (furnishings if set, otherwise overall)
+    const furnishingsCategory = allCategoryData.find(cat => cat.category === BudgetCategory.FURNISHINGS)
+    if (furnishingsCategory) {
+      // Show only furnishings budget
+      categoryData = [furnishingsCategory]
+    } else if (budget !== null && budget !== undefined && budget > 0) {
+      // No category budgets, show overall budget
+      overallBudgetCategory = {
+        category: 'Overall Budget' as BudgetCategory,
+        budget: budget,
+        spent: spent,
+        percentage: percentage
+      }
+    }
+  } else {
+    // Full mode: Filter categories based on toggle state - show only furnishings by default, others when expanded
+    categoryData = allCategoryData.filter(category =>
+      category.category === BudgetCategory.FURNISHINGS || showAllCategories
+    )
+
+    // Add overall budget as a category if it exists and should be shown
+    // Show overall budget if: there's a budget > 0 AND (no primary categories exist OR showAllCategories is true)
+    const hasPrimaryCategories = allCategoryData.some(cat => cat.category === BudgetCategory.FURNISHINGS)
+    const shouldShowOverallBudget = budget !== null && budget !== undefined && budget > 0 && (!hasPrimaryCategories || showAllCategories)
+    overallBudgetCategory = shouldShowOverallBudget ? {
+      category: 'Overall Budget' as BudgetCategory,
+      budget: budget,
+      spent: spent,
+      percentage: percentage
+    } : null
+  }
+
 
   const getProgressColor = (percentage: number) => {
     if (percentage >= 100) return 'bg-red-500'
-    if (percentage >= 80) return 'bg-yellow-500'
-    return 'bg-green-500'
+    if (percentage >= 75) return 'bg-red-500' // 75%+ spent = bad (red)
+    if (percentage >= 50) return 'bg-yellow-500' // 50-74% spent = warning (yellow)
+    return 'bg-green-500' // Less than 50% spent = good (green)
   }
 
   // Color logic for remaining amounts (green when plenty left, yellow when warning, red when over)
   const getRemainingColor = (percentage: number) => {
     if (percentage >= 100) return 'text-red-600' // Over budget = red
-    if (percentage >= 80) return 'text-yellow-600' // Warning level = yellow
-    return 'text-green-600' // Plenty left = green
+    if (percentage >= 75) return 'text-red-600' // 75%+ spent = bad (red)
+    if (percentage >= 50) return 'text-yellow-600' // 50-74% spent = warning (yellow)
+    return 'text-green-600' // Less than 50% spent = good (green)
   }
 
   // Reversed color logic for design fee (green when received, red when not received)
   const getDesignFeeProgressColor = (percentage: number) => {
     if (percentage >= 100) return 'bg-green-500' // Fully received = good (green)
-    if (percentage >= 80) return 'bg-yellow-500' // Mostly received = warning (yellow)
-    return 'bg-red-500' // Little/nothing received = bad (red)
+    if (percentage >= 75) return 'bg-green-500' // 75%+ received = good (green)
+    if (percentage >= 50) return 'bg-yellow-500' // 50%+ received = warning (yellow)
+    return 'bg-red-500' // Less than 50% received = bad (red)
   }
 
   // Reversed color logic for design fee remaining amounts
   const getDesignFeeRemainingColor = (percentage: number) => {
     if (percentage >= 100) return 'text-green-600' // Fully received = good (green)
-    if (percentage >= 80) return 'text-yellow-600' // Mostly received = warning (yellow)
-    return 'text-red-600' // Little/nothing received = bad (red)
+    if (percentage >= 75) return 'text-green-600' // 75%+ received = good (green)
+    if (percentage >= 50) return 'text-yellow-600' // 50%+ received = warning (yellow)
+    return 'text-red-600' // Less than 50% received = bad (red)
   }
 
   // Format category names to include "Budget" suffix
-  const formatCategoryName = (categoryName: string) => {
+  const formatCategoryName = (categoryName: string | BudgetCategory) => {
     // Don't add "Budget" to Design Fee or Overall Budget as they're already clear
     if (categoryName === BudgetCategory.DESIGN_FEE || categoryName === 'Overall Budget') {
       return categoryName
@@ -162,14 +185,84 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   }
 
   // If no budget or categories are set, don't show anything
-  if ((budget === null || budget === undefined) && (!budgetCategories || Object.values(budgetCategories).every(v => v === 0))) {
+  const hasOverallBudget = budget !== null && budget !== undefined && budget > 0
+  const hasDesignFee = designFee !== null && designFee !== undefined && designFee > 0
+  const hasCategoryBudgets = budgetCategories && Object.values(budgetCategories).some(v => v > 0)
+
+  if (!hasOverallBudget && !hasDesignFee && !hasCategoryBudgets) {
     return null
   }
 
+  // In preview mode, use compact styling
+  if (previewMode) {
+    return (
+      <div className="bg-gray-50 rounded-lg p-3">
+        {(categoryData.length > 0 || overallBudgetCategory) ? (
+          <div className="space-y-3">
+            {[...categoryData, ...(overallBudgetCategory ? [overallBudgetCategory] : [])].map((category) => {
+              const isDesignFee = category.category === BudgetCategory.DESIGN_FEE
+              return (
+                <div key={category.category}>
+                  {/* Header with amount and percentage */}
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="text-sm font-medium text-gray-700">
+                      {formatCategoryName(category.category)}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-gray-900">
+                        ${Math.round(category.spent).toLocaleString('en-US')}
+                      </div>
+                      <div className={`text-xs ${isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
+                        {category.percentage.toFixed(0)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Compact Progress Bar */}
+                  <div className="relative">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
+                        }`}
+                        style={{ width: `${Math.min(category.percentage, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Status indicator */}
+                  <div className="mt-1 flex justify-between items-center text-xs">
+                    <span className="text-gray-500">${category.budget.toLocaleString('en-US')}</span>
+                    <div className="flex items-center">
+                      {category.percentage >= 100 ? (
+                        <span className="text-red-600">⚠️ Over budget</span>
+                      ) : category.percentage >= 75 ? (
+                        <span className="text-red-600">⚠️ {((100 - category.percentage)).toFixed(0)}% left</span>
+                      ) : category.percentage >= 50 ? (
+                        <span className="text-yellow-600">⚠️ {((100 - category.percentage)).toFixed(0)}% left</span>
+                      ) : (
+                        <span className="text-green-600">✅ ${((category.budget || 0) - category.spent).toLocaleString('en-US')} left</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-2">
+            <div className="text-xs text-gray-500">No budget set</div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Full mode with toggle functionality
   return (
     <div className="mb-6">
       {/* Category Budget Progress */}
-      {categoryData.length > 0 && (
+      {(categoryData.length > 0 || overallBudgetCategory) && (
         <div>
 
           <div className="space-y-4">
@@ -209,7 +302,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
           </div>
 
           {/* Show All Categories Toggle - positioned at bottom */}
-          {(allCategoryData.some(cat => cat.category !== BudgetCategory.FURNISHINGS) || (budget !== null && budget !== undefined && budget > 0)) && (
+          {(allCategoryData.some(cat => cat.category !== BudgetCategory.FURNISHINGS && cat.category !== BudgetCategory.DESIGN_FEE) || (budget !== null && budget !== undefined && budget > 0)) && (
             <div className="mt-4">
               <button
                 onClick={() => setShowAllCategories(!showAllCategories)}
@@ -242,90 +335,3 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   )
 }
 
-export function CompactBudgetProgress({ budget, designFee, budgetCategories, transactions }: CompactBudgetProgressProps) {
-  // Calculate total spent (purchases + design fee, excluding returns)
-  const calculateSpent = (targetBudget?: number): number => {
-    if (targetBudget === null || targetBudget === undefined) return 0
-
-    // Sum all purchases (exclude returns)
-    const purchases = transactions
-      .filter(transaction => transaction.transaction_type === 'Purchase')
-      .reduce((total, transaction) => total + parseFloat(transaction.amount || '0'), 0)
-
-    // Add design fee if it exists
-    const totalDesignFee = designFee || 0
-
-    return purchases + totalDesignFee
-  }
-
-  // Determine which budget to show - prioritize furnishings budget for preview cards
-  const displayBudget = budgetCategories?.furnishings || budget
-  const displayBudgetType = budgetCategories?.furnishings ? 'furnishings' : 'overall'
-
-  // Don't show if no budget is set
-  if (displayBudget === null || displayBudget === undefined || displayBudget === 0) {
-    return (
-      <div className="text-center py-2">
-        <div className="text-xs text-gray-500">No budget set</div>
-      </div>
-    )
-  }
-
-  const spent = calculateSpent(displayBudget)
-  const percentage = displayBudget > 0 ? (spent / displayBudget) * 100 : 0
-
-  const getProgressColor = () => {
-    if (percentage >= 100) return 'bg-red-500'
-    if (percentage >= 80) return 'bg-yellow-500'
-    return 'bg-green-500'
-  }
-
-  const getPercentageColor = () => {
-    if (percentage >= 100) return 'text-red-600'
-    if (percentage >= 80) return 'text-yellow-600'
-    return 'text-green-600'
-  }
-
-  return (
-    <div className="bg-gray-50 rounded-lg p-3">
-      {/* Header with amount and percentage */}
-      <div className="flex justify-between items-center mb-2">
-        <div className="text-sm font-medium text-gray-700">
-          {displayBudgetType === 'furnishings' ? 'Furnishings' : 'Budget'}
-        </div>
-        <div className="text-right">
-          <div className="text-sm font-semibold text-gray-900">
-            ${spent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className={`text-xs ${getPercentageColor()}`}>
-            {percentage.toFixed(0)}%
-          </div>
-        </div>
-      </div>
-
-      {/* Compact Progress Bar */}
-      <div className="relative">
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all duration-300 ${getProgressColor()}`}
-            style={{ width: `${Math.min(percentage, 100)}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Status indicator */}
-      <div className="mt-1 flex justify-between items-center text-xs">
-        <span className="text-gray-500">${displayBudget.toLocaleString('en-US')}</span>
-        <div className="flex items-center">
-          {percentage >= 100 ? (
-            <span className="text-red-600">⚠️ Over budget</span>
-          ) : percentage >= 80 ? (
-            <span className="text-yellow-600">⚠️ {((100 - percentage)).toFixed(0)}% left</span>
-          ) : (
-            <span className="text-green-600">✅ ${((displayBudget - spent)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} left</span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
