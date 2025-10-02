@@ -6,6 +6,7 @@ import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
+import { Select } from '@/components/ui/Select'
 import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
@@ -590,29 +591,20 @@ export default function AddTransaction() {
           </div>
 
           {/* Budget Category */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Budget Category *
-            </label>
-            <select
-              value={formData.budget_category || 'Furnishings'}
-              onChange={(e) => handleInputChange('budget_category', e.target.value)}
-              className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.budget_category ? 'border-red-300' : 'border-gray-300'
-              }`}
-            >
-              <option value="Design Fee">Design Fee</option>
-              <option value="Furnishings">Furnishings</option>
-              <option value="Property Management">Property Management</option>
-              <option value="Kitchen">Kitchen</option>
-              <option value="Install">Install</option>
-              <option value="Storage & Receiving">Storage & Receiving</option>
-              <option value="Fuel">Fuel</option>
-            </select>
-            {errors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
-            )}
-          </div>
+          <Select
+            label="Budget Category *"
+            value={formData.budget_category || 'Furnishings'}
+            onChange={(e) => handleInputChange('budget_category', e.target.value)}
+            error={errors.budget_category}
+          >
+            <option value="Design Fee">Design Fee</option>
+            <option value="Furnishings">Furnishings</option>
+            <option value="Property Management">Property Management</option>
+            <option value="Kitchen">Kitchen</option>
+            <option value="Install">Install</option>
+            <option value="Storage & Receiving">Storage & Receiving</option>
+            <option value="Fuel">Fuel</option>
+          </Select>
 
 
           {/* Receipt Email Copy */}

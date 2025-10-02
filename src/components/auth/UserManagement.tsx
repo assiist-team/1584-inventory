@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../ui/Button'
+import { Select } from '../ui/Select'
 import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore'
 import { db, createUserInvitation } from '../../services/firebase'
 import { User, UserRole } from '../../types'
@@ -153,19 +154,16 @@ export default function UserManagement({ className }: UserManagementProps) {
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Assign Role</label>
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as UserRole)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-              >
-                <option value={UserRole.VIEWER}>Viewer</option>
-                <option value={UserRole.DESIGNER}>Designer</option>
-                <option value={UserRole.ADMIN}>Admin</option>
-                <option value={UserRole.OWNER}>Owner</option>
-              </select>
-            </div>
+            <Select
+              label="Assign Role"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as UserRole)}
+            >
+              <option value={UserRole.VIEWER}>Viewer</option>
+              <option value={UserRole.DESIGNER}>Designer</option>
+              <option value={UserRole.ADMIN}>Admin</option>
+              <option value={UserRole.OWNER}>Owner</option>
+            </Select>
             <Button
               onClick={inviteUser}
               disabled={inviting || !inviteEmail.trim()}
@@ -203,16 +201,16 @@ export default function UserManagement({ className }: UserManagementProps) {
                       {user.role}
                     </span>
                     {user.id !== currentUser?.id && (
-                      <select
+                      <Select
+                        size="sm"
                         value={user.role}
                         onChange={(e) => updateUserRole(user.id, e.target.value as UserRole)}
-                        className="text-xs rounded border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                       >
                         <option value={UserRole.VIEWER}>Viewer</option>
                         <option value={UserRole.DESIGNER}>Designer</option>
                         <option value={UserRole.ADMIN}>Admin</option>
                         <option value={UserRole.OWNER}>Owner</option>
-                      </select>
+                      </Select>
                     )}
                   </div>
                 </div>

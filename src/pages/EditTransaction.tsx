@@ -5,6 +5,7 @@ import { TransactionFormData, TransactionValidationErrors, TransactionImage, Tra
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
+import { Select } from '@/components/ui/Select'
 import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
@@ -536,51 +537,33 @@ export default function EditTransaction() {
           </div>
 
           {/* Transaction Type */}
-          <div>
-            <label htmlFor="transaction_type" className="block text-sm font-medium text-gray-700">
-              Transaction Type *
-            </label>
-            <select
-              id="transaction_type"
-              value={formData.transaction_type}
-              onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_type ? 'border-red-300' : 'border-gray-300'
-              }`}
-            >
-              <option value="Purchase">Purchase</option>
-              <option value="Return">Return</option>
-            </select>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
-            )}
-          </div>
+          <Select
+            label="Transaction Type *"
+            id="transaction_type"
+            value={formData.transaction_type}
+            onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+            error={errors.transaction_type}
+          >
+            <option value="Purchase">Purchase</option>
+            <option value="Return">Return</option>
+          </Select>
 
           {/* Budget Category */}
-          <div>
-            <label htmlFor="budget_category" className="block text-sm font-medium text-gray-700">
-              Budget Category *
-            </label>
-            <select
-              id="budget_category"
-              value={formData.budget_category || 'Furnishings'}
-              onChange={(e) => handleInputChange('budget_category', e.target.value)}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.budget_category ? 'border-red-300' : 'border-gray-300'
-              }`}
-            >
-              <option value="Design Fee">Design Fee</option>
-              <option value="Furnishings">Furnishings</option>
-              <option value="Property Management">Property Management</option>
-              <option value="Kitchen">Kitchen</option>
-              <option value="Install">Install</option>
-              <option value="Storage & Receiving">Storage & Receiving</option>
-              <option value="Fuel">Fuel</option>
-            </select>
-            {errors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
-            )}
-          </div>
+          <Select
+            label="Budget Category *"
+            id="budget_category"
+            value={formData.budget_category || 'Furnishings'}
+            onChange={(e) => handleInputChange('budget_category', e.target.value)}
+            error={errors.budget_category}
+          >
+            <option value="Design Fee">Design Fee</option>
+            <option value="Furnishings">Furnishings</option>
+            <option value="Property Management">Property Management</option>
+            <option value="Kitchen">Kitchen</option>
+            <option value="Install">Install</option>
+            <option value="Storage & Receiving">Storage & Receiving</option>
+            <option value="Fuel">Fuel</option>
+          </Select>
 
 
           {/* Receipt Emailed */}

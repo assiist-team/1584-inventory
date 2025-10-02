@@ -4,6 +4,7 @@ import { useState, FormEvent, useEffect } from 'react'
 import { itemService, transactionService } from '@/services/inventoryService'
 import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
 import { Transaction } from '@/types'
+import { Select } from '@/components/ui/Select'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
@@ -465,37 +466,28 @@ export default function AddItem() {
           </div>
 
           {/* Transaction Selection */}
-          <div>
-            <label htmlFor="selectedTransactionId" className="block text-sm font-medium text-gray-700 mb-3">
-              Associate with Transaction (Optional)
-            </label>
-            <select
-              id="selectedTransactionId"
-              value={formData.selectedTransactionId}
-              onChange={(e) => handleTransactionChange(e.target.value)}
-              className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.selectedTransactionId ? 'border-red-300' : 'border-gray-300'
-              }`}
-              disabled={loadingTransactions}
-            >
-              <option value="">Select a transaction (optional)</option>
-              {loadingTransactions ? (
-                <option disabled>Loading transactions...</option>
-              ) : (
-                transactions.map((transaction) => (
-                  <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                    {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
-                  </option>
-                ))
-              )}
-            </select>
-            {errors.selectedTransactionId && (
-              <p className="mt-1 text-sm text-red-600">{errors.selectedTransactionId}</p>
+          <Select
+            label="Associate with Transaction (Optional)"
+            id="selectedTransactionId"
+            value={formData.selectedTransactionId}
+            onChange={(e) => handleTransactionChange(e.target.value)}
+            error={errors.selectedTransactionId}
+            disabled={loadingTransactions}
+          >
+            <option value="">Select a transaction (optional)</option>
+            {loadingTransactions ? (
+              <option disabled>Loading transactions...</option>
+            ) : (
+              transactions.map((transaction) => (
+                <option key={transaction.transaction_id} value={transaction.transaction_id}>
+                  {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
+                </option>
+              ))
             )}
-            {!loadingTransactions && transactions.length === 0 && (
-              <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
-            )}
-          </div>
+          </Select>
+          {!loadingTransactions && transactions.length === 0 && (
+            <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
+          )}
 
           {/* Notes */}
           <div>
