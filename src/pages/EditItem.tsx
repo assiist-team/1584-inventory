@@ -1,4 +1,4 @@
-import { ArrowLeft, Save, X, Bookmark, RotateCcw, Printer } from 'lucide-react'
+import { ArrowLeft, Save, X, Bookmark } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect } from 'react'
 import { itemService, transactionService } from '@/services/inventoryService'
@@ -48,7 +48,6 @@ export default function EditItem() {
     disposition: '',
     notes: '',
     bookmark: false,
-    qr_key: '',
     selectedTransactionId: ''
   })
 
@@ -101,7 +100,6 @@ export default function EditItem() {
               disposition: String(fetchedItem.disposition || ''),
               notes: String(fetchedItem.notes || ''),
               bookmark: Boolean(fetchedItem.bookmark || false),
-              qr_key: String(fetchedItem.qr_key || ''),
               selectedTransactionId: String(fetchedItem.transaction_id || '')
             })
             console.log('Form data set:', {
@@ -114,8 +112,7 @@ export default function EditItem() {
               payment_method: String(fetchedItem.payment_method || ''),
               disposition: String(fetchedItem.disposition || ''),
               notes: String(fetchedItem.notes || ''),
-              bookmark: Boolean(fetchedItem.bookmark || false),
-              qr_key: String(fetchedItem.qr_key || '')
+              bookmark: Boolean(fetchedItem.bookmark || false)
             })
           }
         } catch (error) {
@@ -243,20 +240,6 @@ export default function EditItem() {
     }
   }
 
-  const toggleDisposition = async () => {
-    if (!itemId || !projectId) return
-
-    try {
-      // Toggle between 'keep' and 'return' (the two most common states)
-      const newDisposition = formData.disposition === 'return' ? 'keep' : 'return'
-      await itemService.updateItem(projectId, itemId, {
-        disposition: newDisposition
-      })
-      setFormData(prev => ({ ...prev, disposition: newDisposition }))
-    } catch (error) {
-      console.error('Failed to update disposition:', error)
-    }
-  }
 
   if (loading) {
     return (
@@ -309,7 +292,7 @@ export default function EditItem() {
           <h1 className="text-2xl font-bold text-gray-900">Edit Item</h1>
         </div>
         <div className="px-6 py-4">
-          <div className="flex space-x-2 mb-8">
+          <div className="flex justify-end mb-8">
             <button
               onClick={toggleBookmark}
               className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
@@ -320,26 +303,6 @@ export default function EditItem() {
             >
               <Bookmark className="h-4 w-4 mr-2" fill={formData.bookmark ? 'currentColor' : 'none'} />
               {formData.bookmark ? 'Bookmarked' : 'Bookmark'}
-            </button>
-
-            <button
-              onClick={toggleDisposition}
-              className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
-                formData.disposition === 'return'
-                  ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
-                  : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              {formData.disposition === 'return' ? 'Return' : 'Keep'}
-            </button>
-
-            <button
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              onClick={() => window.open(`/qr-image/${formData.qr_key}`, '_blank')}
-            >
-              <Printer className="h-4 w-4 mr-2" />
-              QR
             </button>
           </div>
 
@@ -516,7 +479,7 @@ export default function EditItem() {
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Payment Method *
                 </label>
-                <div className="flex items-center space-x-6 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
                   {['Client Card', '1584 Card', 'Split', 'Store Credit'].map((method) => (
                     <div key={method} className="flex items-center">
                       <input
@@ -576,8 +539,8 @@ export default function EditItem() {
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Disposition *
                 </label>
-                <div className="flex items-center space-x-6">
-                  {['keep', 'return', 'inventory'].map((disposition) => (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
                     <div key={disposition} className="flex items-center">
                       <input
                         type="radio"
@@ -589,7 +552,7 @@ export default function EditItem() {
                         className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                       />
                       <label htmlFor={`disposition_${disposition.toLowerCase()}`} className="ml-2 block text-sm text-gray-900">
-                        {disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
                       </label>
                     </div>
                   ))}

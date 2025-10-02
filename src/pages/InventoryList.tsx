@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Bookmark, Printer, RotateCcw, Trash2, Camera, ChevronDown } from 'lucide-react'
+import { Plus, Search, Bookmark, Printer, RotateCcw, Trash2, Camera, ChevronDown, Edit } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -489,13 +489,21 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           >
                             <Camera className="h-4 w-4" />
                           </button>
+                          <Link
+                            to={`/project/${projectId}/edit-item/${item.item_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                            title="Edit item"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Link>
                           <button
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
                               handleDeleteItem(item.item_id)
                             }}
-                            className="p-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-200 transition-colors"
+                            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
