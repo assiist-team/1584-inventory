@@ -98,20 +98,10 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
       {/* Transactions List */}
       {transactions.length === 0 ? (
         <div className="text-center py-12 px-4">
-          <div className="mx-auto h-16 w-16 text-gray-400 mb-4">🧾</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">🧾</div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">
             No transactions yet
           </h3>
-          <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
-            Add your first transaction to track purchases and returns.
-          </p>
-          <Link
-            to={`/project/${projectId}/transaction/add`}
-            className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto max-w-xs"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            Add Transaction
-          </Link>
         </div>
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
