@@ -25,7 +25,7 @@ export default function Login({ onSuccess }: LoginProps) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
         <div className="-mt-8">
-          <div className="mx-auto h-48 w-48 flex items-center justify-center">
+          <div className="mx-auto h-56 w-56 flex items-center justify-center">
             <img src="/logo.png" alt="1584 Design Projects Logo" className="h-full w-full object-contain" />
           </div>
           <h2 className="text-center text-3xl font-extrabold text-gray-900">
