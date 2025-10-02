@@ -22,11 +22,22 @@ export interface Project {
   clientName: string;
   budget?: number;
   designFee?: number;
+  budgetCategories?: ProjectBudgetCategories;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
   settings?: ProjectSettings;
   metadata?: ProjectMetadata;
+}
+
+export interface ProjectBudgetCategories {
+  designFee: number;
+  furnishings: number;
+  propertyManagement: number;
+  kitchen: number;
+  install: number;
+  storageReceiving: number;
+  fuel: number;
 }
 
 export interface ProjectSettings {
@@ -144,11 +155,22 @@ export interface Transaction {
   transaction_type: string;
   payment_method: string;
   amount: string;
+  budget_category?: string;
   notes?: string;
   transaction_images?: TransactionImage[];
   receipt_emailed: boolean;
   created_at: string;
   created_by: string;
+}
+
+export enum BudgetCategory {
+  DESIGN_FEE = 'Design Fee',
+  FURNISHINGS = 'Furnishings',
+  PROPERTY_MANAGEMENT = 'Property Management',
+  KITCHEN = 'Kitchen',
+  INSTALL = 'Install',
+  STORAGE_RECEIVING = 'Storage & Receiving',
+  FUEL = 'Fuel'
 }
 
 export enum ErrorType {
@@ -167,6 +189,7 @@ export interface TransactionFormData {
   transaction_type: string;
   payment_method: string;
   amount: string;
+  budget_category?: string;
   notes?: string;
   transaction_images?: File[];
   receipt_emailed: boolean;
@@ -190,6 +213,7 @@ export interface TransactionValidationErrors {
   transaction_type?: string;
   payment_method?: string;
   amount?: string;
+  budget_category?: string;
   notes?: string;
   transaction_images?: string;
   receipt_emailed?: string;

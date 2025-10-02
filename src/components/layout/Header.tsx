@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../ui/Button'
-import { LogOut, User, Settings } from 'lucide-react'
+import { LogOut, Settings } from 'lucide-react'
 
 export default function Header() {
   const { user, signOut, loading } = useAuth()

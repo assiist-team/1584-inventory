@@ -148,6 +148,7 @@ export default function Projects() {
                   <CompactBudgetProgress
                     budget={project.budget}
                     designFee={project.designFee}
+                    budgetCategories={project.budgetCategories}
                     transactions={transactions[project.id] || []}
                   />
                 </div>

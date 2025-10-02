@@ -227,37 +227,30 @@ export default function ProjectDetail() {
           </div>
         </div>
 
-        {/* Project information */}
+        {/* Project information and Budget Progress */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{project.name}</h1>
-          {project.clientName && (
-            <p className="text-lg text-gray-600 mb-4">{project.clientName}</p>
-          )}
-          {(project.budget || project.designFee) && (
-            <div className="flex flex-wrap items-center gap-4">
-              {project.budget && (
-                <div className="flex items-center text-sm text-gray-600">
-                  <span>Budget: {project.budget.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
-                </div>
-              )}
-              {project.designFee && (
-                <div className="flex items-center text-sm text-gray-600">
-                  <span>Design Fee: {project.designFee.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
-                </div>
-              )}
-            </div>
+          {/* Project information */}
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">{project.name}</h1>
+            {project.clientName && (
+              <p className="text-lg text-gray-600 mb-4">{project.clientName}</p>
+            )}
+          </div>
+
+          {/* Subtle divider */}
+          <div className="border-t border-gray-200 my-6"></div>
+
+          {/* Budget Progress */}
+          {project && (
+            <BudgetProgress
+              budget={project.budget}
+              designFee={project.designFee}
+              budgetCategories={project.budgetCategories}
+              transactions={transactions}
+            />
           )}
         </div>
       </div>
-
-      {/* Budget Progress */}
-      {project && (
-        <BudgetProgress
-          budget={project.budget}
-          designFee={project.designFee}
-          transactions={transactions}
-        />
-      )}
 
       {/* Tabs */}
       <div className="bg-white shadow rounded-lg">
@@ -269,7 +262,7 @@ export default function ProjectDetail() {
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center ${
+                  className={`py-4 px-1 border-b-2 font-medium text-base flex items-center ${
                     activeTab === tab.id
                       ? 'border-primary-500 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -294,20 +287,21 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Project Edit Form */}
-      {isEditing && project && (
-        <ProjectForm
-          initialData={{
-            name: project.name,
-            description: project.description,
-            clientName: project.clientName,
-            budget: project.budget,
-            designFee: project.designFee,
-          }}
-          onSubmit={handleEditProject}
-          onCancel={handleCancelEdit}
-        />
-      )}
+        {/* Project Edit Form */}
+        {isEditing && project && (
+          <ProjectForm
+            initialData={{
+              name: project.name,
+              description: project.description,
+              clientName: project.clientName,
+              budget: project.budget,
+              designFee: project.designFee,
+              budgetCategories: project.budgetCategories,
+            }}
+            onSubmit={handleEditProject}
+            onCancel={handleCancelEdit}
+          />
+        )}
 
       {/* Delete Confirmation Dialog */}
       {showDeleteConfirm && (

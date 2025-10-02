@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X, DollarSign } from 'lucide-react'
+import { ProjectBudgetCategories } from '@/types'
 
 interface ProjectFormData {
   name: string;
@@ -7,6 +8,7 @@ interface ProjectFormData {
   clientName: string;
   budget?: number;
   designFee?: number;
+  budgetCategories?: ProjectBudgetCategories;
 }
 
 interface ProjectFormProps {
@@ -25,13 +27,18 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     clientName: initialData?.clientName || '',
     budget: initialData?.budget || undefined,
     designFee: initialData?.designFee || undefined,
+    budgetCategories: initialData?.budgetCategories || undefined,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const handleChange = (field: keyof ProjectFormData, value: string | number) => {
-    const processedValue = typeof value === 'number' && value === 0 ? undefined : value
-    setFormData(prev => ({ ...prev, [field]: processedValue }))
+  const handleChange = (field: keyof ProjectFormData, value: string | number | ProjectBudgetCategories) => {
+    if (field === 'budgetCategories' && typeof value === 'object') {
+      setFormData(prev => ({ ...prev, [field]: value }))
+    } else {
+      const processedValue = typeof value === 'number' && value === 0 ? undefined : value
+      setFormData(prev => ({ ...prev, [field]: processedValue }))
+    }
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
@@ -194,6 +201,226 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                 />
               </div>
               {errors.designFee && <p className="mt-1 text-sm text-red-600">{errors.designFee}</p>}
+            </div>
+
+            {/* Budget Categories Section */}
+            <div className="border-t border-gray-200 pt-4">
+              <h4 className="text-md font-medium text-gray-900 mb-3">Budget Categories (Optional)</h4>
+              <p className="text-sm text-gray-500 mb-4">Set specific budgets for different project categories. These will be used to track spending by category.</p>
+
+              {/* Furnishings */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.furnishings" className="block text-sm font-medium text-gray-700">
+                  Furnishings Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.furnishings"
+                    value={formData.budgetCategories?.furnishings?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: formData.budgetCategories?.designFee || 0,
+                        furnishings: value > 0 ? value : 0,
+                        propertyManagement: formData.budgetCategories?.propertyManagement || 0,
+                        kitchen: formData.budgetCategories?.kitchen || 0,
+                        install: formData.budgetCategories?.install || 0,
+                        storageReceiving: formData.budgetCategories?.storageReceiving || 0,
+                        fuel: formData.budgetCategories?.fuel || 0
+                      }
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Property Management */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.propertyManagement" className="block text-sm font-medium text-gray-700">
+                  Property Management Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.propertyManagement"
+                    value={formData.budgetCategories?.propertyManagement?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: 0,
+                        furnishings: 0,
+                        propertyManagement: 0,
+                        kitchen: 0,
+                        install: 0,
+                        storageReceiving: 0,
+                        fuel: 0,
+                        ...(formData.budgetCategories || {})
+                      }
+                      newBudgetCategories.propertyManagement = value > 0 ? value : 0
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Kitchen */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.kitchen" className="block text-sm font-medium text-gray-700">
+                  Kitchen Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.kitchen"
+                    value={formData.budgetCategories?.kitchen?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: 0,
+                        furnishings: 0,
+                        propertyManagement: 0,
+                        kitchen: 0,
+                        install: 0,
+                        storageReceiving: 0,
+                        fuel: 0,
+                        ...(formData.budgetCategories || {})
+                      }
+                      newBudgetCategories.kitchen = value > 0 ? value : 0
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Install */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.install" className="block text-sm font-medium text-gray-700">
+                  Install Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.install"
+                    value={formData.budgetCategories?.install?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: 0,
+                        furnishings: 0,
+                        propertyManagement: 0,
+                        kitchen: 0,
+                        install: 0,
+                        storageReceiving: 0,
+                        fuel: 0,
+                        ...(formData.budgetCategories || {})
+                      }
+                      newBudgetCategories.install = value > 0 ? value : 0
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Storage & Receiving */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.storageReceiving" className="block text-sm font-medium text-gray-700">
+                  Storage & Receiving Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.storageReceiving"
+                    value={formData.budgetCategories?.storageReceiving?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: 0,
+                        furnishings: 0,
+                        propertyManagement: 0,
+                        kitchen: 0,
+                        install: 0,
+                        storageReceiving: 0,
+                        fuel: 0,
+                        ...(formData.budgetCategories || {})
+                      }
+                      newBudgetCategories.storageReceiving = value > 0 ? value : 0
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Fuel */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.fuel" className="block text-sm font-medium text-gray-700">
+                  Fuel Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.fuel"
+                    value={formData.budgetCategories?.fuel?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: 0,
+                        furnishings: 0,
+                        propertyManagement: 0,
+                        kitchen: 0,
+                        install: 0,
+                        storageReceiving: 0,
+                        fuel: 0,
+                        ...(formData.budgetCategories || {})
+                      }
+                      newBudgetCategories.fuel = value > 0 ? value : 0
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Buttons */}
