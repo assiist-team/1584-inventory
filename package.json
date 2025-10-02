@@ -14,7 +14,9 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
     "firebase:deploy": "firebase deploy",
-    "firebase:setup-cors": "gsutil cors set cors.json gs://inventory-management-090999.appspot.com"
+    "firebase:setup-cors": "gsutil cors set cors.json gs://inventory-management-090999.appspot.com",
+    "clear-cache": "node -e \"console.log('🔥 MANUAL CACHE CLEARING REQUIRED 🔥\\n\\n1. Hard refresh browser: Ctrl+Shift+R (Cmd+Shift+R on Mac)\\n2. Clear browser cache completely\\n3. If using Cloudflare, purge cache at: https://dash.cloudflare.com/\\n4. Or run: echo \\\"Purge Cloudflare cache manually\\\"\\n\\n⚠️  This is required after deployments to see changes!')\"",
+    "deploy-force": "npm run build && echo '🚀 Deploy the dist/ folder and run: npm run clear-cache'"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.8",

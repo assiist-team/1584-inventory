@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Generate a timestamp for cache busting
+// Generate a timestamp for aggressive cache busting
 const timestamp = Date.now()
+// Generate a random version string for even more aggressive cache busting
+const version = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -41,17 +43,27 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         // Aggressive cache busting for immediate updates
-        cacheId: `1584-inventory-${timestamp}`,
+        cacheId: `1584-inventory-${version}`,
         mode: 'development',
+        // Force service worker to skip waiting and claim clients immediately
+        skipWaiting: true,
+        clientsClaim: true,
+        // Additional options for more aggressive cache management
+        additionalManifestEntries: [
+          {
+            url: '/?version=' + version,
+            revision: version
+          }
+        ],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: `firebase-storage-cache-${timestamp}`,
+              cacheName: `firebase-storage-${version}`,
               expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 1 // 1 hour for images
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 30 // 30 minutes for images
               },
               networkTimeoutSeconds: 3
             }
@@ -61,10 +73,10 @@ export default defineConfig({
             urlPattern: /\.(?:js|css|html|ico|png|svg|woff|woff2)$/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: `app-assets-${timestamp}`,
+              cacheName: `app-assets-${version}`,
               expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 1 // 1 hour max cache
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 30 // 30 minutes max cache
               },
               networkTimeoutSeconds: 3
             }
