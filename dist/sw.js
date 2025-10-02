@@ -70,7 +70,7 @@ if (!self.define) {
 define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
 
   workbox.setCacheNameDetails({
-    prefix: "1584-inventory-7hvj25rueodc4jfgl8xszm"
+    prefix: "1584-inventory-57o6tr62w079fxrtyx9k1c"
   });
   self.skipWaiting();
   workbox.clientsClaim();
@@ -168,8 +168,8 @@ define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
     "url": "registerSW.js",
     "revision": "1872c500de691dce40960bb85481de07"
   }, {
-    "url": "/?version=7hvj25rueodc4jfgl8xszm",
-    "revision": "7hvj25rueodc4jfgl8xszm"
+    "url": "/?version=57o6tr62w079fxrtyx9k1c",
+    "revision": "57o6tr62w079fxrtyx9k1c"
   }, {
     "url": "icon-192x192.png",
     "revision": "281ae70ed7cb4dc914c4ec5ed5c02b3d"
@@ -183,7 +183,7 @@ define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html")));
   workbox.registerRoute(/^https:\/\/firebasestorage\.googleapis\.com\/.*/i, new workbox.NetworkFirst({
-    "cacheName": "firebase-storage-7hvj25rueodc4jfgl8xszm",
+    "cacheName": "firebase-storage-57o6tr62w079fxrtyx9k1c",
     "networkTimeoutSeconds": 3,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 50,
@@ -191,7 +191,7 @@ define(['./workbox-178f72ee'], (function (workbox) { 'use strict';
     })]
   }), 'GET');
   workbox.registerRoute(/\.(?:js|css|html|ico|png|svg|woff|woff2)$/i, new workbox.NetworkFirst({
-    "cacheName": "app-assets-7hvj25rueodc4jfgl8xszm",
+    "cacheName": "app-assets-57o6tr62w079fxrtyx9k1c",
     "networkTimeoutSeconds": 3,
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 50,
