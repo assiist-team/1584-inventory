@@ -357,7 +357,7 @@ export default function TransactionDetail() {
               {transactionItems.map((item) => (
                 <Link
                   key={item.item_id}
-                  to={`/project/${projectId}/item/${item.item_id}`}
+                  to={`/project/${projectId}/item/${item.item_id}?from=transaction`}
                   className="block p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
                 >
                   <div className="flex items-start justify-between">

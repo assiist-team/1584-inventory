@@ -23,9 +23,12 @@ export default function ItemDetail() {
   const actualItemId = itemId || id
 
   // Get project ID from URL path (for /project/:id/item/:itemId) or search parameters (for /item/:id)
-  const projectId = id || searchParams.get('project')
+  const projectId = searchParams.get('project') || id
 
-  // Determine back navigation destination based on item's transaction association
+  // Check if user came from transaction detail screen
+  const fromTransaction = searchParams.get('from') === 'transaction'
+
+  // Determine back navigation destination based on navigation source
   const backDestination = useMemo(() => {
     // If item is not loaded yet (null), default to inventory
     if (!item) {
@@ -37,14 +40,15 @@ export default function ItemDetail() {
       return `/project/${projectId}?tab=inventory`
     }
 
-    // If item is loaded and has a transaction_id, go back to transaction detail
-    if (item.transaction_id && projectId) {
+    // If user came from transaction detail, go back to transaction detail
+    if (fromTransaction && item.transaction_id && projectId) {
       return `/project/${projectId}/transaction/${item.transaction_id}`
     }
 
-    // Otherwise, go to inventory
+    // For all other cases (including direct URL navigation), go back to inventory
+    // This includes: coming from inventory list, or direct navigation to item URL
     return `/project/${projectId}?tab=inventory`
-  }, [item, projectId])
+  }, [item, projectId, fromTransaction])
 
   // Initialize with sample data for demo
   const sampleItem: Item = {
