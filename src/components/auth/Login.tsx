@@ -23,13 +23,13 @@ export default function Login({ onSuccess }: LoginProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-primary-100">
-            <span className="text-2xl font-bold text-primary-600">1584</span>
+      <div className="max-w-md w-full">
+        <div className="-mt-8">
+          <div className="mx-auto h-48 w-48 flex items-center justify-center">
+            <img src="/logo.png" alt="1584 Design Projects Logo" className="h-full w-full object-contain" />
           </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Welcome to 1584 Design
+          <h2 className="text-center text-3xl font-extrabold text-gray-900">
+            1584 Design Projects
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Sign in to access your inventory and transaction management system
@@ -71,11 +71,6 @@ export default function Login({ onSuccess }: LoginProps) {
             </Button>
           </div>
 
-          <div className="text-center">
-            <p className="text-xs text-gray-500">
-              By signing in, you agree to our terms of service and privacy policy.
-            </p>
-          </div>
         </div>
       </div>
     </div>
