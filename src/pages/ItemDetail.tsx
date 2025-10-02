@@ -148,17 +148,24 @@ export default function ItemDetail() {
     if (!item) return
 
     try {
-      // Cycle through dispositions: keep -> return -> inventory -> keep
+      // Cycle through dispositions: keep -> to return -> returned -> inventory -> keep
+      // Handle backward compatibility for old "return" disposition
       let newDisposition: string
       switch (item.disposition) {
         case 'keep':
-          newDisposition = 'return'
+          newDisposition = 'to return'
           break
-        case 'return':
+        case 'to return':
+          newDisposition = 'returned'
+          break
+        case 'returned':
           newDisposition = 'inventory'
           break
         case 'inventory':
           newDisposition = 'keep'
+          break
+        case 'return': // Backward compatibility for old disposition
+          newDisposition = 'to return'
           break
         default:
           newDisposition = 'keep'
@@ -393,15 +400,17 @@ export default function ItemDetail() {
             <button
               onClick={toggleDisposition}
               className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
-                item.disposition === 'return'
+                item.disposition === 'to return' || item.disposition === 'return'
                   ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
+                  : item.disposition === 'returned'
+                  ? 'border-red-800 text-red-100 bg-red-800 hover:bg-red-900'
                   : item.disposition === 'inventory'
                   ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
                   : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
             >
               <RotateCcw className="h-4 w-4 mr-2" />
-              {item.disposition === 'keep' ? 'Return' : item.disposition === 'return' ? 'Inventory' : 'Keep'}
+              {item.disposition === 'keep' ? 'To Return' : (item.disposition === 'to return' || item.disposition === 'return') ? 'Returned' : item.disposition === 'returned' ? 'Inventory' : item.disposition === 'inventory' ? 'Keep' : 'Keep'}
             </button>
 
             <button
@@ -495,13 +504,15 @@ export default function ItemDetail() {
                   <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                     item.disposition === 'keep'
                       ? 'bg-green-100 text-green-800'
-                      : item.disposition === 'return'
-                      ? 'bg-red-100 text-red-800'
+                      : item.disposition === 'to return' || item.disposition === 'return'
+                      ? 'bg-red-100 text-red-700'
+                      : item.disposition === 'returned'
+                      ? 'bg-red-800 text-red-100'
                       : item.disposition === 'inventory'
                       ? 'bg-blue-100 text-blue-800'
                       : 'bg-gray-100 text-gray-800'
                   }`}>
-                    {item.disposition === 'return' ? 'Return' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
+                    {item.disposition === 'to return' || item.disposition === 'return' ? 'To Return' : item.disposition === 'returned' ? 'Returned' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
                   </span>
                 </dd>
               </div>
