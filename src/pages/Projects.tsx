@@ -3,7 +3,6 @@ import { Plus, FolderOpen } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
-import { formatDate } from '@/utils/dateUtils'
 import { useAuth } from '@/contexts/AuthContext'
 import ProjectForm from '@/components/ProjectForm'
 import { CompactBudgetProgress } from '@/components/ui/BudgetProgress'
@@ -128,12 +127,19 @@ export default function Projects() {
             <div key={project.id} className="bg-white shadow rounded-lg border border-gray-200">
               <div className="p-6">
                 {/* Project Header */}
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <FolderOpen className="h-8 w-8 text-primary-600 mr-3" />
-                    <h3 className="text-lg font-medium text-gray-900">
+                    <h3 className="text-lg font-semibold text-gray-900">
                       {project.name}
                     </h3>
+                  </div>
+                </div>
+
+                {/* Project Client */}
+                <div className="mb-4">
+                  <div className="text-sm font-normal text-gray-900 ml-11">
+                    {project.clientName}
                   </div>
                 </div>
 
@@ -146,42 +152,8 @@ export default function Projects() {
                   />
                 </div>
 
-                {/* Project Client */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-gray-500">Client</span>
-                  </div>
-                  <div className="text-lg font-semibold text-gray-900">
-                    {project.clientName}
-                  </div>
-                </div>
 
-                {/* Project Budget & Design Fee */}
-                {(project.budget || project.designFee) && (
-                  <div className="mb-4 space-y-2">
-                    {project.budget && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Budget</span>
-                        <div className="flex items-center text-lg font-semibold text-gray-900">
-                          {project.budget.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                        </div>
-                      </div>
-                    )}
-                    {project.designFee && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">Design Fee</span>
-                        <div className="flex items-center text-lg font-semibold text-gray-900">
-                          {project.designFee.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
 
-                {/* Project Date */}
-                <div className="text-xs text-gray-400 mb-4">
-                  Created: {formatDate(project.createdAt)}
-                </div>
 
                 {/* Action Button */}
                 <div className="flex justify-center">
