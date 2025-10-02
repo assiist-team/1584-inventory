@@ -7,7 +7,8 @@ import {
   getCurrentUserWithData,
   createOrUpdateUserDocument,
   initializeAuthPersistence,
-  initializeFirebase
+  initializeFirebase,
+  auth
 } from '../services/firebase'
 import { User, UserRole } from '../types'
 
@@ -34,64 +35,104 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     let isInitialLoad = true
+    let authStateUnsubscribe: (() => void) | null = null
 
-    // Initialize Firebase first (clears cache), then auth persistence, then set up auth state listener
+    // Initialize Firebase and auth persistence
     const initializeAuth = async () => {
       try {
-        // Clear any corrupted Firebase cache first
+        // Initialize Firebase (preserves auth persistence)
         await initializeFirebase()
-        console.log('Firebase cache cleared and initialized')
+        console.log('🔥 Firebase initialized (auth persistence preserved)')
 
-        // Ensure auth persistence is properly configured before listening to auth state
+        // Set auth persistence to localStorage for indefinite login
         await initializeAuthPersistence()
-        console.log('Auth persistence initialized successfully')
+        console.log('🔐 Auth persistence set to localStorage (indefinite)')
       } catch (error) {
-        console.error('Failed to initialize Firebase/auth persistence:', error)
-        // Continue anyway - the auth state listener should still work
+        console.error('❌ Failed to initialize Firebase/auth persistence:', error)
       }
 
-      // Listen for auth state changes
-      const unsubscribe = onAuthStateChange(async (firebaseUser) => {
+      // Wait for auth state to be restored from localStorage
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      // Check if user is already authenticated from localStorage
+      const currentUser = auth.currentUser
+      console.log('🔍 Current Firebase user from localStorage:', {
+        exists: !!currentUser,
+        email: currentUser?.email || 'none',
+        uid: currentUser?.uid || 'none',
+        source: 'localStorage persistence'
+      })
+
+      // Set initial state if user exists (from localStorage)
+      if (currentUser) {
+        setFirebaseUser(currentUser)
+        try {
+          await createOrUpdateUserDocument(currentUser)
+          const { appUser } = await getCurrentUserWithData()
+          setUser(appUser)
+          if (appUser?.email) {
+            console.log('✅ User restored from localStorage persistence:', appUser.email)
+          }
+        } catch (error) {
+          console.error('❌ Error loading user from localStorage:', error)
+          setUser(null)
+          setFirebaseUser(null) // Clear invalid user
+        }
+      }
+
+      // Set up auth state listener for future changes
+      authStateUnsubscribe = onAuthStateChange(async (firebaseUser) => {
+        console.log('🔄 AuthContext: Auth state changed:', {
+          hasUser: !!firebaseUser,
+          email: firebaseUser?.email || 'none',
+          uid: firebaseUser?.uid || 'none',
+          isInitialLoad,
+          source: isInitialLoad ? 'initial load' : 'auth change'
+        })
+
+        // Skip duplicate initial calls
+        if (isInitialLoad && firebaseUser && currentUser && firebaseUser.uid === currentUser.uid) {
+          console.log('⏭️ Skipping duplicate initial auth state from localStorage')
+          setLoading(false)
+          isInitialLoad = false
+          return
+        }
+
         setFirebaseUser(firebaseUser)
 
         if (firebaseUser) {
           try {
-            // First, ensure the user document exists
             await createOrUpdateUserDocument(firebaseUser)
-
-            // Then fetch the user data - this is critical for proper authentication
             const { appUser } = await getCurrentUserWithData()
             setUser(appUser)
-
-            // Ensure we have a valid user with email before considering auth complete
             if (appUser?.email) {
-              console.log('User authentication completed successfully:', appUser.email)
-            } else {
-              console.warn('User document created but no email found in user data')
-              setUser(null)
+              console.log('✅ Auth state change - user authenticated:', appUser.email)
             }
           } catch (error) {
-            console.error('Error fetching user data:', error)
+            console.error('❌ Error loading authenticated user:', error)
             setUser(null)
           }
         } else {
+          console.log('🚪 User signed out or auth cleared')
           setUser(null)
         }
 
-        // Only set loading to false on the initial load
+        // Mark loading as complete after initial processing
         if (isInitialLoad) {
           setLoading(false)
           isInitialLoad = false
         }
       })
 
-      return unsubscribe
+      return authStateUnsubscribe
     }
 
-    const cleanup = initializeAuth()
+    initializeAuth()
 
     return () => {
-      cleanup.then(unsubscribe => unsubscribe?.())
+      if (authStateUnsubscribe) {
+        authStateUnsubscribe()
+      }
     }
   }, [])
 

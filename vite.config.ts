@@ -15,7 +15,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
         name: '1584 Design Inventory & Transactions',
-        short_name: '1584 Design',
+        short_name: '1584 Design Projects',
         description: 'Modern, mobile-first inventory management system',
         theme_color: '#0ea5e9',
         background_color: '#ffffff',
@@ -39,8 +39,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Use shorter cache times for app files to ensure updates
+        globPatterns: ['**/*.{ico,png,svg}'], // Only cache static assets, not app files
+        // Don't cache app files in service worker - always fetch fresh versions
         cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
           {
@@ -50,22 +50,12 @@ export default defineConfig({
               cacheName: `firebase-storage-cache-${timestamp}`,
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 5 // 5 minutes for images - reasonable compromise
+                maxAgeSeconds: 60 * 60 * 24 // 24 hours for images is fine
               }
             }
           },
-          // Cache app shell files with shorter expiration
-          {
-            urlPattern: /\.(?:js|css|html)$/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: `app-shell-${timestamp}`,
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 // 1 minute for app files - see changes immediately
-              }
-            }
-          }
+          // DON'T cache app files (js, css, html) - always fetch fresh versions
+          // This ensures immediate deployment updates are visible
         ]
       },
       // PWA enabled in both dev and prod for consistent behavior
@@ -82,12 +72,7 @@ export default defineConfig({
     host: true,
     https: false, // Set to true if you want HTTPS in development
     cors: true,   // Enable CORS for development
-    // Disable ALL browser caching in development
-    headers: {
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0'
-    }
+    // Enable localStorage for auth persistence - no cache control headers that interfere
   },
   build: {
     outDir: 'dist',

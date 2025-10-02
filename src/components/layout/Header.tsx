@@ -14,7 +14,7 @@ export default function Header() {
           <div className="flex items-center">
             {/* Logo/Brand */}
             <Link to="/" className="text-xl font-bold text-gray-900">
-              1584
+              1584 Design Projects
             </Link>
           </div>
 

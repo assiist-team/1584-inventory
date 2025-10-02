@@ -16,33 +16,33 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 }
 
-// Clear any potentially corrupted Firebase cache
+// Clear only corrupted Firebase cache (not auth persistence data)
 const clearFirebaseCache = async (): Promise<void> => {
   if (typeof window !== 'undefined') {
     try {
-      // Clear localStorage Firebase entries
+      // Only clear potentially corrupted cache data, but NEVER clear Firebase Auth persistence
+      // Firebase Auth uses localStorage keys like 'firebase:authUser:API_KEY' and 'firebaseLocalStorageDb'
+      // We need to preserve these for authentication persistence
+
+      // Clear only non-auth Firebase cache that might be corrupted
       const keysToRemove: string[] = []
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
-        if (key && (key.includes('firebase') || key.includes('firebaseLocalStorageDb'))) {
+        if (key && key.includes('firebase') && !key.includes('firebase:authUser:') && !key.includes('firebaseLocalStorageDb')) {
+          // Only remove non-auth Firebase cache entries
           keysToRemove.push(key)
         }
       }
-      keysToRemove.forEach(key => localStorage.removeItem(key))
 
-      // Clear sessionStorage Firebase entries
-      const sessionKeysToRemove: string[] = []
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i)
-        if (key && key.includes('firebase')) {
-          sessionKeysToRemove.push(key)
-        }
+      // Only remove cache entries if any exist (don't touch auth data)
+      if (keysToRemove.length > 0) {
+        keysToRemove.forEach(key => localStorage.removeItem(key))
+        console.log('Cleared non-auth Firebase cache entries:', keysToRemove.length)
       }
-      sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key))
 
-      console.log('Cleared Firebase cache from localStorage and sessionStorage')
+      console.log('✅ Preserved Firebase Auth persistence data - users will stay logged in')
     } catch (error) {
-      console.warn('Error clearing Firebase cache:', error)
+      console.warn('Error managing Firebase cache (auth persistence preserved):', error)
     }
   }
 }
@@ -60,34 +60,43 @@ export const isFirebaseReady = (): boolean => {
   return app !== null && typeof app === 'object'
 }
 
-// Initialize Firebase with cache clearing
+// Initialize Firebase with minimal cache clearing (preserves auth)
 export const initializeFirebase = async (): Promise<void> => {
   if (typeof window !== 'undefined') {
+    // Only clear non-auth Firebase cache, preserving authentication persistence
     await clearFirebaseCache()
-
-    // Small delay to ensure cache is cleared before Firebase operations
-    await new Promise(resolve => setTimeout(resolve, 100))
   }
 }
 
 // Configure Firebase Auth to use local persistence for persistent login
-// This ensures users stay logged in across browser sessions
+// This ensures users stay logged in across browser sessions INDEFINITELY
 export const initializeAuthPersistence = async (): Promise<void> => {
   if (typeof window !== 'undefined') {
     try {
-      // Wait a bit for Firebase to be fully initialized
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Wait for Firebase to be fully initialized
+      await new Promise(resolve => setTimeout(resolve, 200))
 
       if (!isFirebaseReady()) {
         throw new Error('Firebase app is not properly initialized')
       }
 
+      // Set persistence to localStorage - users stay logged in indefinitely
       await setPersistence(auth, browserLocalPersistence)
-      console.log('Firebase Auth persistence set to LOCAL - users will stay logged in across browser sessions')
+      console.log('✅ Firebase Auth persistence set to LOCAL - users will stay logged in INDEFINITELY across browser sessions')
+      console.log('🔧 Current auth state:', {
+        ready: isFirebaseReady(),
+        currentUser: auth?.currentUser ? 'authenticated' : 'not authenticated',
+        persistence: 'localStorage (indefinite)'
+      })
+
+      // Verify the persistence was set correctly
+      const currentPersistence = (auth as any).settings?.persistence
+      console.log('🔍 Auth persistence verification:', currentPersistence)
+
     } catch (error) {
-      console.error('Error setting Firebase Auth persistence:', error)
-      // Don't throw - allow the app to continue even if persistence fails
-      console.warn('Continuing without auth persistence - users may need to re-authenticate on page reload')
+      console.error('❌ Error setting Firebase Auth persistence:', error)
+      console.warn('⚠️ Auth persistence may not work correctly - users might need to re-authenticate on page reload')
+      // Don't throw - allow the app to continue
     }
   }
 }
