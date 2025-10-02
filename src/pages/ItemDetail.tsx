@@ -148,7 +148,22 @@ export default function ItemDetail() {
     if (!item) return
 
     try {
-      const newDisposition = item.disposition === 'return' ? 'keep' : 'return'
+      // Cycle through dispositions: keep -> return -> inventory -> keep
+      let newDisposition: string
+      switch (item.disposition) {
+        case 'keep':
+          newDisposition = 'return'
+          break
+        case 'return':
+          newDisposition = 'inventory'
+          break
+        case 'inventory':
+          newDisposition = 'keep'
+          break
+        default:
+          newDisposition = 'keep'
+      }
+
       await itemService.updateItem(item.project_id, item.item_id, {
         disposition: newDisposition
       })
@@ -380,11 +395,13 @@ export default function ItemDetail() {
               className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
                 item.disposition === 'return'
                   ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
+                  : item.disposition === 'inventory'
+                  ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
                   : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
             >
               <RotateCcw className="h-4 w-4 mr-2" />
-              {item.disposition === 'keep' ? 'Return' : 'Keep'}
+              {item.disposition === 'keep' ? 'Return' : item.disposition === 'return' ? 'Inventory' : 'Keep'}
             </button>
 
             <button
@@ -476,9 +493,13 @@ export default function ItemDetail() {
                 </dt>
                 <dd className="mt-1">
                   <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    item.disposition === 'return'
+                    item.disposition === 'keep'
+                      ? 'bg-green-100 text-green-800'
+                      : item.disposition === 'return'
                       ? 'bg-red-100 text-red-800'
-                      : 'bg-green-100 text-green-800'
+                      : item.disposition === 'inventory'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-gray-100 text-gray-800'
                   }`}>
                     {item.disposition === 'return' ? 'Return' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
                   </span>

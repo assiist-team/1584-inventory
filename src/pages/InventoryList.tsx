@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Bookmark, Printer, RotateCcw, Trash2, Camera } from 'lucide-react'
+import { Plus, Search, Bookmark, Printer, RotateCcw, Trash2, Camera, ChevronDown } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -38,6 +38,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
+  const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
   const { showSuccess, showError } = useToast()
 
   // Fetch real inventory data from Firestore
@@ -79,6 +80,23 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
   }, [])
 
+  // Close disposition menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openDispositionMenu && !event.target) return
+
+      const target = event.target as Element
+      if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
+        setOpenDispositionMenu(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [openDispositionMenu])
+
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedItems(new Set(items.map(item => item.item_id)))
@@ -119,12 +137,10 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
   }
 
-  const toggleDisposition = async (itemId: string) => {
+  const updateDisposition = async (itemId: string, newDisposition: string) => {
     try {
       const item = items.find(item => item.item_id === itemId)
       if (!item) return
-
-      const newDisposition = item.disposition === 'return' ? 'keep' : 'return'
 
       // Update in Firestore
       await itemService.updateItem(projectId, itemId, { disposition: newDisposition })
@@ -135,9 +151,31 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           ? { ...item, disposition: newDisposition }
           : item
       ))
+
+      // Close the disposition menu
+      setOpenDispositionMenu(null)
     } catch (error) {
       console.error('Failed to update disposition:', error)
       setError('Failed to update item disposition. Please try again.')
+    }
+  }
+
+  const toggleDispositionMenu = (itemId: string) => {
+    setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
+  }
+
+  const getDispositionBadgeClasses = (disposition: string) => {
+    const baseClasses = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80'
+
+    switch (disposition) {
+      case 'keep':
+        return `${baseClasses} bg-green-100 text-green-800`
+      case 'return':
+        return `${baseClasses} bg-red-100 text-red-800`
+      case 'inventory':
+        return `${baseClasses} bg-blue-100 text-blue-800`
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800`
     }
   }
 
@@ -384,6 +422,44 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
                         {/* Action buttons */}
                         <div className="flex items-center space-x-2">
+                          <div className="relative">
+                            <span
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                toggleDispositionMenu(item.item_id)
+                              }}
+                              className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
+                            >
+                              {item.disposition}
+                              <ChevronDown className="h-3 w-3 ml-1" />
+                            </span>
+
+                            {/* Dropdown menu */}
+                            {openDispositionMenu === item.item_id && (
+                              <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                <div className="py-1">
+                                  {['keep', 'return', 'inventory'].map((disposition) => (
+                                    <button
+                                      key={disposition}
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        updateDisposition(item.item_id, disposition)
+                                      }}
+                                      className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
+                                        item.disposition === disposition
+                                          ? 'bg-gray-100 text-gray-900'
+                                          : 'text-gray-700'
+                                      }`}
+                                    >
+                                      {disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                           <button
                             onClick={(e) => {
                               e.preventDefault()
@@ -397,20 +473,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                             }`}
                           >
                             <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              toggleDisposition(item.item_id)
-                            }}
-                            className={`p-2 rounded-full transition-colors ${
-                              item.disposition === 'return'
-                                ? 'text-red-600 bg-red-50'
-                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            <RotateCcw className="h-4 w-4" />
                           </button>
                           <button
                             onClick={(e) => {
