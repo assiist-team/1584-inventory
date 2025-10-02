@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Generate a timestamp for cache busting
+const timestamp = Date.now()
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -37,12 +40,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Force cache invalidation by modifying cache names with timestamp
+        cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'firebase-storage-cache',
+              cacheName: `firebase-storage-cache-${timestamp}`,
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
@@ -50,6 +55,10 @@ export default defineConfig({
             }
           }
         ]
+      },
+      // Force service worker to skip waiting and claim clients immediately
+      devOptions: {
+        enabled: false // Disable in development to avoid caching issues
       }
     })
   ],
