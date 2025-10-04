@@ -437,6 +437,42 @@ export default function ItemDetail() {
             <h1 className="text-xl font-semibold text-gray-900">{item.description}</h1>
           </div>
 
+          {/* Item Images */}
+          <div className="px-6 py-4 border-t border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-900">Add Image</h3>
+              <button
+                onClick={handleSelectFromGallery}
+                disabled={isUploadingImage}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                title="Add images from gallery or camera"
+              >
+                <ImagePlus className="h-3 w-3 mr-1" />
+                {isUploadingImage
+                  ? uploadProgress > 0 && uploadProgress < 100
+                    ? `Uploading... ${Math.round(uploadProgress)}%`
+                    : 'Uploading...'
+                  : 'Add Images'
+                }
+              </button>
+            </div>
+
+            {item.images && item.images.length > 0 ? (
+              <ImagePreview
+                images={item.images}
+                onRemoveImage={handleRemoveImage}
+                onSetPrimary={handleSetPrimaryImage}
+                maxImages={5}
+                size="md"
+                showControls={true}
+              />
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-sm text-gray-500 mb-3">No images for this item yet</p>
+              </div>
+            )}
+          </div>
+
           <div className="px-6 py-4">
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
               <div>
@@ -445,6 +481,21 @@ export default function ItemDetail() {
                   Description
                 </dt>
                 <dd className="mt-1 text-sm text-gray-900">{item.description}</dd>
+              </div>
+
+              <div>
+                <dt className="text-sm font-medium text-gray-500 flex items-center">
+                  <ShoppingBag className="h-4 w-4 mr-1" />
+                  Transaction
+                </dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  <Link
+                    to={`/project/${projectId}/transaction/${item.transaction_id}`}
+                    className="text-primary-600 hover:text-primary-800 underline"
+                  >
+                    {item.transaction_id}
+                  </Link>
+                </dd>
               </div>
 
               <div>
@@ -466,17 +517,9 @@ export default function ItemDetail() {
               <div>
                 <dt className="text-sm font-medium text-gray-500 flex items-center">
                   <DollarSign className="h-4 w-4 mr-1" />
-                  Price
+                  Purchase Price
                 </dt>
                 <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
-              </div>
-
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  Market Value
-                </dt>
-                <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value || ''}</dd>
               </div>
 
               <div>
@@ -485,6 +528,14 @@ export default function ItemDetail() {
                   1584 Resale Price
                 </dt>
                 <dd className="mt-1 text-sm text-primary-600 font-medium">${item.resale_price || ''}</dd>
+              </div>
+
+              <div>
+                <dt className="text-sm font-medium text-gray-500 flex items-center">
+                  <DollarSign className="h-4 w-4 mr-1" />
+                  Market Value
+                </dt>
+                <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value || ''}</dd>
               </div>
 
               <div>
@@ -527,41 +578,6 @@ export default function ItemDetail() {
             </dl>
           </div>
 
-          {/* Item Images */}
-          <div className="px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-900">Item Images</h3>
-              <button
-                onClick={handleSelectFromGallery}
-                disabled={isUploadingImage}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-                title="Add images from gallery or camera"
-              >
-                <ImagePlus className="h-3 w-3 mr-1" />
-                {isUploadingImage
-                  ? uploadProgress > 0 && uploadProgress < 100
-                    ? `Uploading... ${Math.round(uploadProgress)}%`
-                    : 'Uploading...'
-                  : 'Add Images'
-                }
-              </button>
-            </div>
-
-            {item.images && item.images.length > 0 ? (
-              <ImagePreview
-                images={item.images}
-                onRemoveImage={handleRemoveImage}
-                onSetPrimary={handleSetPrimaryImage}
-                maxImages={5}
-                size="md"
-                showControls={true}
-              />
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-sm text-gray-500 mb-3">No images for this item yet</p>
-              </div>
-            )}
-          </div>
 
           {/* Metadata */}
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">

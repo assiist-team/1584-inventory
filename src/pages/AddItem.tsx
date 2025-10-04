@@ -325,31 +325,11 @@ export default function AddItem() {
           <h1 className="text-2xl font-bold text-gray-900">Add Item</h1>
         </div>
         <form onSubmit={handleSubmit} className="space-y-8 p-8">
-          {/* Description */}
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-              Description *
-            </label>
-            <input
-              type="text"
-              id="description"
-              value={formData.description}
-              onChange={(e) => handleInputChange('description', e.target.value)}
-              placeholder="e.g., Wooden dining table, 6 chairs"
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.description ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.description && (
-              <p className="mt-1 text-sm text-red-600">{errors.description}</p>
-            )}
-          </div>
-
           {/* Item Images */}
           <div>
             <div className="mb-3">
               <label className="block text-sm font-medium text-gray-700">
-                Item Images
+                Add Image
               </label>
             </div>
 
@@ -377,6 +357,26 @@ export default function AddItem() {
                   }
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+              Description *
+            </label>
+            <input
+              type="text"
+              id="description"
+              value={formData.description}
+              onChange={(e) => handleInputChange('description', e.target.value)}
+              placeholder="e.g., Wooden dining table, 6 chairs"
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.description ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.description && (
+              <p className="mt-1 text-sm text-red-600">{errors.description}</p>
             )}
           </div>
 
@@ -494,55 +494,29 @@ export default function AddItem() {
             />
           </div>
 
-          {/* Price and Market Value */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                Purchase Price
-              </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">$</span>
-                </div>
-                <input
-                  type="text"
-                  id="price"
-                  value={formData.price}
-                  onChange={(e) => handleInputChange('price', e.target.value)}
-                  placeholder="0.00"
-                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    errors.price ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
+          {/* Purchase Price */}
+          <div>
+            <label htmlFor="price" className="block text-sm font-medium text-gray-700">
+              Purchase Price
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
               </div>
-              {errors.price && (
-                <p className="mt-1 text-sm text-red-600">{errors.price}</p>
-              )}
+              <input
+                type="text"
+                id="price"
+                value={formData.price}
+                onChange={(e) => handleInputChange('price', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.price ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
             </div>
-
-            <div>
-              <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
-                Market Value
-              </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">$</span>
-                </div>
-                <input
-                  type="text"
-                  id="market_value"
-                  value={formData.market_value}
-                  onChange={(e) => handleInputChange('market_value', e.target.value)}
-                  placeholder="0.00"
-                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    errors.market_value ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
-              </div>
-              {errors.market_value && (
-                <p className="mt-1 text-sm text-red-600">{errors.market_value}</p>
-              )}
-            </div>
+            {errors.price && (
+              <p className="mt-1 text-sm text-red-600">{errors.price}</p>
+            )}
           </div>
 
           {/* 1584 Resale Price */}
@@ -563,6 +537,31 @@ export default function AddItem() {
                 className="block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               />
             </div>
+          </div>
+
+          {/* Market Value */}
+          <div>
+            <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+              Market Value
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
+              </div>
+              <input
+                type="text"
+                id="market_value"
+                value={formData.market_value}
+                onChange={(e) => handleInputChange('market_value', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.market_value ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+            </div>
+            {errors.market_value && (
+              <p className="mt-1 text-sm text-red-600">{errors.market_value}</p>
+            )}
           </div>
 
           {/* Payment Method */}
