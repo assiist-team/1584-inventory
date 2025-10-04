@@ -565,7 +565,7 @@ export default function AddItem() {
           </div>
 
           {/* Payment Method */}
-          {!isTransactionSelected && (
+          {!isTransactionSelected && formData.source !== 'Inventory' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Payment Method
