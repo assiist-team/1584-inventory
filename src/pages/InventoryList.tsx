@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Bookmark, Printer, RotateCcw, Trash2, Camera, ChevronDown, Edit } from 'lucide-react'
+import { Plus, Search, Bookmark, Printer, RotateCcw, Camera, ChevronDown, Edit } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -181,24 +181,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
   }
 
-  const handleDeleteItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
-      return
-    }
-
-    try {
-      await itemService.deleteItem(projectId, itemId)
-      setSelectedItems(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(itemId)
-        return newSet
-      })
-      setError(null)
-    } catch (error) {
-      console.error('Failed to delete item:', error)
-      setError('Failed to delete item. Please try again.')
-    }
-  }
 
   const handleAddImage = async (itemId: string) => {
     try {
@@ -357,8 +339,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                 className="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
                 disabled={selectedItems.size === 0}
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                All
+                Delete All
               </button>
             </div>
           </div>
@@ -476,22 +457,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           >
                             <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              handleAddImage(item.item_id)
-                            }}
-                            disabled={uploadingImages.has(item.item_id)}
-                            className={`p-2 rounded-full transition-colors disabled:opacity-50 ${
-                              item.images && item.images.length > 0
-                                ? 'text-primary-600 hover:text-primary-700 hover:bg-primary-50'
-                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-                            }`}
-                            title="Add image (camera or gallery)"
-                          >
-                            <Camera className="h-4 w-4" />
-                          </button>
                           <Link
                             to={`/project/${projectId}/edit-item/${item.item_id}`}
                             onClick={(e) => e.stopPropagation()}
@@ -500,16 +465,48 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           >
                             <Edit className="h-4 w-4" />
                           </Link>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              handleDeleteItem(item.item_id)
-                            }}
-                            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                        </div>
+                      </div>
+
+                      {/* Middle row: Thumbnail and Description */}
+                      <div className="flex items-start gap-3 py-3">
+                        <div className="flex-shrink-0">
+                          {item.images && item.images.length > 0 ? (
+                            // Show primary image thumbnail or first image if no primary
+                            (() => {
+                              const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
+                              return (
+                                <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                                  <img
+                                    src={primaryImage.url}
+                                    alt={primaryImage.alt || 'Item image'}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )
+                            })()
+                          ) : (
+                            // Show camera placeholder when no images
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleAddImage(item.item_id)
+                              }}
+                              disabled={uploadingImages.has(item.item_id)}
+                              className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
+                              title="Add image (camera or gallery)"
+                            >
+                              <Camera className="h-6 w-6" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Item description - 3 lines max with ellipsis */}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base font-medium text-gray-900 line-clamp-3 break-words">
+                            {item.description}
+                          </h3>
                         </div>
                       </div>
 
@@ -519,11 +516,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         className="block"
                       >
                         <div className="space-y-2">
-                          {/* Item description - no truncation */}
-                          <h3 className="text-base font-medium text-gray-900">
-                            {item.description}
-                          </h3>
-
                           {/* Price, Source, SKU on same row */}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                             {item.price && (
@@ -542,23 +534,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                               </>
                             )}
                           </div>
-
-                          {/* Notes - visible on mobile as last row */}
-                          <div className="sm:hidden">
-                            {item.notes && (
-                              <p className="text-sm text-gray-600 line-clamp-2">
-                                {item.notes}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Additional info on larger screens */}
-                          <div className="hidden sm:flex items-center text-sm text-gray-600">
-                            {item.notes && (
-                              <p className="truncate max-w-xs">{item.notes}</p>
-                            )}
-                          </div>
-
                         </div>
                       </Link>
                     </div>
