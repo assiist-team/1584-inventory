@@ -15,6 +15,7 @@ interface InventoryItem {
   market_value?: string
   payment_method: string
   notes?: string
+  space?: string
   qr_key: string
   bookmark: boolean
   disposition: string
@@ -526,7 +527,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                       </div>
 
                       {/* Middle row: Thumbnail and Description */}
-                      <div className="flex items-start gap-3 py-3">
+                      <div className="flex items-center gap-3 py-3">
                         <div className="flex-shrink-0">
                           {item.images && item.images.length > 0 ? (
                             // Show primary image thumbnail or first image if no primary
@@ -559,11 +560,19 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           )}
                         </div>
 
-                        {/* Item description - 3 lines max with ellipsis */}
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-base font-medium text-gray-900 line-clamp-3 break-words">
-                            {item.description}
-                          </h3>
+                        {/* Item description - 2 lines max with ellipsis */}
+                        <div className="flex-1 min-w-0 flex items-center">
+                          <div>
+                            <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
+                              {item.description}
+                            </h3>
+                            {/* Space field */}
+                            {item.space && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                {item.space}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
 

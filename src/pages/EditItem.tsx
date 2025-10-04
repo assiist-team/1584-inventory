@@ -45,6 +45,7 @@ export default function EditItem() {
     market_value: '',
     payment_method: '',
     disposition: '',
+    space: '',
     notes: '',
     bookmark: false,
     selectedTransactionId: ''
@@ -96,6 +97,7 @@ export default function EditItem() {
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
               disposition: String(fetchedItem.disposition || ''),
+              space: String(fetchedItem.space || ''),
               notes: String(fetchedItem.notes || ''),
               bookmark: Boolean(fetchedItem.bookmark || false),
               selectedTransactionId: String(fetchedItem.transaction_id || '')
@@ -514,6 +516,21 @@ export default function EditItem() {
                 {errors.disposition && (
                   <p className="mt-1 text-sm text-red-600">{errors.disposition}</p>
                 )}
+              </div>
+
+              {/* Space */}
+              <div>
+                <label htmlFor="space" className="block text-sm font-medium text-gray-700">
+                  Space
+                </label>
+                <input
+                  type="text"
+                  id="space"
+                  value={formData.space}
+                  onChange={(e) => handleInputChange('space', e.target.value)}
+                  placeholder="e.g., Living Room, Master Bedroom, Kitchen"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
               </div>
 
               {/* Transaction Selection */}

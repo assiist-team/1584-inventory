@@ -204,6 +204,7 @@ export const itemService = {
         payment_method: data.payment_method,
         disposition: data.disposition,
         notes: data.notes,
+        space: data.space, // Add space field
         qr_key: data.qr_key,
         bookmark: data.bookmark,
         transaction_id: data.transaction_id,
@@ -238,6 +239,7 @@ export const itemService = {
       payment_method: itemData.payment_method,
       disposition: itemData.disposition,
       notes: itemData.notes,
+      space: itemData.space, // Add space field
       qr_key: itemData.qr_key || `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       bookmark: itemData.bookmark,
       transaction_id: itemData.transaction_id,
@@ -278,6 +280,7 @@ export const itemService = {
     if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
     if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
     if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
+    if (updates.space !== undefined) firebaseUpdates.space = updates.space // Add space field
     if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
     if (updates.images !== undefined) {
       console.log('Updating item images:', updates.images?.length, 'images')
@@ -413,6 +416,7 @@ export const itemService = {
           payment_method: data.payment_method,
           disposition: data.disposition,
           notes: data.notes,
+          space: data.space, // Add space field
           qr_key: data.qr_key,
           bookmark: data.bookmark,
           transaction_id: data.transaction_id,
@@ -467,6 +471,7 @@ export const itemService = {
         payment_method: data.payment_method,
         disposition: data.disposition,
         notes: data.notes,
+        space: data.space, // Add space field
         qr_key: data.qr_key,
         bookmark: data.bookmark,
         transaction_id: data.transaction_id,
@@ -499,6 +504,7 @@ export const itemService = {
       if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
       if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
       if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
+      if (updates.space !== undefined) firebaseUpdates.space = updates.space // Add space field
       if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
 
       batch.update(itemRef, firebaseUpdates)

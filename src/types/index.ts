@@ -64,6 +64,7 @@ export interface Item {
   payment_method: string;
   disposition: string;
   notes?: string;
+  space?: string;               // Space/location where item is placed
   qr_key: string;
   bookmark: boolean;
   transaction_id: string;
