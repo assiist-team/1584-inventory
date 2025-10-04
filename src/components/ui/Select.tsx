@@ -28,13 +28,13 @@ export function Select({
   onChange,
   disabled = false,
 }: SelectProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
   const selectRef = useRef<HTMLSelectElement>(null)
 
-  // Track when select is opened/closed for styling
+  // Track when select is focused for styling
   useEffect(() => {
-    const handleFocus = () => setIsOpen(true)
-    const handleBlur = () => setIsOpen(false)
+    const handleFocus = () => setIsFocused(true)
+    const handleBlur = () => setIsFocused(false)
 
     const selectElement = selectRef.current
     if (selectElement) {
@@ -68,7 +68,11 @@ export function Select({
     ? 'focus:ring-red-500 focus:border-red-500'
     : ''
 
-  const finalClasses = clsx(baseClasses, errorClasses)
+  const focusClasses = isFocused && !disabled
+    ? (error ? 'focus:ring-red-500 focus:border-red-500' : 'focus:ring-primary-500 focus:border-primary-500')
+    : ''
+
+  const finalClasses = clsx(baseClasses, errorClasses, focusClasses)
 
   return (
     <div className="space-y-1">
@@ -92,16 +96,6 @@ export function Select({
             fontFamily: 'Avenir, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             borderColor: error ? '#fca5a5' : variant === 'minimal' ? 'transparent' : '#d1d5db', // gray-300 or red-300 for error
           }}
-          onFocus={(e) => {
-            if (!disabled) {
-              e.target.style.borderColor = error ? '#dc2626' : '#9C8160'; // primary-500
-              e.target.style.boxShadow = error ? '0 0 0 2px #fecaca' : '0 0 0 2px #ede5df'; // ring color
-            }
-          }}
-          onBlur={(e) => {
-            e.target.style.borderColor = error ? '#fca5a5' : variant === 'minimal' ? 'transparent' : '#d1d5db';
-            e.target.style.boxShadow = 'none';
-          }}
         >
           {children}
         </select>
@@ -111,7 +105,7 @@ export function Select({
           <svg
             className={clsx(
               'h-4 w-4 text-gray-400 transition-transform',
-              isOpen && 'transform rotate-180'
+              isFocused && 'transform rotate-180'
             )}
             fill="none"
             stroke="currentColor"
