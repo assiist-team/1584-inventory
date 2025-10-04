@@ -298,24 +298,25 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         </Link>
       </div>
 
-      {/* Search and Controls */}
-      <div className="space-y-3">
-        {/* Search Bar */}
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
+      {/* Search and Controls - Sticky Container */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-3 -mb-3">
+        <div className="space-y-3">
+          {/* Search Bar */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base"
+              placeholder="Search items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-          <input
-            type="text"
-            className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base"
-            placeholder="Search items..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
 
-        {/* Select All and Bulk Actions */}
-        <div className="flex items-center justify-between gap-4 p-3 rounded-lg">
+          {/* Select All and Bulk Actions */}
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-gray-50">
           {/* Select All */}
           <label className="flex items-center cursor-pointer">
             <input
@@ -402,6 +403,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Loading State */}
