@@ -62,7 +62,7 @@ export interface Item {
   price: string;                // Form field name - direct mapping to Firebase
   market_value?: string;        // Direct mapping - no transformation needed
   payment_method: string;
-  disposition: string;
+  disposition?: string;
   notes?: string;
   space?: string;               // Space/location where item is placed
   qr_key: string;

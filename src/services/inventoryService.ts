@@ -237,7 +237,7 @@ export const itemService = {
       price: itemData.price,
       market_value: itemData.market_value, // Direct mapping
       payment_method: itemData.payment_method,
-      disposition: itemData.disposition,
+      disposition: itemData.disposition || 'keep', // Default to 'keep' if not provided
       notes: itemData.notes,
       space: itemData.space, // Add space field
       qr_key: itemData.qr_key || `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
