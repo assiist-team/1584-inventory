@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Bookmark, QrCode, RotateCcw, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus } from 'lucide-react'
+import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus, ChevronDown } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
@@ -17,6 +17,7 @@ export default function ItemDetail() {
   const [projectName, setProjectName] = useState<string>('')
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [openDispositionMenu, setOpenDispositionMenu] = useState(false)
   const { showError } = useToast()
 
   // Use itemId if available (from /project/:id/item/:itemId), otherwise use id (from /item/:id)
@@ -130,6 +131,23 @@ export default function ItemDetail() {
     }
   }, [searchParams, actualItemId, id])
 
+  // Close disposition menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openDispositionMenu && !event.target) return
+
+      const target = event.target as Element
+      if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
+        setOpenDispositionMenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [openDispositionMenu])
+
   const toggleBookmark = async () => {
     if (!item) return
 
@@ -143,39 +161,39 @@ export default function ItemDetail() {
     }
   }
 
-  const toggleDisposition = async () => {
+  const updateDisposition = async (newDisposition: string) => {
     if (!item) return
 
     try {
-      // Cycle through dispositions: keep -> to return -> returned -> inventory -> keep
-      // Handle backward compatibility for old "return" disposition
-      let newDisposition: string
-      switch (item.disposition) {
-        case 'keep':
-          newDisposition = 'to return'
-          break
-        case 'to return':
-          newDisposition = 'returned'
-          break
-        case 'returned':
-          newDisposition = 'inventory'
-          break
-        case 'inventory':
-          newDisposition = 'keep'
-          break
-        case 'return': // Backward compatibility for old disposition
-          newDisposition = 'to return'
-          break
-        default:
-          newDisposition = 'keep'
-      }
-
       await itemService.updateItem(item.project_id, item.item_id, {
         disposition: newDisposition
       })
       setItem({ ...item, disposition: newDisposition })
+      setOpenDispositionMenu(false)
     } catch (error) {
       console.error('Failed to update disposition:', error)
+    }
+  }
+
+  const toggleDispositionMenu = () => {
+    setOpenDispositionMenu(!openDispositionMenu)
+  }
+
+  const getDispositionBadgeClasses = (disposition: string) => {
+    const baseClasses = 'inline-flex items-center px-3 py-2 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+
+    switch (disposition) {
+      case 'keep':
+        return `${baseClasses} bg-green-100 text-green-800`
+      case 'to return':
+      case 'return': // Backward compatibility for old disposition
+        return `${baseClasses} bg-red-100 text-red-700`
+      case 'returned':
+        return `${baseClasses} bg-red-800 text-red-100`
+      case 'inventory':
+        return `${baseClasses} bg-blue-100 text-blue-800`
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800`
     }
   }
 
@@ -365,8 +383,8 @@ export default function ItemDetail() {
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-4">
-        {/* Back button row */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* Back button and controls row */}
+        <div className="flex items-center justify-between gap-4">
           <Link
             to={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
@@ -376,14 +394,6 @@ export default function ItemDetail() {
           </Link>
 
           <div className="flex flex-wrap gap-2 sm:space-x-2">
-            <Link
-              to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}`}
-              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              title="Edit Item"
-            >
-              <Edit className="h-4 w-4" />
-            </Link>
-
             <button
               onClick={toggleBookmark}
               className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md ${
@@ -396,21 +406,13 @@ export default function ItemDetail() {
               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
             </button>
 
-            <button
-              onClick={toggleDisposition}
-              className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md ${
-                item.disposition === 'to return' || item.disposition === 'return'
-                  ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
-                  : item.disposition === 'returned'
-                  ? 'border-red-800 text-red-100 bg-red-800 hover:bg-red-900'
-                  : item.disposition === 'inventory'
-                  ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
-                  : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
-              title="Change Disposition"
+            <Link
+              to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}`}
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              title="Edit Item"
             >
-              <RotateCcw className="h-4 w-4" />
-            </button>
+              <Edit className="h-4 w-4" />
+            </Link>
 
             <button
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
@@ -420,13 +422,37 @@ export default function ItemDetail() {
               <QrCode className="h-4 w-4" />
             </button>
 
-            <button
-              onClick={handleDeleteItem}
-              className="inline-flex items-center justify-center p-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-              title="Delete Item"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+
+            <div className="relative">
+              <span
+                onClick={toggleDispositionMenu}
+                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
+              >
+                {item.disposition === 'to return' ? 'To Return' : item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1)}
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </span>
+
+              {/* Dropdown menu */}
+              {openDispositionMenu && (
+                <div className="disposition-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <div className="py-2">
+                    {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                      <button
+                        key={disposition}
+                        onClick={() => updateDisposition(disposition)}
+                        className={`block w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
+                          (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-700'
+                        }`}
+                      >
+                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -541,30 +567,6 @@ export default function ItemDetail() {
                 </div>
               )}
 
-              {item.disposition && (
-                <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    Disposition
-                  </dt>
-                  <dd className="mt-1">
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      item.disposition === 'keep'
-                        ? 'bg-green-100 text-green-800'
-                        : item.disposition === 'to return' || item.disposition === 'return'
-                        ? 'bg-red-100 text-red-700'
-                        : item.disposition === 'returned'
-                        ? 'bg-red-800 text-red-100'
-                        : item.disposition === 'inventory'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {item.disposition === 'to return' || item.disposition === 'return' ? 'To Return' : item.disposition === 'returned' ? 'Returned' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
-                    </span>
-                  </dd>
-                </div>
-              )}
-
               {item.notes && item.notes !== 'No notes' && (
                 <div className="sm:col-span-2">
                   <dt className="text-sm font-medium text-gray-500 flex items-center">
@@ -580,27 +582,40 @@ export default function ItemDetail() {
 
           {/* Metadata */}
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
-              <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
-                <dd className="mt-1 text-sm text-gray-900">{projectName}</dd>
+            <div className="relative">
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{projectName}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    <Link
+                      to={`/project/${projectId}/transaction/${item.transaction_id}`}
+                      className="text-primary-600 hover:text-primary-800 underline"
+                    >
+                      {item.transaction_id}
+                    </Link>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
+                </div>
+              </dl>
+
+              {/* Delete button in lower right corner */}
+              <div className="absolute bottom-0 right-0">
+                <button
+                  onClick={handleDeleteItem}
+                  className="inline-flex items-center justify-center p-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  title="Delete Item"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-              <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  <Link
-                    to={`/project/${projectId}/transaction/${item.transaction_id}`}
-                    className="text-primary-600 hover:text-primary-800 underline"
-                  >
-                    {item.transaction_id}
-                  </Link>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
-              </div>
-            </dl>
+            </div>
           </div>
         </div>
       </div>

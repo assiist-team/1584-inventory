@@ -462,28 +462,29 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
                           toggleBookmark(item.item_id)
                         }}
-                        className={`p-1 rounded border-gray-300 transition-colors ${
+                        className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md transition-colors ${
                           item.bookmark
-                            ? 'text-red-600 bg-red-50'
-                            : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-                        }`}
+                            ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
+                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                        } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
+                        title={item.bookmark ? 'Remove Bookmark' : 'Add Bookmark'}
                       >
-                        <Bookmark className="h-5 w-5" fill={item.bookmark ? 'currentColor' : 'none'} />
+                        <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
                       <Link
                         to={`/project/${projectId}/edit-item/${item.item_id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="p-1 rounded border-gray-300 text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                        className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Edit item"
                       >
-                        <Edit className="h-5 w-5" />
+                        <Edit className="h-4 w-4" />
                       </Link>
                       <div className="relative ml-1">
                         <span
