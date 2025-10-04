@@ -1,18 +1,25 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect } from 'react'
-import { itemService, transactionService } from '@/services/inventoryService'
+import { itemService, transactionService, projectService } from '@/services/inventoryService'
+import { ImageUploadService } from '@/services/imageService'
 import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
-import { Transaction } from '@/types'
+import { Transaction, ItemImage } from '@/types'
 import { Select } from '@/components/ui/Select'
+import ImagePreview from '@/components/ui/ImagePreview'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
+import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
+import { useToast } from '@/components/ui/ToastContext'
 
 export default function AddItem() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+  const { showError } = useToast()
+
+  const [projectName, setProjectName] = useState<string>('')
 
   // Check if user has permission to add items (DESIGNER role or higher)
   if (!hasRole(UserRole.DESIGNER)) {
@@ -65,24 +72,34 @@ export default function AddItem() {
   const [isCustomPaymentMethod, setIsCustomPaymentMethod] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [images, setImages] = useState<ItemImage[]>([])
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
 
-  // Fetch transactions when component mounts
+  // Fetch project name and transactions when component mounts
   useEffect(() => {
-    const fetchTransactions = async () => {
+    const fetchProjectAndTransactions = async () => {
       if (projectId) {
         setLoadingTransactions(true)
         try {
+          // Fetch project name for image uploads
+          const project = await projectService.getProject(projectId)
+          if (project) {
+            setProjectName(project.name)
+          }
+
+          // Fetch transactions
           const fetchedTransactions = await transactionService.getTransactions(projectId)
           setTransactions(fetchedTransactions)
         } catch (error) {
-          console.error('Error fetching transactions:', error)
+          console.error('Error fetching project and transactions:', error)
         } finally {
           setLoadingTransactions(false)
         }
       }
     }
 
-    fetchTransactions()
+    fetchProjectAndTransactions()
   }, [projectId])
 
   // Initialize custom states based on initial form data
@@ -115,24 +132,6 @@ export default function AddItem() {
       newErrors.description = 'Description is required'
     }
 
-    if (!formData.source.trim()) {
-      newErrors.source = 'Source is required'
-    }
-
-    if (!formData.payment_method.trim()) {
-      newErrors.payment_method = 'Payment method is required'
-    }
-
-    if (!formData.disposition.trim()) {
-      newErrors.disposition = 'Disposition is required'
-    }
-
-    if (!formData.price.trim()) {
-      newErrors.price = 'Price is required'
-    } else if (isNaN(Number(formData.price)) || Number(formData.price) <= 0) {
-      newErrors.price = 'Price must be a positive number'
-    }
-
     // Validate market value if provided
     if (formData.market_value.trim() && (isNaN(Number(formData.market_value)) || Number(formData.market_value) <= 0)) {
       newErrors.market_value = 'Market value must be a positive number'
@@ -157,7 +156,8 @@ export default function AddItem() {
         bookmark: false,
         transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
         date_created: new Date().toISOString(),
-        last_updated: new Date().toISOString()
+        last_updated: new Date().toISOString(),
+        images: images.length > 0 ? images : undefined
       }
 
       await itemService.createItem(projectId, itemData)
@@ -186,6 +186,97 @@ export default function AddItem() {
     if (errors.selectedTransactionId) {
       setErrors(prev => ({ ...prev, selectedTransactionId: '' }))
     }
+  }
+
+  const handleMultipleImageUpload = async (files: File[]) => {
+    if (!projectName) return
+
+    try {
+      setIsUploadingImage(true)
+      setUploadProgress(0)
+
+      console.log('Starting multiple image upload for', files.length, 'files')
+
+      const uploadResults = await ImageUploadService.uploadMultipleItemImages(
+        files,
+        projectName,
+        'new-item', // temporary ID for new items
+        (fileIndex, progress) => {
+          // Show progress for current file being uploaded
+          const overallProgress = Math.round(((fileIndex + progress.percentage / 100) / files.length) * 100)
+          setUploadProgress(overallProgress)
+        }
+      )
+
+      console.log('All uploads completed successfully:', uploadResults.length, 'images')
+
+      // Convert upload results to ItemImage objects
+      const newImages: ItemImage[] = uploadResults.map((result, index) => ({
+        url: result.url,
+        alt: result.fileName,
+        isPrimary: images.length === 0 && index === 0, // First image is primary if no images exist
+        uploadedAt: new Date(),
+        fileName: result.fileName,
+        size: result.size,
+        mimeType: result.mimeType
+      }))
+
+      console.log('New image objects created:', newImages.length)
+
+      // Update the images array
+      setImages(prev => [...prev, ...newImages])
+      setUploadProgress(100)
+
+      console.log('Multiple image upload completed successfully')
+    } catch (error) {
+      console.error('Error uploading multiple images:', error)
+      const friendlyMessage = getUserFriendlyErrorMessage(error)
+      const action = getErrorAction(error)
+      showError(`${friendlyMessage} Suggestion: ${action}`)
+    } finally {
+      setIsUploadingImage(false)
+      setUploadProgress(0)
+    }
+  }
+
+  const handleSelectFromGallery = async () => {
+    if (!projectName) return
+
+    try {
+      setIsUploadingImage(true)
+      const files = await ImageUploadService.selectFromGallery()
+
+      if (files && files.length > 0) {
+        console.log('Selected', files.length, 'files from gallery')
+        await handleMultipleImageUpload(files)
+      } else {
+        console.log('No files selected from gallery')
+      }
+    } catch (error: any) {
+      console.error('Error selecting from gallery:', error)
+
+      // Handle cancel/timeout gracefully - don't show error for user cancellation
+      if (error.message?.includes('timeout') || error.message?.includes('canceled')) {
+        console.log('User canceled image selection or selection timed out')
+        return
+      }
+
+      // Show error for actual failures
+      const friendlyMessage = getUserFriendlyErrorMessage(error)
+      const action = getErrorAction(error)
+      showError(`${friendlyMessage} Suggestion: ${action}`)
+    } finally {
+      setIsUploadingImage(false)
+      setUploadProgress(0)
+    }
+  }
+
+  const handleRemoveImage = async (imageUrl: string) => {
+    // Remove from local state
+    setImages(prev => prev.filter(img => img.url !== imageUrl))
+
+    // Note: For new items, we don't need to delete from storage since they haven't been saved yet
+    // The images will be cleaned up when the item is actually created
   }
 
   return (
@@ -231,10 +322,69 @@ export default function AddItem() {
             )}
           </div>
 
+          {/* Item Images */}
+          <div>
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Item Images
+              </label>
+            </div>
+
+            {images.length > 0 ? (
+              <ImagePreview
+                images={images}
+                onRemoveImage={handleRemoveImage}
+                maxImages={5}
+                size="md"
+                showControls={true}
+              />
+            ) : (
+              <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                <p className="text-sm text-gray-500 mb-3">No images for this item yet</p>
+                <button
+                  onClick={handleSelectFromGallery}
+                  disabled={isUploadingImage}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                >
+                  {isUploadingImage
+                    ? uploadProgress > 0 && uploadProgress < 100
+                      ? `Uploading... ${Math.round(uploadProgress)}%`
+                      : 'Uploading...'
+                    : 'Add Images'
+                  }
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Transaction Selection */}
+          <Select
+            label="Associate with Transaction"
+            id="selectedTransactionId"
+            value={formData.selectedTransactionId}
+            onChange={(e) => handleTransactionChange(e.target.value)}
+            error={errors.selectedTransactionId}
+            disabled={loadingTransactions}
+          >
+            <option value="">Select a transaction</option>
+            {loadingTransactions ? (
+              <option disabled>Loading transactions...</option>
+            ) : (
+              transactions.map((transaction) => (
+                <option key={transaction.transaction_id} value={transaction.transaction_id}>
+                  {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
+                </option>
+              ))
+            )}
+          </Select>
+          {!loadingTransactions && transactions.length === 0 && (
+            <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
+          )}
+
           {/* Source */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Source *
+              Source
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
               {TRANSACTION_SOURCES.map((source) => (
@@ -310,7 +460,7 @@ export default function AddItem() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                Purchase Price *
+                Purchase Price
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -380,7 +530,7 @@ export default function AddItem() {
           {/* Payment Method */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Payment Method *
+              Payment Method
             </label>
             <div className="flex items-center space-x-6 mb-3">
               {['Client Card', '1584 Card', 'Split', 'Store Credit'].map((method) => (
@@ -440,7 +590,7 @@ export default function AddItem() {
           {/* Disposition */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Disposition *
+              Disposition
             </label>
             <div className="flex items-center space-x-6">
               {['keep', 'return', 'inventory'].map((disposition) => (
@@ -465,30 +615,6 @@ export default function AddItem() {
             )}
           </div>
 
-          {/* Transaction Selection */}
-          <Select
-            label="Associate with Transaction (Optional)"
-            id="selectedTransactionId"
-            value={formData.selectedTransactionId}
-            onChange={(e) => handleTransactionChange(e.target.value)}
-            error={errors.selectedTransactionId}
-            disabled={loadingTransactions}
-          >
-            <option value="">Select a transaction (optional)</option>
-            {loadingTransactions ? (
-              <option disabled>Loading transactions...</option>
-            ) : (
-              transactions.map((transaction) => (
-                <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                  {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
-                </option>
-              ))
-            )}
-          </Select>
-          {!loadingTransactions && transactions.length === 0 && (
-            <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
-          )}
-
           {/* Notes */}
           <div>
             <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
@@ -503,6 +629,7 @@ export default function AddItem() {
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
+
 
           {/* Error message */}
           {errors.submit && (
