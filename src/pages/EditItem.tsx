@@ -46,7 +46,6 @@ export default function EditItem() {
     payment_method: '',
     space: '',
     notes: '',
-    bookmark: false,
     selectedTransactionId: ''
   })
 
@@ -88,7 +87,6 @@ export default function EditItem() {
               payment_method: String(fetchedItem.payment_method || ''),
               space: String(fetchedItem.space || ''),
               notes: String(fetchedItem.notes || ''),
-              bookmark: Boolean(fetchedItem.bookmark || false),
               selectedTransactionId: String(fetchedItem.transaction_id || '')
             })
             console.log('Form data set:', {
@@ -98,8 +96,7 @@ export default function EditItem() {
               price: String(fetchedItem.price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
-              notes: String(fetchedItem.notes || ''),
-              bookmark: Boolean(fetchedItem.bookmark || false)
+              notes: String(fetchedItem.notes || '')
             })
           }
         } catch (error) {
@@ -196,18 +193,6 @@ export default function EditItem() {
     }
   }
 
-  const toggleBookmark = async () => {
-    if (!itemId || !projectId) return
-
-    try {
-      await itemService.updateItem(projectId, itemId, {
-        bookmark: !formData.bookmark
-      })
-      setFormData(prev => ({ ...prev, bookmark: !prev.bookmark }))
-    } catch (error) {
-      console.error('Failed to update bookmark:', error)
-    }
-  }
 
 
   if (loading) {
@@ -261,20 +246,6 @@ export default function EditItem() {
           <h1 className="text-2xl font-bold text-gray-900">Edit Item</h1>
         </div>
         <div className="px-6 py-4">
-          <div className="flex justify-end mb-8">
-            <button
-              onClick={toggleBookmark}
-              className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
-                formData.bookmark
-                  ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
-                  : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
-            >
-              <Bookmark className="h-4 w-4 mr-2" fill={formData.bookmark ? 'currentColor' : 'none'} />
-              {formData.bookmark ? 'Bookmarked' : 'Bookmark'}
-            </button>
-          </div>
-
           <div className="px-6 py-4">
             <form onSubmit={handleSubmit} className="space-y-8">
               {/* Description */}
