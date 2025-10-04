@@ -76,6 +76,9 @@ export default function AddItem() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
 
+  // Track if transaction is selected to hide source/payment method fields
+  const isTransactionSelected = Boolean(formData.selectedTransactionId)
+
   // Fetch project name and transactions when component mounts
   useEffect(() => {
     const fetchProjectAndTransactions = async () => {
@@ -180,7 +183,27 @@ export default function AddItem() {
   }
 
   const handleTransactionChange = (transactionId: string) => {
-    setFormData(prev => ({ ...prev, selectedTransactionId: transactionId }))
+    const selectedTransaction = transactions.find(t => t.transaction_id === transactionId)
+
+    setFormData(prev => ({
+      ...prev,
+      selectedTransactionId: transactionId,
+      // Pre-fill source and payment method from selected transaction
+      source: selectedTransaction?.source || '',
+      payment_method: selectedTransaction?.payment_method || ''
+    }))
+
+    // Update custom state based on pre-filled values
+    if (selectedTransaction?.source) {
+      const isPredefinedSource = TRANSACTION_SOURCES.includes(selectedTransaction.source as TransactionSource)
+      setIsCustomSource(!isPredefinedSource)
+    }
+
+    if (selectedTransaction?.payment_method) {
+      const predefinedPaymentMethods = ['Client Card', '1584 Card', 'Split', 'Store Credit']
+      const isPredefinedPayment = predefinedPaymentMethods.includes(selectedTransaction.payment_method)
+      setIsCustomPaymentMethod(!isPredefinedPayment)
+    }
 
     // Clear error when user makes selection
     if (errors.selectedTransactionId) {
@@ -381,7 +404,21 @@ export default function AddItem() {
             <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
           )}
 
+          {/* Show transaction info when selected */}
+          {isTransactionSelected && (
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-800">
+                <strong>Source:</strong> {formData.source} |
+                <strong> Payment Method:</strong> {formData.payment_method}
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                These values are automatically filled from the selected transaction
+              </p>
+            </div>
+          )}
+
           {/* Source */}
+          {!isTransactionSelected && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Source
@@ -440,6 +477,7 @@ export default function AddItem() {
               <p className="mt-1 text-sm text-red-600">{errors.source}</p>
             )}
           </div>
+          )}
 
           {/* SKU */}
           <div>
@@ -528,6 +566,7 @@ export default function AddItem() {
           </div>
 
           {/* Payment Method */}
+          {!isTransactionSelected && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Payment Method
@@ -586,6 +625,7 @@ export default function AddItem() {
               <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
             )}
           </div>
+          )}
 
           {/* Disposition */}
           <div>
