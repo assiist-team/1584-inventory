@@ -44,7 +44,6 @@ export default function EditItem() {
     price: '',
     market_value: '',
     payment_method: '',
-    disposition: '',
     space: '',
     notes: '',
     bookmark: false,
@@ -87,7 +86,6 @@ export default function EditItem() {
               price: String(fetchedItem.price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
-              disposition: String(fetchedItem.disposition || ''),
               space: String(fetchedItem.space || ''),
               notes: String(fetchedItem.notes || ''),
               bookmark: Boolean(fetchedItem.bookmark || false),
@@ -100,7 +98,6 @@ export default function EditItem() {
               price: String(fetchedItem.price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
-              disposition: String(fetchedItem.disposition || ''),
               notes: String(fetchedItem.notes || ''),
               bookmark: Boolean(fetchedItem.bookmark || false)
             })
@@ -384,6 +381,36 @@ export default function EditItem() {
                 )}
               </div>
 
+              {/* Payment Method */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Payment Method
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                  {['Client Card', '1584 Design'].map((method) => (
+                    <div key={method} className="flex items-center">
+                      <input
+                        type="radio"
+                        id={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`}
+                        name="payment_method"
+                        value={method}
+                        checked={formData.payment_method === method}
+                        onChange={(e) => {
+                          handleInputChange('payment_method', e.target.value)
+                        }}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                      />
+                      <label htmlFor={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`} className="ml-2 block text-sm text-gray-900">
+                        {method}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                {errors.payment_method && (
+                  <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+                )}
+              </div>
+
               {/* SKU */}
               <div>
                 <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
@@ -450,63 +477,7 @@ export default function EditItem() {
                 )}
               </div>
 
-              {/* Payment Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Payment Method
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
-                  {['Client Card', '1584 Design'].map((method) => (
-                    <div key={method} className="flex items-center">
-                      <input
-                        type="radio"
-                        id={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`}
-                        name="payment_method"
-                        value={method}
-                        checked={formData.payment_method === method}
-                        onChange={(e) => {
-                          handleInputChange('payment_method', e.target.value)
-                        }}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                      />
-                      <label htmlFor={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`} className="ml-2 block text-sm text-gray-900">
-                        {method}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-                {errors.payment_method && (
-                  <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
-                )}
-              </div>
 
-              {/* Disposition */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Disposition
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
-                    <div key={disposition} className="flex items-center">
-                      <input
-                        type="radio"
-                        id={`disposition_${disposition.toLowerCase()}`}
-                        name="disposition"
-                        value={disposition}
-                        checked={formData.disposition === disposition}
-                        onChange={(e) => handleInputChange('disposition', e.target.value)}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                      />
-                      <label htmlFor={`disposition_${disposition.toLowerCase()}`} className="ml-2 block text-sm text-gray-900">
-                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-                {errors.disposition && (
-                  <p className="mt-1 text-sm text-red-600">{errors.disposition}</p>
-                )}
-              </div>
 
               {/* Space */}
               <div>
@@ -522,30 +493,6 @@ export default function EditItem() {
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 />
               </div>
-
-              {/* Transaction Selection */}
-              <Select
-                label="Associate with Transaction (Optional)"
-                id="selectedTransactionId"
-                value={formData.selectedTransactionId}
-                onChange={(e) => handleTransactionChange(e.target.value)}
-                error={errors.selectedTransactionId}
-                disabled={loadingTransactions}
-              >
-                <option value="">Select a transaction (optional)</option>
-                {loadingTransactions ? (
-                  <option disabled>Loading transactions...</option>
-                ) : (
-                  transactions.map((transaction) => (
-                    <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                      {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
-                    </option>
-                  ))
-                )}
-              </Select>
-              {!loadingTransactions && transactions.length === 0 && (
-                <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
-              )}
 
               {/* Notes */}
               <div>
