@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Bookmark, Printer, RotateCcw, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus } from 'lucide-react'
+import { ArrowLeft, Bookmark, QrCode, RotateCcw, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
@@ -378,27 +378,27 @@ export default function ItemDetail() {
           <div className="flex flex-wrap gap-2 sm:space-x-2">
             <Link
               to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}`}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              title="Edit Item"
             >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
+              <Edit className="h-4 w-4" />
             </Link>
 
             <button
               onClick={toggleBookmark}
-              className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
+              className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md ${
                 item.bookmark
                   ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
                   : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
+              title={item.bookmark ? 'Remove Bookmark' : 'Add Bookmark'}
             >
-              <Bookmark className="h-4 w-4 mr-2" fill={item.bookmark ? 'currentColor' : 'none'} />
-              {item.bookmark ? 'Bookmarked' : 'Bookmark'}
+              <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
             </button>
 
             <button
               onClick={toggleDisposition}
-              className={`inline-flex items-center px-3 py-2 border text-sm font-medium rounded-md ${
+              className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md ${
                 item.disposition === 'to return' || item.disposition === 'return'
                   ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
                   : item.disposition === 'returned'
@@ -407,25 +407,25 @@ export default function ItemDetail() {
                   ? 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
                   : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
               } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
+              title="Change Disposition"
             >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              {item.disposition === 'keep' ? 'To Return' : (item.disposition === 'to return' || item.disposition === 'return') ? 'Returned' : item.disposition === 'returned' ? 'Inventory' : item.disposition === 'inventory' ? 'Keep' : 'Keep'}
+              <RotateCcw className="h-4 w-4" />
             </button>
 
             <button
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               onClick={() => window.open(`/qr-image/${item.qr_key}`, '_blank')}
+              title="View QR Code"
             >
-              <Printer className="h-4 w-4 mr-2" />
-              QR
+              <QrCode className="h-4 w-4" />
             </button>
 
             <button
               onClick={handleDeleteItem}
-              className="inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              className="inline-flex items-center justify-center p-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              title="Delete Item"
             >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -474,98 +474,106 @@ export default function ItemDetail() {
 
           <div className="px-6 py-4">
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <FileText className="h-4 w-4 mr-1" />
-                  Description
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.description}</dd>
-              </div>
+              {item.transaction_id && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <ShoppingBag className="h-4 w-4 mr-1" />
+                    Transaction
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900">
+                    <Link
+                      to={`/project/${projectId}/transaction/${item.transaction_id}`}
+                      className="text-primary-600 hover:text-primary-800 underline"
+                    >
+                      {item.transaction_id}
+                    </Link>
+                  </dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <ShoppingBag className="h-4 w-4 mr-1" />
-                  Transaction
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  <Link
-                    to={`/project/${projectId}/transaction/${item.transaction_id}`}
-                    className="text-primary-600 hover:text-primary-800 underline"
-                  >
-                    {item.transaction_id}
-                  </Link>
-                </dd>
-              </div>
+              {item.source && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <ShoppingBag className="h-4 w-4 mr-1" />
+                    Source
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.source}</dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <ShoppingBag className="h-4 w-4 mr-1" />
-                  Source
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.source}</dd>
-              </div>
+              {item.sku && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <Tag className="h-4 w-4 mr-1" />
+                    SKU
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.sku}</dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <Tag className="h-4 w-4 mr-1" />
-                  SKU
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.sku}</dd>
-              </div>
+              {item.price && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <DollarSign className="h-4 w-4 mr-1" />
+                    Price
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  Price
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
-              </div>
+              {item.market_value && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <DollarSign className="h-4 w-4 mr-1" />
+                    Market Value
+                  </dt>
+                  <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value}</dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  Market Value
-                </dt>
-                <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value || ''}</dd>
-              </div>
+              {item.payment_method && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <CreditCard className="h-4 w-4 mr-1" />
+                    Payment Method
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.payment_method}</dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <CreditCard className="h-4 w-4 mr-1" />
-                  Payment Method
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900">{item.payment_method}</dd>
-              </div>
+              {item.disposition && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <RotateCcw className="h-4 w-4 mr-1" />
+                    Disposition
+                  </dt>
+                  <dd className="mt-1">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      item.disposition === 'keep'
+                        ? 'bg-green-100 text-green-800'
+                        : item.disposition === 'to return' || item.disposition === 'return'
+                        ? 'bg-red-100 text-red-700'
+                        : item.disposition === 'returned'
+                        ? 'bg-red-800 text-red-100'
+                        : item.disposition === 'inventory'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {item.disposition === 'to return' || item.disposition === 'return' ? 'To Return' : item.disposition === 'returned' ? 'Returned' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
+                    </span>
+                  </dd>
+                </div>
+              )}
 
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <RotateCcw className="h-4 w-4 mr-1" />
-                  Disposition
-                </dt>
-                <dd className="mt-1">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    item.disposition === 'keep'
-                      ? 'bg-green-100 text-green-800'
-                      : item.disposition === 'to return' || item.disposition === 'return'
-                      ? 'bg-red-100 text-red-700'
-                      : item.disposition === 'returned'
-                      ? 'bg-red-800 text-red-100'
-                      : item.disposition === 'inventory'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {item.disposition === 'to return' || item.disposition === 'return' ? 'To Return' : item.disposition === 'returned' ? 'Returned' : item.disposition === 'keep' ? 'Keep' : item.disposition === 'inventory' ? 'Inventory' : item.disposition}
-                  </span>
-                </dd>
-              </div>
-
-              <div className="sm:col-span-2">
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <FileText className="h-4 w-4 mr-1" />
-                  Notes
-                </dt>
-                <dd className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{item.notes || 'No notes'}</dd>
-              </div>
+              {item.notes && item.notes !== 'No notes' && (
+                <div className="sm:col-span-2">
+                  <dt className="text-sm font-medium text-gray-500 flex items-center">
+                    <FileText className="h-4 w-4 mr-1" />
+                    Notes
+                  </dt>
+                  <dd className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{item.notes}</dd>
+                </div>
+              )}
             </dl>
           </div>
 

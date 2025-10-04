@@ -449,9 +449,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (
-                <li key={item.item_id} className="relative">
+                <li key={item.item_id} className="relative bg-gray-50">
                   {/* Top row: Controls - stays outside Link */}
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-0 px-4 py-3">
                     <div className="flex items-center">
                       <input
                         type="checkbox"
@@ -462,7 +462,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center">
                       <button
                         onClick={(e) => {
                           e.preventDefault()
@@ -475,7 +475,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                             : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
                         }`}
                       >
-                        <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
+                        <Bookmark className="h-5 w-5" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
                       <Link
                         to={`/project/${projectId}/edit-item/${item.item_id}`}
@@ -483,9 +483,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         className="p-1 rounded border-gray-300 text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
                         title="Edit item"
                       >
-                        <Edit className="h-4 w-4" />
+                        <Edit className="h-5 w-5" />
                       </Link>
-                      <div className="relative">
+                      <div className="relative ml-1">
                         <span
                           onClick={(e) => {
                             e.preventDefault()
@@ -529,7 +529,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                   {/* Main tappable content - wrapped in Link */}
                   <Link to={`/item/${item.item_id}?project=${projectId}`}>
                     <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200">
-                      <div className="px-4 py-4 sm:px-6">
+                      <div className="px-4 pb-3 sm:px-6">
                         {/* Middle row: Thumbnail and Description - now tappable */}
                         <div className="flex items-center gap-3 py-3">
                           <div className="flex-shrink-0">
