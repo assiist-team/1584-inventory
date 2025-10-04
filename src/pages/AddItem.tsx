@@ -61,7 +61,7 @@ export default function AddItem() {
     price: '',
     market_value: '',
     payment_method: '',
-    disposition: '',
+    disposition: 'keep',
     notes: '',
     selectedTransactionId: ''
   })

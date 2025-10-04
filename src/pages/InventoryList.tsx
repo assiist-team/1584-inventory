@@ -433,7 +433,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                               }}
                               className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
                             >
-                              {item.disposition}
+                              {item.disposition === 'to return' ? 'To Return' : item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1)}
                               <ChevronDown className="h-3 w-3 ml-1" />
                             </span>
 
