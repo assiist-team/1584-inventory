@@ -211,18 +211,11 @@ export default function TransactionDetail() {
           <div className="flex space-x-3">
             <Link
               to={`/project/${projectId}/transaction/${transactionId}/edit`}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              title="Edit Transaction"
             >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
+              <Edit className="h-4 w-4" />
             </Link>
-            <button
-              onClick={handleDelete}
-              className="inline-flex items-center px-4 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </button>
           </div>
         </div>
       </div>
@@ -313,7 +306,7 @@ export default function TransactionDetail() {
             <div>
               <dt className="text-sm font-medium text-gray-500">Transaction Type</dt>
               <dd className="mt-1">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium no-icon ${
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
                   transaction.transaction_type === 'Purchase'
                     ? 'bg-green-100 text-green-800'
                     : transaction.transaction_type === 'Return'
@@ -340,8 +333,26 @@ export default function TransactionDetail() {
 
             <div>
               <dt className="text-sm font-medium text-gray-500">Budget Category</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {transaction.budget_category || 'Not specified'}
+              <dd className="mt-1">
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                  transaction.budget_category === 'Design Fee'
+                    ? 'bg-amber-100 text-amber-800'
+                    : transaction.budget_category === 'Furnishings'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : transaction.budget_category === 'Property Management'
+                    ? 'bg-orange-100 text-orange-800'
+                    : transaction.budget_category === 'Kitchen'
+                    ? 'bg-amber-200 text-amber-900'
+                    : transaction.budget_category === 'Install'
+                    ? 'bg-yellow-200 text-yellow-900'
+                    : transaction.budget_category === 'Storage & Receiving'
+                    ? 'bg-orange-200 text-orange-900'
+                    : transaction.budget_category === 'Fuel'
+                    ? 'bg-amber-300 text-amber-900'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {transaction.budget_category || 'Not specified'}
+                </span>
               </dd>
             </div>
 
@@ -423,18 +434,31 @@ export default function TransactionDetail() {
 
         {/* Metadata */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
-            <div>
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
-              <dd className="mt-1 text-sm text-gray-900">{project?.name || transaction.project_name}</dd>
+          <div className="relative">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
+                <dd className="mt-1 text-sm text-gray-900">{project?.name || transaction.project_name}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {formatDate(transaction.created_at)}
+                </dd>
+              </div>
+            </dl>
+
+            {/* Delete button in lower right corner */}
+            <div className="absolute bottom-0 right-0">
+              <button
+                onClick={handleDelete}
+                className="inline-flex items-center justify-center p-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                title="Delete Transaction"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {formatDate(transaction.created_at)}
-              </dd>
-            </div>
-          </dl>
+          </div>
         </div>
       </div>
 

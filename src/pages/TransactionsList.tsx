@@ -115,11 +115,34 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                   <div className="px-4 py-4 sm:px-6">
                     {/* Top row: Header with source and type */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center flex-wrap gap-2">
+                      <div className="flex items-center">
                         <h3 className="text-base font-medium text-gray-900">
                           {transaction.source}
                         </h3>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium no-icon ${
+                      </div>
+                      <div className="flex items-center flex-wrap gap-2">
+                        {transaction.budget_category && (
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                            transaction.budget_category === 'Design Fee'
+                              ? 'bg-amber-100 text-amber-800'
+                              : transaction.budget_category === 'Furnishings'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : transaction.budget_category === 'Property Management'
+                              ? 'bg-orange-100 text-orange-800'
+                              : transaction.budget_category === 'Kitchen'
+                              ? 'bg-amber-200 text-amber-900'
+                              : transaction.budget_category === 'Install'
+                              ? 'bg-yellow-200 text-yellow-900'
+                              : transaction.budget_category === 'Storage & Receiving'
+                              ? 'bg-orange-200 text-orange-900'
+                              : transaction.budget_category === 'Fuel'
+                              ? 'bg-amber-300 text-amber-900'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {transaction.budget_category}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
                           transaction.transaction_type === 'Purchase'
                             ? 'bg-green-100 text-green-800'
                             : transaction.transaction_type === 'Return'
