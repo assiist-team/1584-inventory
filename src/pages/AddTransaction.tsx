@@ -6,7 +6,6 @@ import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
-import { Select } from '@/components/ui/Select'
 import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
@@ -375,28 +374,25 @@ export default function AddTransaction() {
             </div>
           )}
 
-          {/* Amount */}
+          {/* Transaction Date */}
           <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-              Amount *
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
             </label>
-            <div className="mt-1 relative rounded-md shadow-sm">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">$</span>
-              </div>
-              <input
-                type="text"
-                id="amount"
-                value={formData.amount}
-                onChange={(e) => handleInputChange('amount', e.target.value)}
-                placeholder="0.00"
-                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.amount ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-            </div>
-            {errors.amount && (
-              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
             )}
           </div>
 
@@ -460,68 +456,6 @@ export default function AddTransaction() {
             )}
           </div>
 
-          {/* Transaction Method */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Method *
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_client_card"
-                  name="payment_method"
-                  value="Client Card"
-                  checked={formData.payment_method === 'Client Card'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
-                  Client Card
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_1584_card"
-                  name="payment_method"
-                  value="1584 Design"
-                  checked={formData.payment_method === '1584 Design'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
-                  1584 Design
-                </label>
-              </div>
-            </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
-            )}
-          </div>
-
-          {/* Transaction Date */}
-          <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
-            </label>
-            <input
-              type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => {
-                // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
-              }}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
-            )}
-          </div>
-
           {/* Transaction Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -562,21 +496,180 @@ export default function AddTransaction() {
             )}
           </div>
 
+          {/* Amount */}
+          <div>
+            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
+              Amount *
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
+              </div>
+              <input
+                type="text"
+                id="amount"
+                value={formData.amount}
+                onChange={(e) => handleInputChange('amount', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.amount ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+            </div>
+            {errors.amount && (
+              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
+            )}
+          </div>
+
+          {/* Transaction Method */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Method *
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_client_card"
+                  name="payment_method"
+                  value="Client Card"
+                  checked={formData.payment_method === 'Client Card'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
+                  Client Card
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_1584_card"
+                  name="payment_method"
+                  value="1584 Design"
+                  checked={formData.payment_method === '1584 Design'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
+                  1584 Design
+                </label>
+              </div>
+            </div>
+            {errors.payment_method && (
+              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            )}
+          </div>
+
           {/* Budget Category */}
-          <Select
-            label="Budget Category *"
-            value={formData.budget_category || 'Furnishings'}
-            onChange={(e) => handleInputChange('budget_category', e.target.value)}
-            error={errors.budget_category}
-          >
-            <option value="Design Fee">Design Fee</option>
-            <option value="Furnishings">Furnishings</option>
-            <option value="Property Management">Property Management</option>
-            <option value="Kitchen">Kitchen</option>
-            <option value="Install">Install</option>
-            <option value="Storage & Receiving">Storage & Receiving</option>
-            <option value="Fuel">Fuel</option>
-          </Select>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Budget Category *
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_design_fee"
+                  name="budget_category"
+                  value="Design Fee"
+                  checked={formData.budget_category === 'Design Fee'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
+                  Design Fee
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_furnishings"
+                  name="budget_category"
+                  value="Furnishings"
+                  checked={formData.budget_category === 'Furnishings'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
+                  Furnishings
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_property_management"
+                  name="budget_category"
+                  value="Property Management"
+                  checked={formData.budget_category === 'Property Management'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
+                  Property Management
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_kitchen"
+                  name="budget_category"
+                  value="Kitchen"
+                  checked={formData.budget_category === 'Kitchen'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
+                  Kitchen
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_install"
+                  name="budget_category"
+                  value="Install"
+                  checked={formData.budget_category === 'Install'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
+                  Install
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_storage_receiving"
+                  name="budget_category"
+                  value="Storage & Receiving"
+                  checked={formData.budget_category === 'Storage & Receiving'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
+                  Storage & Receiving
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_fuel"
+                  name="budget_category"
+                  value="Fuel"
+                  checked={formData.budget_category === 'Fuel'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
+                  Fuel
+                </label>
+              </div>
+            </div>
+            {errors.budget_category && (
+              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
+            )}
+          </div>
 
 
           {/* Receipt Email Copy */}

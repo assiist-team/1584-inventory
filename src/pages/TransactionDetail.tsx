@@ -290,6 +290,13 @@ export default function TransactionDetail() {
               </div>
             )}
 
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Budget Category</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {transaction.budget_category || 'Not specified'}
+              </dd>
+            </div>
+
             {transaction.notes && (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-gray-500 flex items-center">

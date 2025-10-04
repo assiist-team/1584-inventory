@@ -2,10 +2,10 @@ import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, ItemImage } from '@/types'
+import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
-import { Select } from '@/components/ui/Select'
 import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
@@ -63,6 +63,9 @@ export default function EditTransaction() {
   const [items, setItems] = useState<TransactionItemFormData[]>([])
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
 
+  // Custom source state
+  const [isCustomSource, setIsCustomSource] = useState(false)
+
   // Load transaction and project data
   useEffect(() => {
     const loadTransaction = async () => {
@@ -78,6 +81,9 @@ export default function EditTransaction() {
           setProjectName(project.name)
         }
         if (transaction) {
+          // Check if source is custom (not in predefined list)
+          const sourceIsCustom = Boolean(transaction.source && !TRANSACTION_SOURCES.includes(transaction.source as any))
+
           // Use the transaction date directly for date input
           setFormData({
             transaction_date: transaction.transaction_date || '',
@@ -90,6 +96,8 @@ export default function EditTransaction() {
             transaction_images: [],
             receipt_emailed: transaction.receipt_emailed
           })
+
+          setIsCustomSource(sourceIsCustom)
           const images = transaction.transaction_images || []
           setExistingTransactionImages(Array.isArray(images) ? images : [])
 
@@ -449,6 +457,128 @@ export default function EditTransaction() {
             </div>
           )}
 
+          {/* Transaction Date */}
+          <div>
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
+            </label>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            )}
+          </div>
+
+          {/* Source */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Source/Vendor *
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+              {TRANSACTION_SOURCES.map((source) => (
+                <div key={source} className="flex items-center">
+                  <input
+                    type="radio"
+                    id={`source_${source.toLowerCase().replace(/\s+/g, '_')}`}
+                    name="source"
+                    value={source}
+                    checked={formData.source === source}
+                    onChange={(e) => {
+                      handleInputChange('source', e.target.value)
+                      setIsCustomSource(false)
+                    }}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                  />
+                  <label htmlFor={`source_${source.toLowerCase().replace(/\s+/g, '_')}`} className="ml-2 block text-sm text-gray-900">
+                    {source}
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center">
+              <input
+                type="radio"
+                id="source_custom"
+                name="source"
+                value="custom"
+                checked={isCustomSource}
+                onChange={() => {
+                  setIsCustomSource(true)
+                  handleInputChange('source', '')
+                }}
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+              />
+              <label htmlFor="source_custom" className="ml-2 block text-sm text-gray-900">
+                Other
+              </label>
+            </div>
+            {isCustomSource && (
+              <input
+                type="text"
+                id="source_custom_input"
+                value={formData.source}
+                onChange={(e) => handleInputChange('source', e.target.value)}
+                placeholder="Enter custom source..."
+                className={`mt-3 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.source ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+            )}
+            {errors.source && (
+              <p className="mt-1 text-sm text-red-600">{errors.source}</p>
+            )}
+          </div>
+
+          {/* Transaction Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Type *
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_purchase"
+                  name="transaction_type"
+                  value="Purchase"
+                  checked={formData.transaction_type === 'Purchase'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
+                  Purchase
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_return"
+                  name="transaction_type"
+                  value="Return"
+                  checked={formData.transaction_type === 'Return'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
+                  Return
+                </label>
+              </div>
+            </div>
+            {errors.transaction_type && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            )}
+          </div>
+
           {/* Amount */}
           <div>
             <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
@@ -474,110 +604,190 @@ export default function EditTransaction() {
             )}
           </div>
 
-          {/* Source */}
+          {/* Transaction Method */}
           <div>
-            <label htmlFor="source" className="block text-sm font-medium text-gray-700">
-              Source/Vendor *
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Method *
             </label>
-            <input
-              type="text"
-              id="source"
-              value={formData.source}
-              onChange={(e) => handleInputChange('source', e.target.value)}
-              placeholder="e.g., Home Depot, Amazon, Local Store"
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.source ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.source && (
-              <p className="mt-1 text-sm text-red-600">{errors.source}</p>
-            )}
-          </div>
-
-          {/* Payment Method */}
-          <div>
-            <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700">
-              Payment Method *
-            </label>
-            <input
-              type="text"
-              id="payment_method"
-              value={formData.payment_method}
-              onChange={(e) => handleInputChange('payment_method', e.target.value)}
-              placeholder="e.g., 1584 Design, Client Card"
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.payment_method ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_client_card"
+                  name="payment_method"
+                  value="Client Card"
+                  checked={formData.payment_method === 'Client Card'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
+                  Client Card
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_1584_card"
+                  name="payment_method"
+                  value="1584 Design"
+                  checked={formData.payment_method === '1584 Design'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
+                  1584 Design
+                </label>
+              </div>
+            </div>
             {errors.payment_method && (
               <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
             )}
           </div>
 
-          {/* Transaction Date */}
+          {/* Budget Category */}
           <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Budget Category *
             </label>
-            <input
-              type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => {
-                // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
-              }}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_design_fee"
+                  name="budget_category"
+                  value="Design Fee"
+                  checked={formData.budget_category === 'Design Fee'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
+                  Design Fee
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_furnishings"
+                  name="budget_category"
+                  value="Furnishings"
+                  checked={formData.budget_category === 'Furnishings'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
+                  Furnishings
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_property_management"
+                  name="budget_category"
+                  value="Property Management"
+                  checked={formData.budget_category === 'Property Management'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
+                  Property Management
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_kitchen"
+                  name="budget_category"
+                  value="Kitchen"
+                  checked={formData.budget_category === 'Kitchen'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
+                  Kitchen
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_install"
+                  name="budget_category"
+                  value="Install"
+                  checked={formData.budget_category === 'Install'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
+                  Install
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_storage_receiving"
+                  name="budget_category"
+                  value="Storage & Receiving"
+                  checked={formData.budget_category === 'Storage & Receiving'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
+                  Storage & Receiving
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_fuel"
+                  name="budget_category"
+                  value="Fuel"
+                  checked={formData.budget_category === 'Fuel'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
+                  Fuel
+                </label>
+              </div>
+            </div>
+            {errors.budget_category && (
+              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
             )}
           </div>
 
-          {/* Transaction Type */}
-          <Select
-            label="Transaction Type *"
-            id="transaction_type"
-            value={formData.transaction_type}
-            onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-            error={errors.transaction_type}
-          >
-            <option value="Purchase">Purchase</option>
-            <option value="Return">Return</option>
-          </Select>
 
-          {/* Budget Category */}
-          <Select
-            label="Budget Category *"
-            id="budget_category"
-            value={formData.budget_category || 'Furnishings'}
-            onChange={(e) => handleInputChange('budget_category', e.target.value)}
-            error={errors.budget_category}
-          >
-            <option value="Design Fee">Design Fee</option>
-            <option value="Furnishings">Furnishings</option>
-            <option value="Property Management">Property Management</option>
-            <option value="Kitchen">Kitchen</option>
-            <option value="Install">Install</option>
-            <option value="Storage & Receiving">Storage & Receiving</option>
-            <option value="Fuel">Fuel</option>
-          </Select>
-
-
-          {/* Receipt Emailed */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="receipt_emailed"
-              checked={formData.receipt_emailed}
-              onChange={(e) => handleInputChange('receipt_emailed', e.target.checked)}
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-            />
-            <label htmlFor="receipt_emailed" className="ml-2 block text-sm text-gray-900">
-              Receipt emailed to client
+          {/* Receipt Email Copy */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Receipt Email Copy
             </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="receipt_yes"
+                  name="receipt_emailed"
+                  checked={formData.receipt_emailed === true}
+                  onChange={() => handleInputChange('receipt_emailed', true)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
+                  Yes
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="receipt_no"
+                  name="receipt_emailed"
+                  checked={formData.receipt_emailed === false}
+                  onChange={() => handleInputChange('receipt_emailed', false)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
+                  No
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Notes */}
