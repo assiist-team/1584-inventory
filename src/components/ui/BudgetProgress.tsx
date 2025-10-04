@@ -22,44 +22,53 @@ interface CategoryBudgetData {
 export default function BudgetProgress({ budget, designFee, budgetCategories, transactions, previewMode = false }: BudgetProgressProps) {
   const [showAllCategories, setShowAllCategories] = useState(false)
 
-  // Calculate total spent for overall budget (only furnishings transactions, excluding inventory items)
+  // Calculate total spent for overall budget (only furnishings transactions)
   const calculateSpent = async (): Promise<number> => {
     if (!budget && budget !== 0) return 0
 
-    // Sum only furnishings purchases (exclude returns) - based on item prices, not transaction amounts
-    let purchases = 0
+    console.log('BudgetProgress - calculateSpent: Starting calculation for', transactions.length, 'transactions')
+
+    // Sum furnishings transactions (purchases add, returns subtract) - based on transaction amounts directly
+    let totalAmount = 0
 
     for (const transaction of transactions) {
-      if (transaction.transaction_type === 'Purchase' && transaction.budget_category === BudgetCategory.FURNISHINGS) {
-        try {
-          // Get items for this transaction
-          const itemIds = await itemService.getTransactionItems(transaction.project_id, transaction.transaction_id)
+      console.log('BudgetProgress - Processing transaction:', {
+        id: transaction.transaction_id,
+        type: transaction.transaction_type,
+        budget_category: transaction.budget_category,
+        amount: transaction.amount
+      })
 
-          // Get item details and filter by disposition
-          const itemPromises = itemIds.map(itemId => itemService.getItem(transaction.project_id, itemId))
-          const items = await Promise.all(itemPromises)
-          const validItems = items.filter(item => item !== null) as Item[]
+      if (transaction.budget_category === BudgetCategory.FURNISHINGS) {
+        // Use transaction amount directly for budget calculation
+        const transactionAmount = parseFloat(transaction.amount || '0')
+        console.log('BudgetProgress - Transaction amount:', transactionAmount)
 
-          // Sum prices of items that don't have disposition "inventory"
-          const transactionTotal = validItems
-            .filter(item => item.disposition !== 'inventory')
-            .reduce((total, item) => total + parseFloat(item.price || '0'), 0)
+        // Apply transaction type multiplier: purchases add, returns subtract
+        const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+        const finalAmount = transactionAmount * multiplier
+        totalAmount += finalAmount
 
-          purchases += transactionTotal
-        } catch (error) {
-          console.error('Error calculating spent amount for transaction:', transaction.transaction_id, error)
-          // Continue with other transactions if one fails
-        }
+        console.log('BudgetProgress - Added', finalAmount, 'to total. Running total:', totalAmount)
+      } else {
+        console.log('BudgetProgress - Skipping transaction', transaction.transaction_id, '- not furnishings category')
       }
     }
 
+    console.log('BudgetProgress - Final total amount:', totalAmount)
     // Design fee is tracked separately and should NOT contribute to the overall budget
-    return purchases
+    return totalAmount
   }
 
   // Calculate spending for each budget category
   const calculateCategoryBudgetData = async (): Promise<CategoryBudgetData[]> => {
-    if (!budgetCategories) return []
+    if (!budgetCategories) {
+      console.log('BudgetProgress - No budget categories provided')
+      return []
+    }
+
+    console.log('BudgetProgress - Available budget categories:', budgetCategories)
+    console.log('BudgetProgress - Total transactions available:', transactions.length)
 
     const categoryData: CategoryBudgetData[] = []
 
@@ -86,10 +95,14 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         if (label === BudgetCategory.DESIGN_FEE) {
           const designFeeReceived = transactions
             .filter(transaction =>
-              transaction.transaction_type === 'Purchase' &&
               transaction.budget_category === BudgetCategory.DESIGN_FEE
             )
-            .reduce((total, transaction) => total + parseFloat(transaction.amount || '0'), 0)
+            .reduce((total, transaction) => {
+              const amount = parseFloat(transaction.amount || '0')
+              // Apply transaction type multiplier: purchases add, returns subtract
+              const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+              return total + (amount * multiplier)
+            }, 0)
 
           const percentage = designFee && designFee > 0 ? (designFeeReceived / designFee) * 100 : 0
 
@@ -100,34 +113,33 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
             percentage: Math.min(percentage, 100) // Cap at 100%
           })
         } else {
-          // Regular categories - track spent vs budget based on item prices, excluding inventory items
+          // Regular categories - track spent vs budget based on transaction amounts directly
           let categorySpent = 0
 
           const categoryTransactions = transactions.filter(transaction =>
-            transaction.transaction_type === 'Purchase' &&
             transaction.budget_category === label
           )
 
+          console.log(`BudgetProgress - Category ${label}: Found ${categoryTransactions.length} transactions`)
+
           for (const transaction of categoryTransactions) {
-            try {
-              // Get items for this transaction
-              const itemIds = await itemService.getTransactionItems(transaction.project_id, transaction.transaction_id)
+            console.log(`BudgetProgress - Category ${label} - Processing transaction:`, {
+              id: transaction.transaction_id,
+              type: transaction.transaction_type,
+              budget_category: transaction.budget_category,
+              amount: transaction.amount
+            })
 
-              // Get item details and filter by disposition
-              const itemPromises = itemIds.map(itemId => itemService.getItem(transaction.project_id, itemId))
-              const items = await Promise.all(itemPromises)
-              const validItems = items.filter(item => item !== null) as Item[]
+            // Use transaction amount directly for budget calculation
+            const transactionAmount = parseFloat(transaction.amount || '0')
+            console.log(`BudgetProgress - Category ${label} - Transaction amount:`, transactionAmount)
 
-              // Sum prices of items that don't have disposition "inventory"
-              const transactionTotal = validItems
-                .filter(item => item.disposition !== 'inventory')
-                .reduce((total, item) => total + parseFloat(item.price || '0'), 0)
+            // Apply transaction type multiplier: purchases add, returns subtract
+            const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+            const finalAmount = transactionAmount * multiplier
+            categorySpent += finalAmount
 
-              categorySpent += transactionTotal
-            } catch (error) {
-              console.error('Error calculating category spent for transaction:', transaction.transaction_id, error)
-              // Continue with other transactions if one fails
-            }
+            console.log(`BudgetProgress - Category ${label} - Added ${finalAmount} to category total. Running total:`, categorySpent)
           }
 
           const percentage = categoryBudget > 0 ? (categorySpent / categoryBudget) * 100 : 0
@@ -153,6 +165,13 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   // Calculate budget data when component mounts or when props change
   useEffect(() => {
     const calculateBudgetData = async () => {
+      console.log('BudgetProgress - useEffect triggered with:', {
+        budget,
+        designFee,
+        budgetCategories,
+        transactionCount: transactions.length
+      })
+
       setIsLoading(true)
 
       try {
@@ -161,6 +180,13 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
         const spentRounded = Math.round(spentAmount)
         const percentageValue = budget && budget > 0 ? (spentRounded / budget) * 100 : 0
+
+        console.log('BudgetProgress - Final results:', {
+          spentAmount,
+          spentRounded,
+          percentageValue,
+          categoryDataLength: categoryData.length
+        })
 
         setSpent(spentRounded)
         setPercentage(percentageValue)

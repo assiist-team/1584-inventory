@@ -77,7 +77,20 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     }
 
     try {
-      await onSubmit(formData)
+      // Filter out undefined values before submitting
+      const cleanObject = (obj: any): any => {
+        if (obj === null || obj === undefined) return undefined
+        if (typeof obj === 'object') {
+          const cleaned = Object.fromEntries(
+            Object.entries(obj).filter(([_, value]) => value !== undefined)
+          )
+          return Object.keys(cleaned).length > 0 ? cleaned : undefined
+        }
+        return obj
+      }
+
+      const cleanedData = cleanObject(formData) as ProjectFormData
+      await onSubmit(cleanedData)
     } catch (error) {
       console.error('Error submitting form:', error)
     }
@@ -166,7 +179,15 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                   type="number"
                   id="budget"
                   value={formData.budget?.toString() || ''}
-                  onChange={(e) => handleChange('budget', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const inputValue = e.target.value.trim()
+                    if (inputValue === '') {
+                      handleChange('budget', 0) // This will be converted to undefined in handleChange
+                    } else {
+                      const numericValue = parseFloat(inputValue)
+                      handleChange('budget', isNaN(numericValue) ? 0 : numericValue)
+                    }
+                  }}
                   className={`block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
                     errors.budget ? 'border-red-300' : ''
                   }`}
@@ -191,7 +212,15 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                   type="number"
                   id="designFee"
                   value={formData.designFee?.toString() || ''}
-                  onChange={(e) => handleChange('designFee', parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const inputValue = e.target.value.trim()
+                    if (inputValue === '') {
+                      handleChange('designFee', 0) // This will be converted to undefined in handleChange
+                    } else {
+                      const numericValue = parseFloat(inputValue)
+                      handleChange('designFee', isNaN(numericValue) ? 0 : numericValue)
+                    }
+                  }}
                   className={`block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
                     errors.designFee ? 'border-red-300' : ''
                   }`}
