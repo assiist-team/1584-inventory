@@ -170,7 +170,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   }
 
   const getDispositionBadgeClasses = (disposition: string) => {
-    const baseClasses = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80'
+    const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
 
     switch (disposition) {
       case 'keep':
