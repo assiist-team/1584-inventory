@@ -439,7 +439,7 @@ export default function ItemDetail() {
           {/* Item Images */}
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-900">Add Image</h3>
+              <h3 className="text-sm font-medium text-gray-900">Item Images</h3>
               <button
                 onClick={handleSelectFromGallery}
                 disabled={isUploadingImage}

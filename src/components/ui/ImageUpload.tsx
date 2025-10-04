@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react'
-import { Upload, X, Image as ImageIcon, AlertCircle } from 'lucide-react'
+import { Upload, Image as ImageIcon, AlertCircle, ChevronDown, Trash2, Eye } from 'lucide-react'
 import { ImageUploadService } from '@/services/imageService'
 
 interface ImageUploadProps {
@@ -29,6 +29,7 @@ export default function ImageUpload({
 }: ImageUploadProps) {
   const [images, setImages] = useState<PreviewImage[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
+  const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
@@ -162,6 +163,38 @@ export default function ImageUpload({
     return (bytes / Math.pow(k, i)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + sizes[i]
   }
 
+  const toggleMenu = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation()
+    setOpenMenuIndex(openMenuIndex === index ? null : index)
+  }
+
+  const handleMenuAction = (e: React.MouseEvent, action: string, index: number) => {
+    e.stopPropagation()
+    setOpenMenuIndex(null)
+
+    switch (action) {
+      case 'preview':
+        // Open preview in new tab or modal - for now just open in new tab
+        window.open(images[index].previewUrl, '_blank')
+        break
+      case 'delete':
+        removeImage(index)
+        break
+    }
+  }
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (openMenuIndex !== null && !(e.target as Element).closest('.image-menu-container')) {
+        setOpenMenuIndex(null)
+      }
+    }
+
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [openMenuIndex])
+
   return (
     <div className={`space-y-4 ${className}`}>
       {/* Upload Area */}
@@ -243,7 +276,7 @@ export default function ImageUpload({
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {images.map((image, index) => (
               <div key={index} className="relative group">
-                <div className="aspect-w-4 aspect-h-3 rounded-lg overflow-hidden bg-gray-100">
+                <div className="aspect-w-4 aspect-h-3 rounded-lg overflow-visible bg-gray-100">
                   {image.error ? (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center p-4">
@@ -270,13 +303,35 @@ export default function ImageUpload({
                         </div>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => removeImage(index)}
-                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                      <div className="absolute top-1 right-1 image-menu-container">
+                        <button
+                          type="button"
+                          onClick={(e) => toggleMenu(e, index)}
+                          className="p-1.5 bg-primary-500 text-white rounded-full opacity-90 hover:opacity-100 transition-opacity"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+
+                        {/* Dropdown menu */}
+                        {openMenuIndex === index && (
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 w-28 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
+                            <button
+                              onClick={(e) => handleMenuAction(e, 'preview', index)}
+                              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center transition-colors"
+                            >
+                              <Eye className="h-4 w-4 mr-2 text-gray-500" />
+                              Open
+                            </button>
+                            <button
+                              onClick={(e) => handleMenuAction(e, 'delete', index)}
+                              className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2 text-red-500" />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Camera, X, Plus } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Plus, ChevronDown, Trash2, Star, ExternalLink, Crown } from 'lucide-react'
 import { ItemImage } from '@/types'
 import ImageGallery from './ImageGallery'
 
@@ -26,6 +26,7 @@ export default function ImagePreview({
 }: ImagePreviewProps) {
   const [showGallery, setShowGallery] = useState(false)
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
+  const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null)
 
   const sizeClasses = {
     sm: 'w-20 h-20 sm:w-16 sm:h-16',
@@ -42,15 +43,40 @@ export default function ImagePreview({
     setShowGallery(false)
   }
 
-  const handleRemoveImage = (e: React.MouseEvent, imageUrl: string) => {
+
+  const toggleMenu = (e: React.MouseEvent, index: number) => {
     e.stopPropagation()
-    onRemoveImage?.(imageUrl)
+    setOpenMenuIndex(openMenuIndex === index ? null : index)
   }
 
-  const handleSetPrimary = (e: React.MouseEvent, imageUrl: string) => {
+  const handleMenuAction = (e: React.MouseEvent, action: string, imageUrl: string, index: number) => {
     e.stopPropagation()
-    onSetPrimary?.(imageUrl)
+    setOpenMenuIndex(null)
+
+    switch (action) {
+      case 'open':
+        handleImageClick(index)
+        break
+      case 'setPrimary':
+        onSetPrimary?.(imageUrl)
+        break
+      case 'delete':
+        onRemoveImage?.(imageUrl)
+        break
+    }
   }
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (openMenuIndex !== null && !(e.target as Element).closest('.image-menu-container')) {
+        setOpenMenuIndex(null)
+      }
+    }
+
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [openMenuIndex])
 
   if (images.length === 0 && !onAddImage) {
     return null
@@ -65,7 +91,7 @@ export default function ImagePreview({
             {images.map((image, index) => (
               <div
                 key={image.url}
-                className={`${sizeClasses[size]} relative group cursor-pointer rounded-lg overflow-hidden border-2 ${
+                className={`${sizeClasses[size]} relative group cursor-pointer rounded-lg overflow-visible border-2 ${
                   image.isPrimary ? 'border-primary-500 ring-2 ring-primary-200' : 'border-gray-200'
                 }`}
                 onClick={() => handleImageClick(index)}
@@ -78,43 +104,62 @@ export default function ImagePreview({
 
                 {/* Primary indicator */}
                 {image.isPrimary && (
-                  <div className="absolute top-1 left-1 bg-primary-500 text-white text-xs px-1 py-0.5 rounded">
-                    Primary
+                  <div className="absolute top-1 left-1 bg-yellow-500 text-white text-xs p-1 rounded flex items-center justify-center">
+                    <Crown className="h-3 w-3 fill-current" />
                   </div>
                 )}
 
-                {/* Controls overlay */}
+                {/* Controls overlay - Mobile-first design with chevron menu */}
                 {showControls && (
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 flex space-x-1">
-                      {!image.isPrimary && onSetPrimary && (
-                        <button
-                          onClick={(e) => handleSetPrimary(e, image.url)}
-                          className="p-1 bg-white bg-opacity-90 rounded-full text-gray-700 hover:bg-opacity-100 transition-colors"
-                          title="Set as primary"
-                        >
-                          <Camera className="h-3 w-3" />
-                        </button>
-                      )}
-                      {onRemoveImage && (
-                        <button
-                          onClick={(e) => handleRemoveImage(e, image.url)}
-                          className="p-1 bg-red-500 bg-opacity-90 rounded-full text-white hover:bg-opacity-100 transition-colors"
-                          title="Remove image"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                  <div className="absolute inset-0 bg-transparent transition-all duration-200">
+                    {/* Chevron menu button - Upper right corner */}
+                    <div className="absolute top-1 right-1 image-menu-container">
+                      <button
+                        onClick={(e) => toggleMenu(e, index)}
+                        className="p-1.5 bg-primary-500 bg-opacity-90 rounded-full text-white hover:bg-primary-600 transition-colors"
+                        title="Image options"
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+
+                      {/* Dropdown menu */}
+                      {openMenuIndex === index && (
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 w-32 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50" style={{
+                          transform: 'translateY(0)',
+                          maxHeight: 'calc(100vh - 100px)',
+                          overflowY: 'auto'
+                        }}>
+                          <button
+                            onClick={(e) => handleMenuAction(e, 'open', image.url, index)}
+                            className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center transition-colors"
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            <span>Open</span>
+                          </button>
+                          {!image.isPrimary && onSetPrimary && (
+                            <button
+                              onClick={(e) => handleMenuAction(e, 'setPrimary', image.url, index)}
+                              className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center transition-colors"
+                            >
+                              <Star className="h-4 w-4 mr-2" />
+                              <span>Primary</span>
+                            </button>
+                          )}
+                          {onRemoveImage && (
+                            <button
+                              onClick={(e) => handleMenuAction(e, 'delete', image.url, index)}
+                              className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              <span>Delete</span>
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Image index for non-primary images */}
-                {!image.isPrimary && images.length > 1 && (
-                  <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
-                    {index + 1}
-                  </div>
-                )}
               </div>
             ))}
 
