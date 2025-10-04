@@ -70,7 +70,9 @@ export default function AddTransaction() {
     amount: '',
     budget_category: 'Furnishings',
     notes: '',
-    transaction_images: [],
+    transaction_images: [], // Legacy field for backward compatibility
+    receipt_images: [],
+    other_images: [],
     receipt_emailed: false,
     items: []
   })
@@ -137,8 +139,8 @@ export default function AddTransaction() {
     setIsSubmitting(true)
 
     try {
-      // Create transaction data, excluding transaction_images from formData since it contains File objects
-      const { transaction_images, ...formDataWithoutImages } = formData
+      // Create transaction data, excluding image File objects from formData since they contain File objects
+      const { transaction_images, receipt_images, other_images, ...formDataWithoutImages } = formData
 
       const transactionData = {
         ...formDataWithoutImages,
@@ -155,33 +157,33 @@ export default function AddTransaction() {
       // Create transaction with items first to get the real transaction ID
       const transactionId = await transactionService.createTransaction(projectId, transactionData, items)
 
-      // Now upload transaction images using the real transaction ID
-      if (formData.transaction_images && formData.transaction_images.length > 0) {
+      // Now upload receipt images using the real transaction ID
+      if (formData.receipt_images && formData.receipt_images.length > 0) {
         setIsUploadingImages(true)
 
         try {
-          const uploadResults = await ImageUploadService.uploadMultipleTransactionImages(
-            formData.transaction_images,
+          const uploadResults = await ImageUploadService.uploadMultipleReceiptImages(
+            formData.receipt_images,
             projectName,
             transactionId,
             handleImageUploadProgress
           )
 
           // Convert to TransactionImage format
-          const transactionImages = ImageUploadService.convertFilesToTransactionImages(uploadResults)
-          console.log('Transaction images uploaded successfully:', transactionImages.length, 'images')
-          console.log('Transaction images to save:', transactionImages)
+          const receiptImages = ImageUploadService.convertFilesToReceiptImages(uploadResults)
+          console.log('Receipt images uploaded successfully:', receiptImages.length, 'images')
+          console.log('Receipt images to save:', receiptImages)
 
-          // Update the transaction with the uploaded images
-          if (transactionImages && transactionImages.length > 0) {
-            console.log('Updating transaction with transaction images...')
+          // Update the transaction with the uploaded receipt images
+          if (receiptImages && receiptImages.length > 0) {
+            console.log('Updating transaction with receipt images...')
             try {
               await transactionService.updateTransaction(projectId, transactionId, {
-                transaction_images: transactionImages
+                receipt_images: receiptImages
               })
-              console.log('Transaction updated successfully with transaction images')
+              console.log('Transaction updated successfully with receipt images')
             } catch (updateError) {
-              console.error('Failed to update transaction with transaction images:', updateError)
+              console.error('Failed to update transaction with receipt images:', updateError)
               // Don't fail the entire transaction if image update fails
             }
           }
@@ -189,10 +191,10 @@ export default function AddTransaction() {
           // Small delay to ensure the update is processed before continuing
           await new Promise(resolve => setTimeout(resolve, 500))
         } catch (error: any) {
-          console.error('Error uploading images:', error)
+          console.error('Error uploading receipt images:', error)
 
           // Provide specific error messages based on error type
-          let errorMessage = 'Failed to upload transaction images. Please try again.'
+          let errorMessage = 'Failed to upload receipt images. Please try again.'
           if (error.message?.includes('Storage service is not available')) {
             errorMessage = 'Storage service is unavailable. Please check your internet connection.'
           } else if (error.message?.includes('Network error') || error.message?.includes('offline')) {
@@ -205,7 +207,66 @@ export default function AddTransaction() {
             errorMessage = 'Upload blocked by browser security policy. Please check Firebase Storage configuration or try refreshing the page.'
           }
 
-          setErrors({ transaction_images: errorMessage })
+          setErrors({ receipt_images: errorMessage })
+          setIsSubmitting(false)
+          setIsUploadingImages(false)
+          return
+        }
+
+        setIsUploadingImages(false)
+      }
+
+      // Now upload other images using the real transaction ID
+      if (formData.other_images && formData.other_images.length > 0) {
+        setIsUploadingImages(true)
+
+        try {
+          const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
+            formData.other_images,
+            projectName,
+            transactionId,
+            handleImageUploadProgress
+          )
+
+          // Convert to TransactionImage format
+          const otherImages = ImageUploadService.convertFilesToOtherImages(uploadResults)
+          console.log('Other images uploaded successfully:', otherImages.length, 'images')
+          console.log('Other images to save:', otherImages)
+
+          // Update the transaction with the uploaded other images
+          if (otherImages && otherImages.length > 0) {
+            console.log('Updating transaction with other images...')
+            try {
+              await transactionService.updateTransaction(projectId, transactionId, {
+                other_images: otherImages
+              })
+              console.log('Transaction updated successfully with other images')
+            } catch (updateError) {
+              console.error('Failed to update transaction with other images:', updateError)
+              // Don't fail the entire transaction if image update fails
+            }
+          }
+
+          // Small delay to ensure the update is processed before continuing
+          await new Promise(resolve => setTimeout(resolve, 500))
+        } catch (error: any) {
+          console.error('Error uploading other images:', error)
+
+          // Provide specific error messages based on error type
+          let errorMessage = 'Failed to upload other images. Please try again.'
+          if (error.message?.includes('Storage service is not available')) {
+            errorMessage = 'Storage service is unavailable. Please check your internet connection.'
+          } else if (error.message?.includes('Network error') || error.message?.includes('offline')) {
+            errorMessage = 'Network connection issue. Please check your internet and try again.'
+          } else if (error.message?.includes('quota exceeded')) {
+            errorMessage = 'Storage quota exceeded. Please contact support.'
+          } else if (error.message?.includes('Unauthorized')) {
+            errorMessage = 'Permission denied. Please check your account permissions.'
+          } else if (error.message?.includes('CORS') || error.message?.includes('Access-Control') || error.message?.includes('ERR_FAILED') || error.message?.includes('preflight')) {
+            errorMessage = 'Upload blocked by browser security policy. Please check Firebase Storage configuration or try refreshing the page.'
+          }
+
+          setErrors({ other_images: errorMessage })
           setIsSubmitting(false)
           setIsUploadingImages(false)
           return
@@ -316,6 +377,22 @@ export default function AddTransaction() {
     }
   }
 
+  const handleReceiptImagesChange = (files: File[]) => {
+    setFormData(prev => ({ ...prev, receipt_images: files }))
+    // Clear any existing image errors
+    if (errors.receipt_images) {
+      setErrors(prev => ({ ...prev, receipt_images: undefined }))
+    }
+  }
+
+  const handleOtherImagesChange = (files: File[]) => {
+    setFormData(prev => ({ ...prev, other_images: files }))
+    // Clear any existing image errors
+    if (errors.other_images) {
+      setErrors(prev => ({ ...prev, other_images: undefined }))
+    }
+  }
+
   const handleImageFilesChange = (itemId: string, imageFiles: File[]) => {
     // Update the imageFilesMap
     setImageFilesMap(prev => {
@@ -374,28 +451,6 @@ export default function AddTransaction() {
             </div>
           )}
 
-          {/* Transaction Date */}
-          <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
-            </label>
-            <input
-              type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => {
-                // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
-              }}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
-            )}
-          </div>
-
           {/* Transaction Source */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -453,111 +508,6 @@ export default function AddTransaction() {
             )}
             {errors.source && (
               <p className="mt-1 text-sm text-red-600">{errors.source}</p>
-            )}
-          </div>
-
-          {/* Transaction Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Type *
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="type_purchase"
-                  name="transaction_type"
-                  value="Purchase"
-                  checked={formData.transaction_type === 'Purchase'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
-                  Purchase
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="type_return"
-                  name="transaction_type"
-                  value="Return"
-                  checked={formData.transaction_type === 'Return'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
-                  Return
-                </label>
-              </div>
-            </div>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
-            )}
-          </div>
-
-          {/* Amount */}
-          <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-              Amount *
-            </label>
-            <div className="mt-1 relative rounded-md shadow-sm">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">$</span>
-              </div>
-              <input
-                type="text"
-                id="amount"
-                value={formData.amount}
-                onChange={(e) => handleInputChange('amount', e.target.value)}
-                placeholder="0.00"
-                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.amount ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-            </div>
-            {errors.amount && (
-              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
-            )}
-          </div>
-
-          {/* Transaction Method */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Method *
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_client_card"
-                  name="payment_method"
-                  value="Client Card"
-                  checked={formData.payment_method === 'Client Card'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
-                  Client Card
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_1584_card"
-                  name="payment_method"
-                  value="1584 Design"
-                  checked={formData.payment_method === '1584 Design'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
-                  1584 Design
-                </label>
-              </div>
-            </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
             )}
           </div>
 
@@ -671,6 +621,132 @@ export default function AddTransaction() {
             )}
           </div>
 
+          {/* Transaction Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Type *
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_purchase"
+                  name="transaction_type"
+                  value="Purchase"
+                  checked={formData.transaction_type === 'Purchase'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
+                  Purchase
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_return"
+                  name="transaction_type"
+                  value="Return"
+                  checked={formData.transaction_type === 'Return'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
+                  Return
+                </label>
+              </div>
+            </div>
+            {errors.transaction_type && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            )}
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
+              Amount *
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
+              </div>
+              <input
+                type="text"
+                id="amount"
+                value={formData.amount}
+                onChange={(e) => handleInputChange('amount', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.amount ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+            </div>
+            {errors.amount && (
+              <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
+            )}
+          </div>
+
+          {/* Transaction Date */}
+          <div>
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
+            </label>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            )}
+          </div>
+
+          {/* Transaction Method */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Method *
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_client_card"
+                  name="payment_method"
+                  value="Client Card"
+                  checked={formData.payment_method === 'Client Card'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
+                  Client Card
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_1584_card"
+                  name="payment_method"
+                  value="1584 Design"
+                  checked={formData.payment_method === '1584 Design'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
+                  1584 Design
+                </label>
+              </div>
+            </div>
+            {errors.payment_method && (
+              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            )}
+          </div>
 
           {/* Receipt Email Copy */}
           <div>
@@ -747,20 +823,37 @@ export default function AddTransaction() {
             )}
           </div>
 
-          {/* Transaction Images */}
+          {/* Receipt Images */}
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Transaction Images
+              Receipt Images
             </h3>
             <ImageUpload
-              onImagesChange={handleImagesChange}
+              onImagesChange={handleReceiptImagesChange}
               maxImages={5}
               maxFileSize={10}
               disabled={isSubmitting || isUploadingImages}
               className="mb-2"
             />
-            {errors.transaction_images && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_images}</p>
+            {errors.receipt_images && (
+              <p className="mt-1 text-sm text-red-600">{errors.receipt_images}</p>
+            )}
+          </div>
+
+          {/* Other Images */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Other Images
+            </h3>
+            <ImageUpload
+              onImagesChange={handleOtherImagesChange}
+              maxImages={5}
+              maxFileSize={10}
+              disabled={isSubmitting || isUploadingImages}
+              className="mb-2"
+            />
+            {errors.other_images && (
+              <p className="mt-1 text-sm text-red-600">{errors.other_images}</p>
             )}
           </div>
 

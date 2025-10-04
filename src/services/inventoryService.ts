@@ -595,7 +595,9 @@ export const transactionService = {
 
       const transactionData = {
         ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : []
+        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+        other_images: Array.isArray(data.other_images) ? data.other_images : []
       }
 
       return {
@@ -619,7 +621,9 @@ export const transactionService = {
 
       const transactionData = {
         ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : []
+        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+        other_images: Array.isArray(data.other_images) ? data.other_images : []
       }
 
       console.log('inventoryService - processed transactionData:', transactionData)
@@ -697,7 +701,9 @@ export const transactionService = {
 
         const transactionData = {
           ...data,
-          transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : []
+          transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+          receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+          other_images: Array.isArray(data.other_images) ? data.other_images : []
         }
 
         return {
@@ -726,7 +732,9 @@ export const transactionService = {
 
         const transactionData = {
           ...data,
-          transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : []
+          transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+          receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+          other_images: Array.isArray(data.other_images) ? data.other_images : []
         }
 
         console.log('inventoryService - real-time processed transactionData:', transactionData)

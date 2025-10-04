@@ -70,7 +70,7 @@ export class ImageUploadService {
   }
 
   /**
-   * Upload a transaction image to Firebase Storage
+   * Upload a transaction image to Firebase Storage (legacy method for backward compatibility)
    */
   static async uploadTransactionImage(
     file: File,
@@ -83,13 +83,39 @@ export class ImageUploadService {
   }
 
   /**
+   * Upload a receipt image to Firebase Storage
+   */
+  static async uploadReceiptImage(
+    file: File,
+    projectName: string,
+    transactionId: string,
+    onProgress?: (progress: UploadProgress) => void,
+    retryCount: number = 0
+  ): Promise<ImageUploadResult> {
+    return this.uploadImageInternal(file, projectName, transactionId, 'receipt_images', onProgress, retryCount)
+  }
+
+  /**
+   * Upload an other image to Firebase Storage
+   */
+  static async uploadOtherImage(
+    file: File,
+    projectName: string,
+    transactionId: string,
+    onProgress?: (progress: UploadProgress) => void,
+    retryCount: number = 0
+  ): Promise<ImageUploadResult> {
+    return this.uploadImageInternal(file, projectName, transactionId, 'other_images', onProgress, retryCount)
+  }
+
+  /**
    * Internal upload method with the new storage structure
    */
   private static async uploadImageInternal(
     file: File,
     projectName: string,
     id: string,
-    imageType: 'item_images' | 'transaction_images',
+    imageType: 'item_images' | 'transaction_images' | 'receipt_images' | 'other_images',
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {
@@ -231,7 +257,7 @@ export class ImageUploadService {
   }
 
   /**
-   * Upload multiple transaction images
+   * Upload multiple transaction images (legacy method for backward compatibility)
    */
   static async uploadMultipleTransactionImages(
     files: File[],
@@ -249,6 +275,58 @@ export class ImageUploadService {
         results.push(result)
       } catch (error) {
         console.error(`Error uploading image ${i + 1}:`, error)
+        throw error // Re-throw to stop the upload process
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * Upload multiple receipt images
+   */
+  static async uploadMultipleReceiptImages(
+    files: File[],
+    projectName: string,
+    transactionId: string,
+    onProgress?: (fileIndex: number, progress: UploadProgress) => void
+  ): Promise<ImageUploadResult[]> {
+    const results: ImageUploadResult[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+
+      try {
+        const result = await this.uploadReceiptImage(file, projectName, transactionId, onProgress ? (progress) => onProgress(i, progress) : undefined)
+        results.push(result)
+      } catch (error) {
+        console.error(`Error uploading receipt image ${i + 1}:`, error)
+        throw error // Re-throw to stop the upload process
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * Upload multiple other images
+   */
+  static async uploadMultipleOtherImages(
+    files: File[],
+    projectName: string,
+    transactionId: string,
+    onProgress?: (fileIndex: number, progress: UploadProgress) => void
+  ): Promise<ImageUploadResult[]> {
+    const results: ImageUploadResult[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+
+      try {
+        const result = await this.uploadOtherImage(file, projectName, transactionId, onProgress ? (progress) => onProgress(i, progress) : undefined)
+        results.push(result)
+      } catch (error) {
+        console.error(`Error uploading other image ${i + 1}:`, error)
         throw error // Re-throw to stop the upload process
       }
     }
@@ -281,9 +359,35 @@ export class ImageUploadService {
   }
 
   /**
-   * Convert File objects to TransactionImage objects
+   * Convert File objects to TransactionImage objects (legacy method for backward compatibility)
    */
   static convertFilesToTransactionImages(uploadResults: ImageUploadResult[]): TransactionImage[] {
+    return uploadResults.map(result => ({
+      url: result.url,
+      fileName: result.fileName,
+      uploadedAt: new Date(),
+      size: result.size,
+      mimeType: result.mimeType
+    }))
+  }
+
+  /**
+   * Convert File objects to receipt TransactionImage objects
+   */
+  static convertFilesToReceiptImages(uploadResults: ImageUploadResult[]): TransactionImage[] {
+    return uploadResults.map(result => ({
+      url: result.url,
+      fileName: result.fileName,
+      uploadedAt: new Date(),
+      size: result.size,
+      mimeType: result.mimeType
+    }))
+  }
+
+  /**
+   * Convert File objects to other TransactionImage objects
+   */
+  static convertFilesToOtherImages(uploadResults: ImageUploadResult[]): TransactionImage[] {
     return uploadResults.map(result => ({
       url: result.url,
       fileName: result.fileName,

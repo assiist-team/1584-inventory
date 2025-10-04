@@ -1,10 +1,11 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, FormEvent } from 'react'
-import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, ItemImage } from '@/types'
+import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
+import ImageUpload from '@/components/ui/ImageUpload'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
@@ -47,7 +48,9 @@ export default function EditTransaction() {
     amount: '',
     budget_category: 'Furnishings',
     notes: '',
-    transaction_images: [],
+    transaction_images: [], // Legacy field for backward compatibility
+    receipt_images: [],
+    other_images: [],
     receipt_emailed: false
   })
 
@@ -55,11 +58,11 @@ export default function EditTransaction() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isUploadingImages, setIsUploadingImages] = useState(false)
-  const [existingTransactionImages, setExistingTransactionImages] = useState<TransactionImage[]>([])
+  const [existingReceiptImages, setExistingReceiptImages] = useState<TransactionImage[]>([])
+  const [existingOtherImages, setExistingOtherImages] = useState<TransactionImage[]>([])
 
   // Transaction items state
   const [items, setItems] = useState<TransactionItemFormData[]>([])
-  const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
 
   // Custom source state
   const [isCustomSource, setIsCustomSource] = useState(false)
@@ -91,13 +94,26 @@ export default function EditTransaction() {
             amount: transaction.amount,
             budget_category: transaction.budget_category || 'Furnishings',
             notes: transaction.notes || '',
-            transaction_images: [],
+            transaction_images: [], // Legacy field for backward compatibility
+            receipt_images: [],
+            other_images: [],
             receipt_emailed: transaction.receipt_emailed
           })
 
           setIsCustomSource(sourceIsCustom)
-          const images = transaction.transaction_images || []
-          setExistingTransactionImages(Array.isArray(images) ? images : [])
+
+          // Handle legacy transaction_images for backward compatibility (now stored in receipt_images)
+          const legacyImages = transaction.transaction_images || []
+          if (legacyImages.length > 0) {
+            setExistingReceiptImages(Array.isArray(legacyImages) ? legacyImages : [])
+          }
+
+          // Handle new separate image fields
+          const receiptImages = transaction.receipt_images || []
+          setExistingReceiptImages(Array.isArray(receiptImages) ? receiptImages : [])
+
+          const otherImages = transaction.other_images || []
+          setExistingOtherImages(Array.isArray(otherImages) ? otherImages : [])
 
           // Load transaction items
           try {
@@ -260,87 +276,30 @@ export default function EditTransaction() {
           }))
         }
 
-        // Upload item images for newly created items
-        if (imageFilesMap.size > 0 && newItems.length > 0) {
-          try {
-            console.log('Starting item image upload process for new items...')
-
-            // Get the updated item list with real IDs
-            const updatedItems = await itemService.getTransactionItems(projectId, transactionId)
-            console.log('Updated item IDs after creation:', updatedItems)
-
-            // Upload images for each new item that has image files
-            for (let i = 0; i < newItems.length && i < createdItemIds.length; i++) {
-              const tempItem = newItems[i]
-              const realItemId = createdItemIds[i] // Use the IDs returned from batch creation
-              const imageFiles = imageFilesMap.get(tempItem.id)
-
-              if (imageFiles && imageFiles.length > 0) {
-                console.log(`Uploading ${imageFiles.length} images for new item ${realItemId}`)
-
-                // Upload each image file with the real item ID
-                const uploadPromises = imageFiles.map(async (file, fileIndex) => {
-                  try {
-                    console.log(`Uploading file ${fileIndex + 1}/${imageFiles.length}: ${file.name}`)
-                    const uploadResult = await ImageUploadService.uploadItemImage(
-                      file,
-                      projectName,
-                      realItemId
-                    )
-                    console.log(`Upload successful for ${file.name}:`, uploadResult)
-
-                    const uploadedImage: ItemImage = {
-                      url: uploadResult.url,
-                      alt: file.name,
-                      isPrimary: false, // For now, make all uploaded images non-primary
-                      uploadedAt: new Date(),
-                      fileName: file.name,
-                      size: file.size,
-                      mimeType: file.type
-                    }
-                    return uploadedImage
-                  } catch (uploadError) {
-                    console.error(`Failed to upload ${file.name}:`, uploadError)
-                    return null
-                  }
-                })
-
-                const uploadedImages = await Promise.all(uploadPromises)
-                const validImages = uploadedImages.filter(img => img !== null) as ItemImage[]
-
-                if (validImages.length > 0) {
-                  // Update the item with the uploaded images
-                  await itemService.updateItemImages(projectId, realItemId, validImages)
-                  console.log(`Successfully updated new item ${realItemId} with ${validImages.length} images`)
-                }
-              }
-            }
-          } catch (imageError) {
-            console.error('Error in item image upload process:', imageError)
-            // Don't fail the transaction if image upload fails - just log the error
-          }
-        }
+        // Note: Item image upload functionality removed for now - focusing on transaction images
       }
 
-      // Upload transaction images
-      let transactionImages: TransactionImage[] = [...existingTransactionImages]
-      if (formData.transaction_images && formData.transaction_images.length > 0) {
+      // Note: Receipt images removed from Edit Transaction form
+
+      // Upload other images
+      let otherImages: TransactionImage[] = [...existingOtherImages]
+      if (formData.other_images && formData.other_images.length > 0) {
         setIsUploadingImages(true)
 
         try {
-          const uploadResults = await ImageUploadService.uploadMultipleTransactionImages(
-            formData.transaction_images,
+          const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
+            formData.other_images,
             projectName,
             transactionId,
             handleImageUploadProgress
           )
 
           // Convert to TransactionImage format and combine with existing images
-          const newTransactionImages = ImageUploadService.convertFilesToTransactionImages(uploadResults)
-          transactionImages = [...existingTransactionImages, ...newTransactionImages]
+          const newOtherImages = ImageUploadService.convertFilesToOtherImages(uploadResults)
+          otherImages = [...existingOtherImages, ...newOtherImages]
         } catch (error) {
-          console.error('Error uploading images:', error)
-          setErrors({ transaction_images: 'Failed to upload transaction images. Please try again.' })
+          console.error('Error uploading other images:', error)
+          setErrors({ other_images: 'Failed to upload other images. Please try again.' })
           setIsSubmitting(false)
           setIsUploadingImages(false)
           return
@@ -349,13 +308,15 @@ export default function EditTransaction() {
         setIsUploadingImages(false)
       } else {
         // Use existing images if no new ones uploaded
-        transactionImages = existingTransactionImages
+        otherImages = existingOtherImages
       }
 
       // Update transaction with new data and images
+      const { receipt_images, ...formDataWithoutReceiptImages } = formData
       const updateData = {
-        ...formData,
-        transaction_images: transactionImages
+        ...formDataWithoutReceiptImages,
+        transaction_images: existingReceiptImages, // Legacy field for backward compatibility - use existing receipt images as the main transaction images
+        other_images: otherImages
       }
 
       await transactionService.updateTransaction(projectId, transactionId, updateData)
@@ -384,21 +345,6 @@ export default function EditTransaction() {
     console.log(`Upload progress for file ${fileIndex}: ${progress.percentage}%`)
   }
 
-  const handleImageFilesChange = (itemId: string, imageFiles: File[]) => {
-    // Update the imageFilesMap
-    setImageFilesMap(prev => {
-      const newMap = new Map(prev)
-      newMap.set(itemId, imageFiles)
-      return newMap
-    })
-
-    // Also update the item in the items array with the imageFiles
-    setItems(prevItems => prevItems.map(item =>
-      item.id === itemId
-        ? { ...item, imageFiles }
-        : item
-    ))
-  }
 
   if (isLoading) {
     return (
@@ -447,28 +393,6 @@ export default function EditTransaction() {
               </div>
             </div>
           )}
-
-          {/* Transaction Date */}
-          <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
-            </label>
-            <input
-              type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => {
-                // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
-              }}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
-              }`}
-            />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
-            )}
-          </div>
 
           {/* Source */}
           <div>
@@ -595,10 +519,10 @@ export default function EditTransaction() {
             )}
           </div>
 
-          {/* Transaction Method */}
+          {/* Payment Method */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Method *
+              Payment Method *
             </label>
             <div className="flex items-center space-x-6">
               <div className="flex items-center">
@@ -745,6 +669,27 @@ export default function EditTransaction() {
             )}
           </div>
 
+          {/* Transaction Date */}
+          <div>
+            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+              Transaction Date *
+            </label>
+            <input
+              type="date"
+              id="transaction_date"
+              value={formData.transaction_date}
+              onChange={(e) => {
+                // Use the date value directly (YYYY-MM-DD format)
+                handleInputChange('transaction_date', e.target.value)
+              }}
+              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+            {errors.transaction_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            )}
+          </div>
 
           {/* Receipt Email Copy */}
           <div>
@@ -798,6 +743,23 @@ export default function EditTransaction() {
             />
             {errors.notes && (
               <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
+            )}
+          </div>
+
+          {/* Other Images */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Other Images
+            </h3>
+            <ImageUpload
+              onImagesChange={(files) => handleInputChange('other_images', files)}
+              maxImages={5}
+              maxFileSize={10}
+              disabled={isSubmitting || isUploadingImages}
+              className="mb-2"
+            />
+            {errors.other_images && (
+              <p className="mt-1 text-sm text-red-600">{errors.other_images}</p>
             )}
           </div>
 

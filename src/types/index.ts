@@ -156,7 +156,9 @@ export interface Transaction {
   amount: string;
   budget_category?: string;
   notes?: string;
-  transaction_images?: TransactionImage[];
+  transaction_images?: TransactionImage[]; // Legacy field for backward compatibility
+  receipt_images?: TransactionImage[]; // New field for receipt images
+  other_images?: TransactionImage[]; // New field for other images
   receipt_emailed: boolean;
   created_at: string;
   created_by: string;
@@ -190,7 +192,9 @@ export interface TransactionFormData {
   amount: string;
   budget_category?: string;
   notes?: string;
-  transaction_images?: File[];
+  transaction_images?: File[]; // Legacy field for backward compatibility
+  receipt_images?: File[]; // New field for receipt image files
+  other_images?: File[]; // New field for other image files
   receipt_emailed: boolean;
   items?: TransactionItemFormData[];
 }
@@ -214,7 +218,9 @@ export interface TransactionValidationErrors {
   amount?: string;
   budget_category?: string;
   notes?: string;
-  transaction_images?: string;
+  transaction_images?: string; // Legacy field for backward compatibility
+  receipt_images?: string; // New field for receipt image errors
+  other_images?: string; // New field for other image errors
   receipt_emailed?: string;
   items?: string; // General error for items
   general?: string; // General form error

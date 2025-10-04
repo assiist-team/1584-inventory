@@ -154,8 +154,14 @@ export default function TransactionDetail() {
     setShowGallery(false)
   }
 
-  // Convert transaction images to ItemImage format for the gallery
-  const itemImages = transaction?.transaction_images?.map((img, index) => ({
+  // Convert all transaction images (receipt and other) to ItemImage format for the gallery
+  const allTransactionImages = [
+    ...(transaction?.receipt_images || []),
+    ...(transaction?.other_images || []),
+    ...(transaction?.transaction_images || []) // Include legacy images for backward compatibility
+  ]
+
+  const itemImages = allTransactionImages.map((img, index) => ({
     url: img.url,
     alt: img.fileName,
     fileName: img.fileName,
@@ -224,60 +230,10 @@ export default function TransactionDetail() {
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="px-6 py-6 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-            {transaction.source} - {formatCurrency(transaction.amount)}
+            {transaction.source} - {transaction.transaction_type}
           </h1>
         </div>
 
-        {/* Transaction Images */}
-        <div className="px-6 py-6 border-t border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <ImageIcon className="h-5 w-5 mr-2" />
-            Transaction Images
-          </h3>
-          {transaction.transaction_images && transaction.transaction_images.length > 0 ? (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
-                {transaction.transaction_images.map((image, index) => (
-                  <div
-                    key={index}
-                    className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
-                    onClick={() => handleImageClick(index)}
-                  >
-                    <img
-                      src={image.url}
-                      alt={image.fileName}
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    />
-
-                    {/* Image index */}
-                    {transaction.transaction_images && transaction.transaction_images.length > 1 && (
-                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
-                        {index + 1}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Image count */}
-              <p className="text-xs text-gray-500 mt-2">
-                {transaction.transaction_images.length} image{transaction.transaction_images.length !== 1 ? 's' : ''}
-              </p>
-            </>
-          ) : (
-            <div className="text-center py-8">
-              <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No images uploaded</h3>
-              <Link
-                to={`/project/${projectId}/transaction/${transactionId}/edit`}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
-              >
-                <ImageIcon className="h-3 w-3 mr-1" />
-                Add Images
-              </Link>
-            </div>
-          )}
-        </div>
 
         <div className="px-6 py-4 border-t border-gray-200">
           <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
@@ -286,50 +242,9 @@ export default function TransactionDetail() {
           </h3>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
             <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
-                <CreditCard className="h-4 w-4 mr-1" />
-                Payment Method
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
+              <dt className="text-sm font-medium text-gray-500">Source</dt>
+              <dd className="mt-1 text-sm text-gray-900">{transaction.source}</dd>
             </div>
-
-            <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
-                <Calendar className="h-4 w-4 mr-1" />
-                Transaction Date
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {transaction.transaction_date ? formatDate(transaction.transaction_date) : 'No date'}
-              </dd>
-            </div>
-
-            <div>
-              <dt className="text-sm font-medium text-gray-500">Transaction Type</dt>
-              <dd className="mt-1">
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
-                  transaction.transaction_type === 'Purchase'
-                    ? 'bg-green-100 text-green-800'
-                    : transaction.transaction_type === 'Return'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {transaction.transaction_type}
-                </span>
-              </dd>
-            </div>
-
-            {transaction.receipt_emailed && (
-              <div>
-                <dt className="text-sm font-medium text-gray-500">
-                  Receipt Emailed
-                </dt>
-                <dd className="mt-1">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Yes
-                  </span>
-                </dd>
-              </div>
-            )}
 
             <div>
               <dt className="text-sm font-medium text-gray-500">Budget Category</dt>
@@ -356,6 +271,60 @@ export default function TransactionDetail() {
               </dd>
             </div>
 
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Transaction Type</dt>
+              <dd className="mt-1">
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
+                  transaction.transaction_type === 'Purchase'
+                    ? 'bg-green-100 text-green-800'
+                    : transaction.transaction_type === 'Return'
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {transaction.transaction_type}
+                </span>
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-sm font-medium text-gray-500 flex items-center">
+                <CreditCard className="h-4 w-4 mr-1" />
+                Amount
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.amount)}</dd>
+            </div>
+
+            <div>
+              <dt className="text-sm font-medium text-gray-500 flex items-center">
+                <Calendar className="h-4 w-4 mr-1" />
+                Transaction Date
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {transaction.transaction_date ? formatDate(transaction.transaction_date) : 'No date'}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-sm font-medium text-gray-500 flex items-center">
+                <CreditCard className="h-4 w-4 mr-1" />
+                Payment Method
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
+            </div>
+
+            {transaction.receipt_emailed && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">
+                  Receipt Emailed
+                </dt>
+                <dd className="mt-1">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Yes
+                  </span>
+                </dd>
+              </div>
+            )}
+
             {transaction.notes && (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-gray-500 flex items-center">
@@ -367,6 +336,101 @@ export default function TransactionDetail() {
             )}
           </dl>
         </div>
+
+        {/* Receipt Images */}
+        <div className="px-6 py-6 border-t border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <ImageIcon className="h-5 w-5 mr-2" />
+            Receipt Images
+          </h3>
+          {transaction.receipt_images && transaction.receipt_images.length > 0 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
+                {transaction.receipt_images.map((image, index) => (
+                  <div
+                    key={`receipt-${index}`}
+                    className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
+                    onClick={() => handleImageClick(index)}
+                  >
+                    <img
+                      src={image.url}
+                      alt={image.fileName}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+
+                    {/* Image index */}
+                    {transaction.receipt_images && transaction.receipt_images.length > 1 && (
+                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                        {index + 1}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Image count */}
+              <p className="text-xs text-gray-500 mt-2">
+                {transaction.receipt_images.length} image{transaction.receipt_images.length !== 1 ? 's' : ''}
+              </p>
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No receipt images uploaded</h3>
+              <Link
+                to={`/project/${projectId}/transaction/${transactionId}/edit`}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
+              >
+                <ImageIcon className="h-3 w-3 mr-1" />
+                Add Receipt Images
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Other Images - Only show if there are other images */}
+        {transaction.other_images && transaction.other_images.length > 0 && (
+          <div className="px-6 py-6 border-t border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+              <ImageIcon className="h-5 w-5 mr-2" />
+              Other Images
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
+              {transaction.other_images.map((image, index) => {
+                // Find the correct index in the combined array for gallery navigation
+                const receiptCount = transaction.receipt_images?.length || 0
+                const legacyCount = transaction.transaction_images?.length || 0
+                const galleryIndex = receiptCount + legacyCount + index
+
+                return (
+                  <div
+                    key={`other-${index}`}
+                    className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
+                    onClick={() => handleImageClick(galleryIndex)}
+                  >
+                    <img
+                      src={image.url}
+                      alt={image.fileName}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+
+                    {/* Image index */}
+                    {transaction.other_images && transaction.other_images.length > 1 && (
+                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                        {index + 1}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Image count */}
+            <p className="text-xs text-gray-500 mt-2">
+              {transaction.other_images.length} image{transaction.other_images.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+        )}
 
         {/* Transaction Items */}
         <div className="px-6 py-6 border-t border-gray-200">
