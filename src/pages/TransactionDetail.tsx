@@ -231,19 +231,67 @@ export default function TransactionDetail() {
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="px-6 py-6 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-            {transaction.source}
+            {transaction.source} - {formatCurrency(transaction.amount)}
           </h1>
         </div>
 
-        <div className="px-6 py-4">
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm font-medium text-gray-500">
-                Amount
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(transaction.amount)}</dd>
-            </div>
+        {/* Transaction Images */}
+        <div className="px-6 py-6 border-t border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <ImageIcon className="h-5 w-5 mr-2" />
+            Transaction Images
+          </h3>
+          {transaction.transaction_images && transaction.transaction_images.length > 0 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
+                {transaction.transaction_images.map((image, index) => (
+                  <div
+                    key={index}
+                    className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
+                    onClick={() => handleImageClick(index)}
+                  >
+                    <img
+                      src={image.url}
+                      alt={image.fileName}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
 
+                    {/* Image index */}
+                    {transaction.transaction_images && transaction.transaction_images.length > 1 && (
+                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
+                        {index + 1}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Image count */}
+              <p className="text-xs text-gray-500 mt-2">
+                {transaction.transaction_images.length} image{transaction.transaction_images.length !== 1 ? 's' : ''}
+              </p>
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No images uploaded</h3>
+              <Link
+                to={`/project/${projectId}/transaction/${transactionId}/edit`}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
+              >
+                <ImageIcon className="h-3 w-3 mr-1" />
+                Add Images
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <CreditCard className="h-5 w-5 mr-2" />
+            Transaction Details
+          </h3>
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
             <div>
               <dt className="text-sm font-medium text-gray-500 flex items-center">
                 <CreditCard className="h-4 w-4 mr-1" />
@@ -309,57 +357,18 @@ export default function TransactionDetail() {
           </dl>
         </div>
 
-        {/* Transaction Images */}
-        {transaction.transaction_images && transaction.transaction_images.length > 0 && (
-          <div className="px-6 py-6 border-t border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-              <ImageIcon className="h-5 w-5 mr-2" />
-              Transaction Images
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
-              {transaction.transaction_images.map((image, index) => (
-                <div
-                  key={index}
-                  className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
-                  onClick={() => handleImageClick(index)}
-                >
-                  <img
-                    src={image.url}
-                    alt={image.fileName}
-                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                  />
-
-                  {/* Image index */}
-                  {transaction.transaction_images && transaction.transaction_images.length > 1 && (
-                    <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
-                      {index + 1}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Image count */}
-            <p className="text-xs text-gray-500 mt-2">
-              {transaction.transaction_images.length} image{transaction.transaction_images.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-        )}
-
         {/* Transaction Items */}
-        {isLoadingItems ? (
-          <div className="px-6 py-6 border-t border-gray-200">
+        <div className="px-6 py-6 border-t border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <Package className="h-5 w-5 mr-2" />
+            Transaction Items
+          </h3>
+          {isLoadingItems ? (
             <div className="flex justify-center items-center h-16">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
               <span className="ml-2 text-sm text-gray-600">Loading items...</span>
             </div>
-          </div>
-        ) : transactionItems.length > 0 ? (
-          <div className="px-6 py-6 border-t border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-              <Package className="h-5 w-5 mr-2" />
-              Items in this Transaction ({transactionItems.length})
-            </h3>
+          ) : transactionItems.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {transactionItems.map((item) => (
                 <Link
@@ -397,18 +406,20 @@ export default function TransactionDetail() {
                 </Link>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="px-6 py-6 border-t border-gray-200">
+          ) : (
             <div className="text-center py-8">
               <Package className="mx-auto h-8 w-8 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">No items linked</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Items created separately can be linked to this transaction when adding them to inventory.
-              </p>
+              <Link
+                to={`/project/${projectId}/transaction/${transactionId}/edit`}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
+              >
+                <Package className="h-3 w-3 mr-1" />
+                Add Items
+              </Link>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Metadata */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">

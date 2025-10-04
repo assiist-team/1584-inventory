@@ -463,9 +463,12 @@ export default function ItemDetail() {
           </div>
 
           {/* Item Images */}
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <div className="px-6 py-4 border-t border-gray-200">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-900">Item Images</h3>
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <ImagePlus className="h-5 w-5 mr-2" />
+                Item Images
+              </h3>
               <button
                 onClick={handleSelectFromGallery}
                 disabled={isUploadingImage}
@@ -493,12 +496,18 @@ export default function ItemDetail() {
               />
             ) : (
               <div className="text-center py-8">
-                <p className="text-sm text-gray-500 mb-3">No images for this item yet</p>
+                <ImagePlus className="mx-auto h-8 w-8 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No images uploaded</h3>
               </div>
             )}
           </div>
 
-          <div className="px-6 py-4">
+          {/* Item Details */}
+          <div className="px-6 py-4 border-t border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+              <FileText className="h-5 w-5 mr-2" />
+              Item Details
+            </h3>
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
               {item.transaction_id && (
                 <div>

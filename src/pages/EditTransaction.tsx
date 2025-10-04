@@ -5,8 +5,6 @@ import { TransactionFormData, TransactionValidationErrors, TransactionImage, Tra
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
-import ImageUpload from '@/components/ui/ImageUpload'
-import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
@@ -380,13 +378,6 @@ export default function EditTransaction() {
     }
   }
 
-  const handleImagesChange = (files: File[]) => {
-    setFormData(prev => ({ ...prev, transaction_images: files }))
-    // Clear any existing image errors
-    if (errors.transaction_images) {
-      setErrors(prev => ({ ...prev, transaction_images: undefined }))
-    }
-  }
 
   const handleImageUploadProgress = (fileIndex: number, progress: UploadProgress) => {
     // Progress tracking removed to fix TypeScript errors
@@ -810,62 +801,6 @@ export default function EditTransaction() {
             )}
           </div>
 
-          {/* Transaction Items */}
-          <div>
-            <TransactionItemsList
-              items={items}
-              onItemsChange={(newItems) => {
-                setItems(newItems)
-              }}
-              projectId={projectId}
-              projectName={projectName}
-              onImageFilesChange={handleImageFilesChange}
-            />
-          </div>
-
-          {/* Transaction Images */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Transaction Images
-            </h3>
-
-            {/* Existing Images */}
-            {existingTransactionImages.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-xs font-medium text-gray-600 mb-2">Current Images:</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-4">
-                  {existingTransactionImages.map((image, index) => (
-                    <div key={index} className="relative group">
-                      <div className="aspect-w-4 aspect-h-3 rounded-lg overflow-hidden bg-gray-100">
-                        <img
-                          src={image.url}
-                          alt={image.fileName}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
-                          <p className="text-white text-xs opacity-0 group-hover:opacity-100 text-center p-2">
-                            {image.fileName}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* New Image Upload */}
-            <ImageUpload
-              onImagesChange={handleImagesChange}
-              maxImages={5}
-              maxFileSize={10}
-              disabled={isSubmitting || isUploadingImages}
-              className="mb-2"
-            />
-            {errors.transaction_images && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_images}</p>
-            )}
-          </div>
 
           {/* Form Actions */}
           <div className="flex justify-between sm:justify-end sm:space-x-3 pt-4">
