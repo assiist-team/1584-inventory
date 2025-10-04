@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Bookmark, Printer, RotateCcw, Camera, ChevronDown, Edit } from 'lucide-react'
+import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -38,6 +38,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
+  const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
   const { showSuccess, showError } = useToast()
 
   // Fetch real inventory data from Firestore
@@ -88,13 +90,16 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
         setOpenDispositionMenu(null)
       }
+      if (showFilterMenu && !target.closest('.filter-menu') && !target.closest('.filter-button')) {
+        setShowFilterMenu(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [openDispositionMenu])
+  }, [openDispositionMenu, showFilterMenu])
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -266,12 +271,18 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
   }
 
-  const filteredItems = items.filter(item =>
-    item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.payment_method.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredItems = items.filter(item => {
+    // Apply search filter
+    const matchesSearch = item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.payment_method.toLowerCase().includes(searchQuery.toLowerCase())
+
+    // Apply bookmark filter
+    const matchesFilter = filterMode === 'all' || (filterMode === 'bookmarked' && item.bookmark)
+
+    return matchesSearch && matchesFilter
+  })
 
   return (
     <div className="space-y-4">
@@ -326,20 +337,66 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
             {/* Bulk action buttons */}
             <div className="flex items-center space-x-2">
+              {/* Filter Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowFilterMenu(!showFilterMenu)}
+                  className={`filter-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                    filterMode === 'all'
+                      ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                      : 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                  }`}
+                  title="Filter items"
+                >
+                  <Filter className="h-4 w-4" />
+                </button>
+
+                {/* Filter Dropdown Menu */}
+                {showFilterMenu && (
+                  <div className="filter-menu absolute top-full left-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setFilterMode('all')
+                          setShowFilterMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          filterMode === 'all' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                        }`}
+                      >
+                        All Items
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterMode('bookmarked')
+                          setShowFilterMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          filterMode === 'bookmarked' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                        }`}
+                      >
+                        Bookmarked Only
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button
                 className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
                 disabled={selectedItems.size === 0}
+                title="Generate QR Codes"
               >
-                <Printer className="h-4 w-4 mr-2" />
-                QR
+                <QrCode className="h-4 w-4" />
               </button>
 
               <button
                 onClick={handleBulkDelete}
                 className="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
                 disabled={selectedItems.size === 0}
+                title="Delete All"
               >
-                Delete All
+                <Trash2 className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -405,6 +462,28 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
                         {/* Action buttons */}
                         <div className="flex items-center space-x-2">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              toggleBookmark(item.item_id)
+                            }}
+                            className={`p-1 rounded border-gray-300 transition-colors ${
+                              item.bookmark
+                                ? 'text-red-600 bg-red-50'
+                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
+                          </button>
+                          <Link
+                            to={`/project/${projectId}/edit-item/${item.item_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1 rounded border-gray-300 text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                            title="Edit item"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Link>
                           <div className="relative">
                             <span
                               onClick={(e) => {
@@ -443,28 +522,6 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                               </div>
                             )}
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              toggleBookmark(item.item_id)
-                            }}
-                            className={`p-2 rounded-full transition-colors ${
-                              item.bookmark
-                                ? 'text-red-600 bg-red-50'
-                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
-                          </button>
-                          <Link
-                            to={`/project/${projectId}/edit-item/${item.item_id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
-                            title="Edit item"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Link>
                         </div>
                       </div>
 
