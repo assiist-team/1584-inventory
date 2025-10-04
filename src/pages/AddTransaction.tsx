@@ -485,41 +485,13 @@ export default function AddTransaction() {
                   type="radio"
                   id="method_1584_card"
                   name="payment_method"
-                  value="1584 Card"
-                  checked={formData.payment_method === '1584 Card'}
+                  value="1584 Design"
+                  checked={formData.payment_method === '1584 Design'}
                   onChange={(e) => handleInputChange('payment_method', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
-                  1584 Card
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_split"
-                  name="payment_method"
-                  value="Split"
-                  checked={formData.payment_method === 'Split'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_split" className="ml-2 block text-sm text-gray-900">
-                  Split
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_store_credit"
-                  name="payment_method"
-                  value="Store Credit"
-                  checked={formData.payment_method === 'Store Credit'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_store_credit" className="ml-2 block text-sm text-gray-900">
-                  Store Credit
+                  1584 Design
                 </label>
               </div>
             </div>

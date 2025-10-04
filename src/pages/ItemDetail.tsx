@@ -59,7 +59,7 @@ export default function ItemDetail() {
     price: '150.00',
     resale_price: '250.00',
     market_value: '300.00',
-    payment_method: '1584 Card',
+    payment_method: '1584 Design',
     notes: 'High-end marble sample for client presentation',
     qr_key: 'QR001',
     bookmark: true,

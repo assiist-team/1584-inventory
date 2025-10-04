@@ -116,7 +116,7 @@ export default function AddItem() {
   }, [formData.source])
 
   useEffect(() => {
-    const predefinedPaymentMethods = ['Client Card', '1584 Card', 'Split', 'Store Credit']
+    const predefinedPaymentMethods = ['Client Card', '1584 Design']
     if (formData.payment_method && !predefinedPaymentMethods.includes(formData.payment_method)) {
       setIsCustomPaymentMethod(true)
     } else if (formData.payment_method && predefinedPaymentMethods.includes(formData.payment_method)) {
@@ -200,7 +200,7 @@ export default function AddItem() {
     }
 
     if (selectedTransaction?.payment_method) {
-      const predefinedPaymentMethods = ['Client Card', '1584 Card', 'Split', 'Store Credit']
+      const predefinedPaymentMethods = ['Client Card', '1584 Design']
       const isPredefinedPayment = predefinedPaymentMethods.includes(selectedTransaction.payment_method)
       setIsCustomPaymentMethod(!isPredefinedPayment)
     }
@@ -571,7 +571,7 @@ export default function AddItem() {
               Payment Method
             </label>
             <div className="flex items-center space-x-6 mb-3">
-              {['Client Card', '1584 Card', 'Split', 'Store Credit'].map((method) => (
+              {['Client Card', '1584 Design'].map((method) => (
                 <div key={method} className="flex items-center">
                   <input
                     type="radio"
@@ -591,35 +591,6 @@ export default function AddItem() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center">
-              <input
-                type="radio"
-                id="payment_custom"
-                name="payment_method"
-                value="custom"
-                checked={isCustomPaymentMethod}
-                onChange={() => {
-                  setIsCustomPaymentMethod(true)
-                  handleInputChange('payment_method', '')
-                }}
-                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-              />
-              <label htmlFor="payment_custom" className="ml-2 block text-sm text-gray-900">
-                Other
-              </label>
-            </div>
-            {isCustomPaymentMethod && (
-              <input
-                type="text"
-                id="payment_custom_input"
-                value={formData.payment_method}
-                onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                placeholder="Enter custom payment method..."
-                className={`mt-3 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.payment_method ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-            )}
             {errors.payment_method && (
               <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
             )}

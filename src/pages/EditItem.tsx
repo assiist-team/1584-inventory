@@ -72,7 +72,7 @@ export default function EditItem() {
   }, [formData.source])
 
   useEffect(() => {
-    const predefinedPaymentMethods = ['Client Card', '1584 Card', 'Split', 'Store Credit']
+    const predefinedPaymentMethods = ['Client Card', '1584 Design']
     if (formData.payment_method && !predefinedPaymentMethods.includes(formData.payment_method)) {
       setIsCustomPaymentMethod(true)
     } else if (formData.payment_method && predefinedPaymentMethods.includes(formData.payment_method)) {
@@ -151,24 +151,6 @@ export default function EditItem() {
 
     if (!formData.description.trim()) {
       newErrors.description = 'Description is required'
-    }
-
-    if (!formData.source.trim()) {
-      newErrors.source = 'Source is required'
-    }
-
-    if (!formData.payment_method.trim()) {
-      newErrors.payment_method = 'Payment method is required'
-    }
-
-    if (!formData.disposition.trim()) {
-      newErrors.disposition = 'Disposition is required'
-    }
-
-    if (!formData.price.trim()) {
-      newErrors.price = 'Price is required'
-    } else if (isNaN(Number(formData.price)) || Number(formData.price) <= 0) {
-      newErrors.price = 'Price must be a positive number'
     }
 
     // Validate market value if provided
@@ -355,7 +337,7 @@ export default function EditItem() {
               {/* Source */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Source *
+                  Source
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                   {TRANSACTION_SOURCES.map((source) => (
@@ -430,7 +412,7 @@ export default function EditItem() {
               {/* Purchase Price */}
               <div>
                 <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                  Purchase Price *
+                  Purchase Price
                 </label>
                 <div className="mt-1 relative rounded-md shadow-sm">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -500,10 +482,10 @@ export default function EditItem() {
               {/* Payment Method */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Payment Method *
+                  Payment Method
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
-                  {['Client Card', '1584 Card', 'Split', 'Store Credit'].map((method) => (
+                  {['Client Card', '1584 Design'].map((method) => (
                     <div key={method} className="flex items-center">
                       <input
                         type="radio"
@@ -523,35 +505,6 @@ export default function EditItem() {
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center">
-                  <input
-                    type="radio"
-                    id="payment_custom"
-                    name="payment_method"
-                    value="custom"
-                    checked={isCustomPaymentMethod}
-                    onChange={() => {
-                      setIsCustomPaymentMethod(true)
-                      handleInputChange('payment_method', '')
-                    }}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                  />
-                  <label htmlFor="payment_custom" className="ml-2 block text-sm text-gray-900">
-                    Other
-                  </label>
-                </div>
-                {isCustomPaymentMethod && (
-                  <input
-                    type="text"
-                    id="payment_custom_input"
-                    value={formData.payment_method}
-                    onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                    placeholder="Enter custom payment method..."
-                    className={`mt-3 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                      errors.payment_method ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                )}
                 {errors.payment_method && (
                   <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
                 )}
@@ -560,7 +513,7 @@ export default function EditItem() {
               {/* Disposition */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Disposition *
+                  Disposition
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (

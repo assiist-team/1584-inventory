@@ -504,7 +504,7 @@ export default function EditTransaction() {
               id="payment_method"
               value={formData.payment_method}
               onChange={(e) => handleInputChange('payment_method', e.target.value)}
-              placeholder="e.g., 1584 Card, Client Card, Cash, Check"
+              placeholder="e.g., 1584 Design, Client Card"
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
                 errors.payment_method ? 'border-red-300' : 'border-gray-300'
               }`}
