@@ -54,14 +54,12 @@ export interface ProjectMetadata {
 export interface Item {
   // Note: This interface defines the FORM field names used in AddItem/EditItem forms
   // Field mapping to Firebase happens in the service layer:
-  // - resale_price (form) ↔ "1584_resale_price" (Firebase)
   // - market_value (form) ↔ market_value (Firebase) - direct mapping
   item_id: string;
   description: string;
   source: string;
   sku: string;
-  price: string;
-  resale_price?: string;        // Form field name - maps to "1584_resale_price" in Firebase
+  price: string;                // Form field name - direct mapping to Firebase
   market_value?: string;        // Direct mapping - no transformation needed
   payment_method: string;
   disposition: string;

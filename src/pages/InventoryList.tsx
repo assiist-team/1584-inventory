@@ -12,8 +12,6 @@ interface InventoryItem {
   source: string
   sku: string
   price: string
-  "1584_resale_price"?: string
-  resale_price?: string
   market_value?: string
   payment_method: string
   notes?: string

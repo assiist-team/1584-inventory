@@ -57,7 +57,6 @@ export default function ItemDetail() {
     source: 'Home Depot',
     sku: 'MCT-001',
     price: '150.00',
-    resale_price: '250.00',
     market_value: '300.00',
     payment_method: '1584 Design',
     notes: 'High-end marble sample for client presentation',
@@ -517,17 +516,9 @@ export default function ItemDetail() {
               <div>
                 <dt className="text-sm font-medium text-gray-500 flex items-center">
                   <DollarSign className="h-4 w-4 mr-1" />
-                  Purchase Price
+                  Price
                 </dt>
                 <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
-              </div>
-
-              <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  1584 Resale Price
-                </dt>
-                <dd className="mt-1 text-sm text-primary-600 font-medium">${item.resale_price || ''}</dd>
               </div>
 
               <div>

@@ -200,7 +200,6 @@ export const itemService = {
         source: data.source,
         sku: data.sku,
         price: data.price,
-        resale_price: data.resale_price || data["1584_resale_price"] || '', // Map Firebase field to form field
         market_value: data.market_value, // Direct mapping
         payment_method: data.payment_method,
         disposition: data.disposition,
@@ -235,7 +234,6 @@ export const itemService = {
       source: itemData.source,
       sku: itemData.sku,
       price: itemData.price,
-      "1584_resale_price": itemData.resale_price, // Map form field to Firebase field
       market_value: itemData.market_value, // Direct mapping
       payment_method: itemData.payment_method,
       disposition: itemData.disposition,
@@ -270,9 +268,6 @@ export const itemService = {
       last_updated: new Date().toISOString()
     }
 
-    if (updates.resale_price !== undefined) {
-      firebaseUpdates["1584_resale_price"] = updates.resale_price // Map form field to Firebase field
-    }
     if (updates.market_value !== undefined) {
       firebaseUpdates.market_value = updates.market_value // Direct mapping
     }
@@ -414,7 +409,6 @@ export const itemService = {
           source: data.source,
           sku: data.sku,
           price: data.price,
-          resale_price: data.resale_price || data["1584_resale_price"] || '', // Map Firebase field to form field
           market_value: data.market_value, // Direct mapping
           payment_method: data.payment_method,
           disposition: data.disposition,
@@ -469,7 +463,6 @@ export const itemService = {
         source: data.source,
         sku: data.sku,
         price: data.price,
-        resale_price: data.resale_price || data["1584_resale_price"] || '', // Map Firebase field to form field
         market_value: data.market_value, // Direct mapping
         payment_method: data.payment_method,
         disposition: data.disposition,
@@ -496,9 +489,6 @@ export const itemService = {
         last_updated: new Date().toISOString()
       }
 
-      if (updates.resale_price !== undefined) {
-        firebaseUpdates["1584_resale_price"] = updates.resale_price // Map form field to Firebase field
-      }
       if (updates.market_value !== undefined) {
         firebaseUpdates.market_value = updates.market_value // Direct mapping
       }
