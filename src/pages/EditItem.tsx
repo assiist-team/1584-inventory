@@ -52,7 +52,6 @@ export default function EditItem() {
   })
 
   const [isCustomSource, setIsCustomSource] = useState(false)
-  const [isCustomPaymentMethod, setIsCustomPaymentMethod] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -71,14 +70,6 @@ export default function EditItem() {
     }
   }, [formData.source])
 
-  useEffect(() => {
-    const predefinedPaymentMethods = ['Client Card', '1584 Design']
-    if (formData.payment_method && !predefinedPaymentMethods.includes(formData.payment_method)) {
-      setIsCustomPaymentMethod(true)
-    } else if (formData.payment_method && predefinedPaymentMethods.includes(formData.payment_method)) {
-      setIsCustomPaymentMethod(false)
-    }
-  }, [formData.payment_method])
 
   // Load item data
   useEffect(() => {
@@ -475,7 +466,6 @@ export default function EditItem() {
                         checked={formData.payment_method === method}
                         onChange={(e) => {
                           handleInputChange('payment_method', e.target.value)
-                          setIsCustomPaymentMethod(false)
                         }}
                         className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                       />

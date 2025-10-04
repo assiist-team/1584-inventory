@@ -69,7 +69,6 @@ export default function AddItem() {
   })
 
   const [isCustomSource, setIsCustomSource] = useState(false)
-  const [isCustomPaymentMethod, setIsCustomPaymentMethod] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [images, setImages] = useState<ItemImage[]>([])
@@ -115,14 +114,6 @@ export default function AddItem() {
     }
   }, [formData.source])
 
-  useEffect(() => {
-    const predefinedPaymentMethods = ['Client Card', '1584 Design']
-    if (formData.payment_method && !predefinedPaymentMethods.includes(formData.payment_method)) {
-      setIsCustomPaymentMethod(true)
-    } else if (formData.payment_method && predefinedPaymentMethods.includes(formData.payment_method)) {
-      setIsCustomPaymentMethod(false)
-    }
-  }, [formData.payment_method])
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -199,11 +190,6 @@ export default function AddItem() {
       setIsCustomSource(!isPredefinedSource)
     }
 
-    if (selectedTransaction?.payment_method) {
-      const predefinedPaymentMethods = ['Client Card', '1584 Design']
-      const isPredefinedPayment = predefinedPaymentMethods.includes(selectedTransaction.payment_method)
-      setIsCustomPaymentMethod(!isPredefinedPayment)
-    }
 
     // Clear error when user makes selection
     if (errors.selectedTransactionId) {
@@ -562,7 +548,6 @@ export default function AddItem() {
                     checked={formData.payment_method === method}
                     onChange={(e) => {
                       handleInputChange('payment_method', e.target.value)
-                      setIsCustomPaymentMethod(false)
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                   />

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Transaction, ProjectBudgetCategories, BudgetCategory, Item } from '@/types'
+import { Transaction, ProjectBudgetCategories, BudgetCategory } from '@/types'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { itemService } from '@/services/inventoryService'
 
 interface BudgetProgressProps {
   budget?: number
