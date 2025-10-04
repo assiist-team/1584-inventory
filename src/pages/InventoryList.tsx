@@ -24,6 +24,7 @@ interface InventoryItem {
   last_updated: string
   transaction_id: string
   project_id: string
+  images?: ItemImage[]
 }
 
 interface InventoryListProps {
