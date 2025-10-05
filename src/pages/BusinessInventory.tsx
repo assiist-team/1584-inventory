@@ -18,10 +18,11 @@ export default function BusinessInventory() {
   const [items, setItems] = useState<BusinessInventoryItem[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [filters, setFilters] = useState<FilterOptions>({
+  const [filters] = useState<FilterOptions>({
     status: '',
     searchQuery: ''
   })
+  const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('')
   const [transactionSearchQuery, setTransactionSearchQuery] = useState<string>('')
 
   // Filter state for transactions tab
@@ -58,10 +59,10 @@ export default function BusinessInventory() {
   const filteredItems = useMemo(() => {
     return items.filter(item => {
       // Apply search filter
-      const matchesSearch = !filters.searchQuery ||
-        item.description?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
-        item.sku?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
-        item.business_inventory_location?.toLowerCase().includes(filters.searchQuery.toLowerCase())
+      const matchesSearch = !inventorySearchQuery ||
+        item.description?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
+        item.sku?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
+        item.business_inventory_location?.toLowerCase().includes(inventorySearchQuery.toLowerCase())
 
       // Apply status filter
       const matchesStatus = !filters.status || item.inventory_status === filters.status
@@ -71,7 +72,7 @@ export default function BusinessInventory() {
 
       return matchesSearch && matchesStatus && matchesFilter
     })
-  }, [items, filters.searchQuery, filters.status, filterMode])
+  }, [items, inventorySearchQuery, filters.status, filterMode])
 
   // Compute filtered transactions
   const filteredTransactions = useMemo(() => {
@@ -184,13 +185,8 @@ export default function BusinessInventory() {
     }
   }
 
-  const handleFilterChange = (newFilters: FilterOptions) => {
-    setFilters(newFilters)
-    setIsLoading(true)
-  }
-
-  const handleSearchChange = (searchQuery: string) => {
-    handleFilterChange({ ...filters, searchQuery })
+  const handleInventorySearchChange = (searchQuery: string) => {
+    setInventorySearchQuery(searchQuery)
   }
 
   // Use centralized bookmark hook
@@ -344,8 +340,8 @@ export default function BusinessInventory() {
                       type="text"
                       className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base"
                       placeholder="Search items by description, SKU, or location..."
-                      value={filters.searchQuery || ''}
-                      onChange={(e) => handleSearchChange(e.target.value)}
+                      value={inventorySearchQuery || ''}
+                      onChange={(e) => handleInventorySearchChange(e.target.value)}
                     />
                   </div>
 
@@ -447,7 +443,7 @@ export default function BusinessInventory() {
                     No items found
                   </h3>
                   <p className="text-sm text-gray-500 mb-4">
-                    {filters.searchQuery || filters.status || filterMode === 'bookmarked'
+                    {inventorySearchQuery || filters.status || filterMode === 'bookmarked'
                       ? 'Try adjusting your search or filter criteria.'
                       : 'No items found.'
                     }
