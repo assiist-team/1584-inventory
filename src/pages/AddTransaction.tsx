@@ -369,14 +369,6 @@ export default function AddTransaction() {
     }
   }
 
-  const handleImagesChange = (files: File[]) => {
-    setFormData(prev => ({ ...prev, transaction_images: files }))
-    // Clear any existing image errors
-    if (errors.transaction_images) {
-      setErrors(prev => ({ ...prev, transaction_images: undefined }))
-    }
-  }
-
   const handleReceiptImagesChange = (files: File[]) => {
     setFormData(prev => ({ ...prev, receipt_images: files }))
     // Clear any existing image errors
