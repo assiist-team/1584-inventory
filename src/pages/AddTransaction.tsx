@@ -636,6 +636,20 @@ export default function AddTransaction() {
               <div className="flex items-center">
                 <input
                   type="radio"
+                  id="type_to_inventory"
+                  name="transaction_type"
+                  value="To Inventory"
+                  checked={formData.transaction_type === 'To Inventory'}
+                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_to_inventory" className="ml-2 block text-sm text-gray-900">
+                  To Inventory
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
                   id="type_return"
                   name="transaction_type"
                   value="Return"

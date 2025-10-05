@@ -290,7 +290,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   // Show loading state while calculating
   if (isLoading) {
     return (
-      <div className="mb-6">
+      <div>
         <div className="animate-pulse">
           <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
           <div className="h-2 bg-gray-200 rounded mb-4"></div>
@@ -306,7 +306,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   // In preview mode, use same format as full mode but without toggle and only showing primary budget
   if (previewMode) {
     return (
-      <div className="mb-6">
+      <div>
         {/* Category Budget Progress */}
         {(categoryData.length > 0 || overallBudgetCategory) && (
           <div>
@@ -362,7 +362,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
   // Full mode with toggle functionality
   return (
-    <div className="mb-6">
+    <div>
       {/* Category Budget Progress */}
       {(categoryData.length > 0 || overallBudgetCategory) && (
         <div>

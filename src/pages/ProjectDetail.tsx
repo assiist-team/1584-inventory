@@ -1,4 +1,4 @@
-import { ArrowLeft, Package, FileText, Edit, Trash2 } from 'lucide-react'
+import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Project, Transaction } from '@/types'
@@ -25,11 +25,32 @@ export default function ProjectDetail() {
   // Get active tab from URL parameters, default to 'transactions'
   const activeTab = searchParams.get('tab') || 'transactions'
 
+  // Budget tabs state, default to 'budget'
+  const [activeBudgetTab, setActiveBudgetTab] = useState('budget')
+
   // Update URL when tab changes
   const handleTabChange = (tabId: string) => {
     const newSearchParams = new URLSearchParams(searchParams)
     newSearchParams.set('tab', tabId)
     setSearchParams(newSearchParams)
+  }
+
+  // Handle budget tab changes
+  const handleBudgetTabChange = (tabId: string) => {
+    setActiveBudgetTab(tabId)
+  }
+
+  // Calculate amounts owed
+  const calculateOwedTo1584 = () => {
+    return transactions
+      .filter(transaction => transaction.payment_method === '1584 Design')
+      .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
+  }
+
+  const calculateOwedToClient = () => {
+    return transactions
+      .filter(transaction => transaction.transaction_type === 'To Inventory')
+      .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
   const loadProjectAndTransactions = async () => {
@@ -141,6 +162,11 @@ export default function ProjectDetail() {
     { id: 'inventory', name: 'Inventory', icon: Package }
   ]
 
+  const budgetTabs = [
+    { id: 'budget', name: 'Budget', icon: FileText },
+    { id: 'accounting', name: 'Accounting', icon: DollarSign }
+  ]
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -227,28 +253,69 @@ export default function ProjectDetail() {
           </div>
         </div>
 
-        {/* Project information and Budget Progress */}
+        {/* Project information and Budget/Accounting Tabs */}
         <div className="bg-white rounded-lg shadow p-6">
           {/* Project information */}
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">{project.name}</h1>
             {project.clientName && (
-              <p className="text-lg text-gray-600 mb-4">{project.clientName}</p>
+              <p className="text-lg text-gray-600 mb-6">{project.clientName}</p>
             )}
           </div>
 
-          {/* Subtle divider */}
-          <div className="border-t border-gray-200 my-6"></div>
+          {/* Tab Navigation */}
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              {budgetTabs.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleBudgetTabChange(tab.id)}
+                    className={`py-4 px-1 border-b-2 font-medium text-base flex items-center ${
+                      activeBudgetTab === tab.id
+                        ? 'border-primary-500 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {tab.name}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
 
-          {/* Budget Progress */}
-          {project && (
-            <BudgetProgress
-              budget={project.budget}
-              designFee={project.designFee}
-              budgetCategories={project.budgetCategories}
-              transactions={transactions}
-            />
-          )}
+          {/* Tab Content */}
+          <div className="pt-6">
+            {activeBudgetTab === 'budget' && project && (
+              <BudgetProgress
+                budget={project.budget}
+                designFee={project.designFee}
+                budgetCategories={project.budgetCategories}
+                transactions={transactions}
+              />
+            )}
+            {activeBudgetTab === 'accounting' && (
+              <div className="grid grid-cols-2 gap-3">
+                {/* Owed to 1584 */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to 1584</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    ${calculateOwedTo1584().toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Owed to Client */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    ${calculateOwedToClient().toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
