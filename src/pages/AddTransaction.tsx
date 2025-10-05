@@ -70,6 +70,9 @@ export default function AddTransaction() {
     amount: '',
     budget_category: 'Furnishings',
     notes: '',
+    status: 'completed',
+    reimbursement_type: 'Client owes us',
+    trigger_event: 'Manual',
     transaction_images: [], // Legacy field for backward compatibility
     receipt_images: [],
     other_images: [],
@@ -664,6 +667,100 @@ export default function AddTransaction() {
             </div>
             {errors.transaction_type && (
               <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            )}
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Status
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="status_pending"
+                  name="status"
+                  value="pending"
+                  checked={formData.status === 'completed'}
+                  onChange={(e) => handleInputChange('status', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="status_pending" className="ml-2 block text-sm text-gray-900">
+                  Pending
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="status_completed"
+                  name="status"
+                  value="completed"
+                  checked={formData.status === 'completed'}
+                  onChange={(e) => handleInputChange('status', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="status_completed" className="ml-2 block text-sm text-gray-900">
+                  Completed
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="status_cancelled"
+                  name="status"
+                  value="cancelled"
+                  checked={formData.status === 'cancelled'}
+                  onChange={(e) => handleInputChange('status', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="status_cancelled" className="ml-2 block text-sm text-gray-900">
+                  Cancelled
+                </label>
+              </div>
+            </div>
+            {errors.status && (
+              <p className="mt-1 text-sm text-red-600">{errors.status}</p>
+            )}
+          </div>
+
+          {/* Reimbursement Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Reimbursement Type
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="reimbursement_client_owes"
+                  name="reimbursement_type"
+                  value="Client owes us"
+                  checked={formData.reimbursement_type === 'Client owes us'}
+                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
+                  Client owes us
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="reimbursement_we_owe"
+                  name="reimbursement_type"
+                  value="We owe client"
+                  checked={formData.reimbursement_type === 'We owe client'}
+                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
+                  We owe client
+                </label>
+              </div>
+            </div>
+            {errors.reimbursement_type && (
+              <p className="mt-1 text-sm text-red-600">{errors.reimbursement_type}</p>
             )}
           </div>
 

@@ -43,13 +43,13 @@ export default function ProjectDetail() {
   // Calculate amounts owed
   const calculateOwedTo1584 = () => {
     return transactions
-      .filter(transaction => transaction.payment_method === '1584 Design')
+      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'Client owes us')
       .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
   const calculateOwedToClient = () => {
     return transactions
-      .filter(transaction => transaction.transaction_type === 'To Inventory')
+      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'We owe client')
       .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 

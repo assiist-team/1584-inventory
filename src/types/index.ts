@@ -203,6 +203,9 @@ export interface TransactionFormData {
   amount: string;
   budget_category?: string;
   notes?: string;
+  status?: 'pending' | 'completed' | 'cancelled';
+  reimbursement_type?: 'Client owes us' | 'We owe client';
+  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
   transaction_images?: File[]; // Legacy field for backward compatibility
   receipt_images?: File[]; // New field for receipt image files
   other_images?: File[]; // New field for other image files
@@ -230,6 +233,9 @@ export interface TransactionValidationErrors {
   amount?: string;
   budget_category?: string;
   notes?: string;
+  status?: string;
+  reimbursement_type?: string;
+  trigger_event?: string;
   transaction_images?: string; // Legacy field for backward compatibility
   receipt_images?: string; // New field for receipt image errors
   other_images?: string; // New field for other image errors
