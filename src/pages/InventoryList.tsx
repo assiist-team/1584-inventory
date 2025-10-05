@@ -299,10 +299,10 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       </div>
 
       {/* Search and Controls - Sticky Container */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-3 -mb-3">
-        <div className="space-y-3">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-0 mb-3">
+        <div className="space-y-0">
           {/* Search Bar */}
-          <div className="relative">
+          <div className="relative pt-2">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-5 w-5 text-gray-400" />
             </div>
@@ -316,7 +316,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           </div>
 
           {/* Select All and Bulk Actions */}
-          <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-gray-50">
+          <div className="flex items-center justify-between gap-4 p-3 rounded-lg">
           {/* Select All */}
           <label className="flex items-center cursor-pointer">
             <input
@@ -615,3 +615,4 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     </div>
   )
 }
+
