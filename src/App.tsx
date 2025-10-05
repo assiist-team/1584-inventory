@@ -28,6 +28,14 @@ function App() {
               <Route path="/project/:id/transaction/add" element={<AddTransaction />} />
               <Route path="/project/:id/transaction/:transactionId/edit" element={<EditTransaction />} />
               <Route path="/project/:id/transaction/:transactionId" element={<TransactionDetail />} />
+
+              {/* Business Inventory Routes */}
+              <Route path="/business-inventory" element={<BusinessInventory />} />
+              <Route path="/business-inventory/add" element={<AddBusinessInventoryItem />} />
+              <Route path="/business-inventory/:id" element={<BusinessInventoryItemDetail />} />
+              <Route path="/business-inventory/:id/edit" element={<EditBusinessInventoryItem />} />
+              <Route path="/business-inventory/transaction/add" element={<AddBusinessInventoryTransaction />} />
+              <Route path="/business-inventory/transaction/:projectId/:transactionId/edit" element={<EditBusinessInventoryTransaction />} />
             </Routes>
             </Suspense>
           </Layout>
@@ -47,5 +55,11 @@ const AddTransaction = lazy(() => import('./pages/AddTransaction'))
 const EditTransaction = lazy(() => import('./pages/EditTransaction'))
 const TransactionDetail = lazy(() => import('./pages/TransactionDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
+const BusinessInventory = lazy(() => import('./pages/BusinessInventory'))
+const BusinessInventoryItemDetail = lazy(() => import('./pages/BusinessInventoryItemDetail'))
+const AddBusinessInventoryItem = lazy(() => import('./pages/AddBusinessInventoryItem'))
+const EditBusinessInventoryItem = lazy(() => import('./pages/EditBusinessInventoryItem'))
+const AddBusinessInventoryTransaction = lazy(() => import('./pages/AddBusinessInventoryTransaction'))
+const EditBusinessInventoryTransaction = lazy(() => import('./pages/EditBusinessInventoryTransaction'))
 
 export default App

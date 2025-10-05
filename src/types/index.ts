@@ -75,6 +75,12 @@ export interface Item {
 
   // Optional transaction selection for form UI
   selectedTransactionId?: string; // UI field for selecting transaction
+
+  // NEW: Business Inventory fields
+  inventory_status?: 'available' | 'pending' | 'sold';
+  current_project_id?: string;  // If currently allocated to a project
+  business_inventory_location?: string; // Warehouse location details
+  pending_transaction_id?: string; // Links to pending transaction when allocated
 }
 
 // Note: ItemCategory and ItemStatus enums have been removed as they don't align
@@ -162,6 +168,11 @@ export interface Transaction {
   receipt_emailed: boolean;
   created_at: string;
   created_by: string;
+
+  // NEW: Pending Transaction fields for Enhanced Transaction System
+  status?: 'pending' | 'completed' | 'cancelled';
+  reimbursement_type?: 'Client owes us' | 'We owe client';
+  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
 }
 
 export enum BudgetCategory {
@@ -243,6 +254,38 @@ export interface TransactionFormProps {
   onCancel: () => void;
   initialData?: Partial<TransactionFormData>;
   isEditing?: boolean;
+}
+
+// Business Inventory Types
+export interface BusinessInventoryItem {
+  item_id: string;
+  description: string;
+  source: string;
+  sku: string;
+  price: string;
+  market_value?: string;
+  payment_method: string;
+  disposition?: string;
+  notes?: string;
+  space?: string;
+  qr_key: string;
+  bookmark: boolean;
+  inventory_status: 'available' | 'pending' | 'sold';
+  current_project_id?: string;
+  business_inventory_location?: string;
+  pending_transaction_id?: string;
+  date_created: string;
+  last_updated: string;
+  images?: ItemImage[];
+  transaction_id?: string; // Links to original purchase transaction
+}
+
+// Business Inventory Summary Stats
+export interface BusinessInventoryStats {
+  totalItems: number;
+  availableItems: number;
+  pendingItems: number;
+  soldItems: number;
 }
 
 // Utility type for date values that might be Firestore Timestamp, Date, string, or number

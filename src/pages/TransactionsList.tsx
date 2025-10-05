@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { Plus, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Transaction } from '@/types'
@@ -29,6 +29,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
   const projectId = propProjectId || routeProjectId
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [showPendingOnly, setShowPendingOnly] = useState(false)
 
   useEffect(() => {
     const loadTransactions = async () => {
@@ -62,6 +63,11 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     return unsubscribe
   }, [projectId])
 
+  // Filter transactions based on pending filter
+  const filteredTransactions = showPendingOnly
+    ? transactions.filter(t => t.status === 'pending')
+    : transactions
+
   // Clean up any unwanted icons from transaction type badges
   useEffect(() => {
     removeUnwantedIcons()
@@ -86,27 +92,53 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <Link
-          to={`/project/${projectId}/transaction/add`}
-          className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Transaction
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            to={`/project/${projectId}/transaction/add`}
+            className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Transaction
+          </Link>
+
+          {/* Pending Filter Toggle */}
+          <button
+            onClick={() => setShowPendingOnly(!showPendingOnly)}
+            className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+              showPendingOnly
+                ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Clock className="h-4 w-4 mr-2" />
+            {showPendingOnly ? 'Show All' : 'Show Pending Only'}
+          </button>
+        </div>
+
+        {showPendingOnly && (
+          <div className="text-sm text-gray-600">
+            Showing {filteredTransactions.length} pending transaction{filteredTransactions.length !== 1 ? 's' : ''}
+          </div>
+        )}
       </div>
 
       {/* Transactions List */}
-      {transactions.length === 0 ? (
+      {filteredTransactions.length === 0 ? (
         <div className="text-center py-12 px-4">
           <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">🧾</div>
           <h3 className="text-lg font-medium text-gray-900 mb-1">
-            No transactions yet
+            {showPendingOnly ? 'No pending transactions' : 'No transactions yet'}
           </h3>
+          {showPendingOnly && (
+            <p className="text-sm text-gray-500 mb-4">
+              All transactions have been completed or cancelled.
+            </p>
+          )}
         </div>
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
-            {transactions.map((transaction) => (
+            {filteredTransactions.map((transaction) => (
               <li key={transaction.transaction_id} className="relative">
                 <Link
                   to={`/project/${projectId}/transaction/${transaction.transaction_id}`}
@@ -121,6 +153,37 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                         </h3>
                       </div>
                       <div className="flex items-center flex-wrap gap-2">
+                        {/* Status Badge */}
+                        {transaction.status === 'pending' && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            <Clock className="h-3 w-3 mr-1" />
+                            Pending
+                          </span>
+                        )}
+                        {transaction.status === 'completed' && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Completed
+                          </span>
+                        )}
+                        {transaction.status === 'cancelled' && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Cancelled
+                          </span>
+                        )}
+
+                        {/* Reimbursement Type Badge */}
+                        {transaction.reimbursement_type && (
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            transaction.reimbursement_type === 'Client owes us'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-purple-100 text-purple-800'
+                          }`}>
+                            {transaction.reimbursement_type}
+                          </span>
+                        )}
+
                         {transaction.budget_category && (
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                             transaction.budget_category === 'Design Fee'

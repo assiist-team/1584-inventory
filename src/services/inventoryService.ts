@@ -16,7 +16,7 @@ import {
   getCountFromServer
 } from 'firebase/firestore'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
-import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, ItemImage } from '@/types'
+import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, ItemImage, BusinessInventoryItem, BusinessInventoryStats } from '@/types'
 
 // Project Services
 export const projectService = {
@@ -697,7 +697,11 @@ export const transactionService = {
 
       const newTransaction = {
         ...transactionData,
-        created_at: now.toISOString()
+        created_at: now.toISOString(),
+        // Set default values for new fields if not provided
+        status: transactionData.status || 'completed',
+        reimbursement_type: transactionData.reimbursement_type || null,
+        trigger_event: transactionData.trigger_event || null
       }
 
       console.log('Creating transaction:', newTransaction)
@@ -797,5 +801,403 @@ export const transactionService = {
         callback(null)
       }
     })
+  },
+
+  // Get pending transactions for a project
+  async getPendingTransactions(projectId: string): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
+    const q = query(
+      transactionsRef,
+      where('status', '==', 'pending'),
+      orderBy('created_at', 'desc')
+    )
+
+    const querySnapshot = await getDocs(q)
+    return querySnapshot.docs.map(doc => {
+      const data = convertTimestamps(doc.data())
+
+      const transactionData = {
+        ...data,
+        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+        other_images: Array.isArray(data.other_images) ? data.other_images : []
+      }
+
+      return {
+        transaction_id: doc.id,
+        ...transactionData
+      } as Transaction
+    })
+  },
+
+  // Update transaction status (for completing/cancelling pending transactions)
+  async updateTransactionStatus(
+    projectId: string,
+    transactionId: string,
+    status: 'pending' | 'completed' | 'cancelled',
+    updates?: Partial<Transaction>
+  ): Promise<void> {
+    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+
+    const updateData: any = {
+      status: status,
+      ...updates
+    }
+
+    // Set transaction_date to current time if completing
+    if (status === 'completed' && !updates?.transaction_date) {
+      updateData.transaction_date = new Date().toISOString()
+    }
+
+    await updateDoc(transactionRef, updateData)
+  }
+}
+
+// Business Inventory Services
+export const businessInventoryService = {
+  // Get all business inventory items
+  async getBusinessInventoryItems(
+    filters?: { status?: string; searchQuery?: string },
+    pagination?: PaginationOptions
+  ): Promise<BusinessInventoryItem[]> {
+    const itemsRef = collection(db, 'business_inventory')
+    let q = query(itemsRef)
+
+    // Apply filters
+    if (filters?.status) {
+      q = query(q, where('inventory_status', '==', filters.status))
+    }
+
+    // Apply sorting and pagination
+    q = query(q, orderBy('last_updated', 'desc'))
+
+    if (pagination) {
+      q = query(q, limit(pagination.limit))
+      if (pagination.page > 0) {
+        q = query(q, limit(pagination.page * pagination.limit))
+      }
+    }
+
+    const querySnapshot = await getDocs(q)
+
+    let items = querySnapshot.docs.map(doc => ({
+      item_id: doc.id,
+      ...doc.data()
+    } as BusinessInventoryItem))
+
+    // Apply client-side search if needed
+    if (filters?.searchQuery) {
+      const searchTerm = filters.searchQuery.toLowerCase()
+      items = items.filter(item =>
+        item.description.toLowerCase().includes(searchTerm) ||
+        item.source.toLowerCase().includes(searchTerm) ||
+        item.sku.toLowerCase().includes(searchTerm) ||
+        item.business_inventory_location?.toLowerCase().includes(searchTerm)
+      )
+    }
+
+    return items
+  },
+
+  // Get single business inventory item
+  async getBusinessInventoryItem(itemId: string): Promise<BusinessInventoryItem | null> {
+    const itemRef = doc(db, 'business_inventory', itemId)
+    const itemSnap = await getDoc(itemRef)
+
+    if (itemSnap.exists()) {
+      return {
+        item_id: itemSnap.id,
+        ...itemSnap.data()
+      } as BusinessInventoryItem
+    }
+    return null
+  },
+
+  // Create new business inventory item
+  async createBusinessInventoryItem(itemData: Omit<BusinessInventoryItem, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
+    const itemsRef = collection(db, 'business_inventory')
+    const now = new Date()
+
+    const newItem = {
+      ...itemData,
+      inventory_status: itemData.inventory_status || 'available',
+      date_created: now.toISOString(),
+      last_updated: now.toISOString()
+    }
+
+    const docRef = await addDoc(itemsRef, newItem)
+    return docRef.id
+  },
+
+  // Update business inventory item
+  async updateBusinessInventoryItem(itemId: string, updates: Partial<BusinessInventoryItem>): Promise<void> {
+    const itemRef = doc(db, 'business_inventory', itemId)
+
+    const firebaseUpdates: any = {
+      last_updated: new Date().toISOString()
+    }
+
+    if (updates.inventory_status !== undefined) firebaseUpdates.inventory_status = updates.inventory_status
+    if (updates.current_project_id !== undefined) firebaseUpdates.current_project_id = updates.current_project_id
+    if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
+    if (updates.pending_transaction_id !== undefined) firebaseUpdates.pending_transaction_id = updates.pending_transaction_id
+    if (updates.description !== undefined) firebaseUpdates.description = updates.description
+    if (updates.source !== undefined) firebaseUpdates.source = updates.source
+    if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
+    if (updates.price !== undefined) firebaseUpdates.price = updates.price
+    if (updates.market_value !== undefined) firebaseUpdates.market_value = updates.market_value
+    if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
+    if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
+    if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
+    if (updates.space !== undefined) firebaseUpdates.space = updates.space
+    if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
+    if (updates.images !== undefined) firebaseUpdates.images = updates.images
+
+    await updateDoc(itemRef, firebaseUpdates)
+  },
+
+  // Delete business inventory item
+  async deleteBusinessInventoryItem(itemId: string): Promise<void> {
+    const itemRef = doc(db, 'business_inventory', itemId)
+    await deleteDoc(itemRef)
+  },
+
+  // Get business inventory statistics
+  async getBusinessInventoryStats(): Promise<BusinessInventoryStats> {
+    const itemsRef = collection(db, 'business_inventory')
+    const snapshot = await getCountFromServer(itemsRef)
+
+    const allItemsQuery = query(itemsRef)
+    const allItemsSnap = await getDocs(allItemsQuery)
+
+    let availableItems = 0
+    let pendingItems = 0
+    let soldItems = 0
+
+    allItemsSnap.docs.forEach(doc => {
+      const data = doc.data()
+      switch (data.inventory_status) {
+        case 'available':
+          availableItems++
+          break
+        case 'pending':
+          pendingItems++
+          break
+        case 'sold':
+          soldItems++
+          break
+      }
+    })
+
+    return {
+      totalItems: snapshot.data().count,
+      availableItems,
+      pendingItems,
+      soldItems
+    }
+  },
+
+  // Subscribe to business inventory items
+  subscribeToBusinessInventory(
+    callback: (items: BusinessInventoryItem[]) => void,
+    filters?: { status?: string; searchQuery?: string }
+  ) {
+    const itemsRef = collection(db, 'business_inventory')
+    let q = query(itemsRef, orderBy('last_updated', 'desc'))
+
+    if (filters?.status) {
+      q = query(q, where('inventory_status', '==', filters.status))
+    }
+
+    return onSnapshot(q, (snapshot) => {
+      let items = snapshot.docs.map(doc => ({
+        item_id: doc.id,
+        ...doc.data()
+      } as BusinessInventoryItem))
+
+      // Apply client-side search if needed
+      if (filters?.searchQuery) {
+        const searchTerm = filters.searchQuery.toLowerCase()
+        items = items.filter(item =>
+          item.description.toLowerCase().includes(searchTerm) ||
+          item.source.toLowerCase().includes(searchTerm) ||
+          item.sku.toLowerCase().includes(searchTerm) ||
+          item.business_inventory_location?.toLowerCase().includes(searchTerm)
+        )
+      }
+
+      callback(items)
+    })
+  },
+
+  // Allocate item to project (creates pending transaction)
+  async allocateItemToProject(
+    itemId: string,
+    projectId: string,
+    amount: string,
+    notes?: string
+  ): Promise<string> {
+    // Create pending transaction first
+    const transactionData = {
+      project_id: projectId,
+      transaction_date: new Date().toISOString(),
+      source: 'Inventory Allocation',
+      transaction_type: 'Reimbursement',
+      payment_method: 'Pending',
+      amount: amount,
+      budget_category: 'Furnishings',
+      notes: notes || 'Item allocated from business inventory',
+      created_by: 'system',
+      status: 'pending' as const,
+      reimbursement_type: 'Client owes us' as const,
+      trigger_event: 'Inventory allocation' as const
+    }
+
+    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
+    const transactionRef = await addDoc(transactionsRef, transactionData)
+
+    // Update item status to pending and link to transaction
+    await this.updateBusinessInventoryItem(itemId, {
+      inventory_status: 'pending',
+      current_project_id: projectId,
+      pending_transaction_id: transactionRef.id
+    })
+
+    return transactionRef.id
+  },
+
+  // Return item from project (cancels pending transaction)
+  async returnItemFromProject(itemId: string, transactionId: string, projectId: string): Promise<void> {
+    // Cancel the pending transaction
+    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+    await updateDoc(transactionRef, {
+      status: 'cancelled'
+    })
+
+    // Update item status back to available and clear project links
+    await this.updateBusinessInventoryItem(itemId, {
+      inventory_status: 'available',
+      current_project_id: undefined,
+      pending_transaction_id: undefined
+    })
+  },
+
+  // Mark item as sold (completes pending transaction)
+  async markItemAsSold(
+    itemId: string,
+    transactionId: string,
+    projectId: string,
+    paymentMethod: string
+  ): Promise<void> {
+    // Complete the pending transaction
+    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+    await updateDoc(transactionRef, {
+      status: 'completed',
+      transaction_date: new Date().toISOString(),
+      payment_method: paymentMethod
+    })
+
+    // Update item status to sold and clear project links
+    await this.updateBusinessInventoryItem(itemId, {
+      inventory_status: 'sold',
+      current_project_id: undefined,
+      pending_transaction_id: undefined
+    })
+  },
+
+  // Move item from project back to business inventory (creates "We owe client" transaction)
+  async moveItemToBusinessInventory(
+    itemId: string,
+    projectId: string,
+    amount: string,
+    notes?: string
+  ): Promise<string> {
+    // Get the item from project first
+    const projectItemsRef = collection(db, 'projects', projectId, 'items')
+    const itemQuery = query(projectItemsRef, where('item_id', '==', itemId))
+    const itemSnap = await getDocs(itemQuery)
+
+    if (itemSnap.empty) {
+      throw new Error('Item not found in project')
+    }
+
+    const itemData = itemSnap.docs[0].data()
+
+    // Create "We owe client" transaction
+    const transactionData = {
+      project_id: projectId,
+      transaction_date: new Date().toISOString(),
+      source: 'Client Purchase',
+      transaction_type: 'Reimbursement',
+      payment_method: 'Pending',
+      amount: amount,
+      budget_category: 'Furnishings',
+      notes: notes || 'Client-purchased item moved to business inventory',
+      created_by: 'system',
+      status: 'pending' as const,
+      reimbursement_type: 'We owe client' as const,
+      trigger_event: 'Purchase from client' as const
+    }
+
+    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
+    const transactionRef = await addDoc(transactionsRef, transactionData)
+
+    // Create item in business inventory
+    const newBusinessItem = {
+      description: itemData.description,
+      source: itemData.source,
+      sku: itemData.sku,
+      price: itemData.price,
+      market_value: itemData.market_value,
+      payment_method: itemData.payment_method,
+      disposition: itemData.disposition || 'keep',
+      notes: itemData.notes,
+      space: itemData.space,
+      qr_key: itemData.qr_key,
+      bookmark: itemData.bookmark || false,
+      inventory_status: 'available' as const,
+      business_inventory_location: 'Warehouse - Client Purchase',
+      transaction_id: transactionRef.id,
+      images: itemData.images || []
+    }
+
+    await this.createBusinessInventoryItem(newBusinessItem)
+
+    // Remove item from project
+    await deleteDoc(itemSnap.docs[0].ref)
+
+    return transactionRef.id
+  }
+}
+
+// Integration Service for Business Inventory and Transactions
+export const integrationService = {
+  // Allocate business inventory item to project
+  async allocateBusinessInventoryToProject(
+    itemId: string,
+    projectId: string,
+    amount: string,
+    notes?: string
+  ): Promise<string> {
+    return await businessInventoryService.allocateItemToProject(itemId, projectId, amount, notes)
+  },
+
+  // Return item from project to business inventory
+  async returnItemToBusinessInventory(
+    itemId: string,
+    transactionId: string,
+    projectId: string
+  ): Promise<void> {
+    return await businessInventoryService.returnItemFromProject(itemId, transactionId, projectId)
+  },
+
+  // Complete pending transaction and mark item as sold
+  async completePendingTransaction(
+    itemId: string,
+    transactionId: string,
+    projectId: string,
+    paymentMethod: string
+  ): Promise<void> {
+    return await businessInventoryService.markItemAsSold(itemId, transactionId, projectId, paymentMethod)
   }
 }

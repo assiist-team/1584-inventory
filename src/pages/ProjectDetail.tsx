@@ -53,6 +53,25 @@ export default function ProjectDetail() {
       .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
+  // Calculate pending transactions impact on budget
+  const calculatePendingTransactions = () => {
+    const pendingTransactions = transactions.filter(t => t.status === 'pending')
+
+    let clientOwesUs = 0
+    let weOweClient = 0
+
+    pendingTransactions.forEach(transaction => {
+      const amount = parseFloat(transaction.amount || '0')
+      if (transaction.reimbursement_type === 'Client owes us') {
+        clientOwesUs += amount
+      } else if (transaction.reimbursement_type === 'We owe client') {
+        weOweClient += amount
+      }
+    })
+
+    return { clientOwesUs, weOweClient }
+  }
+
   const loadProjectAndTransactions = async () => {
     if (!id) {
       console.warn('No project ID provided, redirecting to projects')
@@ -297,23 +316,53 @@ export default function ProjectDetail() {
               />
             )}
             {activeBudgetTab === 'accounting' && (
-              <div className="grid grid-cols-2 gap-3">
-                {/* Owed to 1584 */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to 1584</div>
-                  <div className="text-xl font-bold text-gray-900">
-                    ${calculateOwedTo1584().toFixed(2)}
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Owed to 1584 */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to 1584</div>
+                    <div className="text-xl font-bold text-gray-900">
+                      ${calculateOwedTo1584().toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Owed to Client */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
+                    <div className="text-xl font-bold text-gray-900">
+                      ${calculateOwedToClient().toFixed(2)}
+                    </div>
                   </div>
                 </div>
 
-                {/* Owed to Client */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
-                  <div className="text-xl font-bold text-gray-900">
-                    ${calculateOwedToClient().toFixed(2)}
-                  </div>
-                </div>
-              </div>
+                {/* Pending Transactions Impact */}
+                {(() => {
+                  const pending = calculatePendingTransactions()
+                  return (pending.clientOwesUs > 0 || pending.weOweClient > 0) ? (
+                    <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                      <div className="text-sm font-medium text-yellow-800 mb-2">Pending Transactions</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {pending.clientOwesUs > 0 && (
+                          <div>
+                            <div className="text-xs text-yellow-600">Client owes us</div>
+                            <div className="text-lg font-semibold text-yellow-900">
+                              ${pending.clientOwesUs.toFixed(2)}
+                            </div>
+                          </div>
+                        )}
+                        {pending.weOweClient > 0 && (
+                          <div>
+                            <div className="text-xs text-yellow-600">We owe client</div>
+                            <div className="text-lg font-semibold text-yellow-900">
+                              ${pending.weOweClient.toFixed(2)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null
+                })()}
+              </>
             )}
           </div>
         </div>
