@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -579,6 +580,54 @@ export const itemService = {
 
     const querySnapshot = await getDocs(q)
     return querySnapshot.docs.map(doc => doc.id)
+  },
+
+  // Add single item to existing transaction
+  async addItemToTransaction(
+    projectId: string,
+    transactionId: string,
+    transactionDate: string,
+    transactionSource: string,
+    itemData: TransactionItemFormData
+  ): Promise<string> {
+    const now = new Date()
+
+    const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+    const item = {
+      item_id: itemId,
+      description: itemData.description,
+      source: transactionSource,
+      sku: itemData.sku || '',
+      price: itemData.price,
+      market_value: itemData.market_value || '',
+      payment_method: 'Client Card', // Default payment method
+      disposition: 'keep',
+      notes: itemData.notes || '',
+      space: '', // Add space field
+      qr_key: qrKey,
+      bookmark: false,
+      transaction_id: transactionId,
+      project_id: projectId,
+      date_created: transactionDate,
+      last_updated: now.toISOString(),
+      images: [] // Start with empty images array, will be populated after upload
+    } as Item
+
+    // Create the document with the itemId as the document ID
+    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
+    await setDoc(itemRef, item)
+
+    // Update project metadata
+    await projectService.updateProject(projectId, {
+      metadata: {
+        totalItems: await itemService.getItemCount(projectId) + 1,
+        lastActivity: now
+      }
+    } as Partial<Project>)
+
+    return itemId
   }
 }
 

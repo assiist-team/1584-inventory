@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, Camera } from 'lucide-react'
 import { TransactionItemFormData, TransactionItemValidationErrors, ItemImage } from '@/types'
 import { ImageUploadService } from '@/services/imageService'
@@ -16,9 +16,15 @@ interface TransactionItemFormProps {
 }
 
 export default function TransactionItemForm({ item, onSave, onCancel, isEditing = false, onImageFilesChange }: TransactionItemFormProps) {
+  // Generate a stable temporary ID that doesn't change during component lifetime
+  const stableTempId = useMemo(() =>
+    item?.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    [item?.id]
+  )
+
   const [formData, setFormData] = useState<TransactionItemFormData>(
     item || {
-      id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      id: stableTempId,
       description: '',
       sku: '',
       price: '',
@@ -60,22 +66,30 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       if (files && files.length > 0) {
         console.log('Selected', files.length, 'files from gallery')
 
-        // Store the files for later upload when the transaction is submitted
-        setImageFiles(prev => [...prev, ...files])
+        // Filter out files that are already selected (by name and size)
+        const existingFileNames = new Set(imageFiles.map(f => `${f.name}_${f.size}`))
+        const newFiles = files.filter(file => !existingFileNames.has(`${file.name}_${file.size}`))
 
-        // Create preview image objects (without URLs until uploaded)
-        const previewImages: ItemImage[] = files.map((file, index) => ({
-          url: '', // Will be set when uploaded with final item ID
-          alt: file.name,
-          isPrimary: itemImages.length === 0 && index === 0, // First image is primary if no images exist
-          uploadedAt: new Date(),
-          fileName: file.name,
-          size: file.size,
-          mimeType: file.type
-        }))
+        if (newFiles.length > 0) {
+          // Store the files for later upload when the transaction is submitted
+          setImageFiles(prev => [...prev, ...newFiles])
 
-        setItemImages(prev => [...prev, ...previewImages])
-        console.log('Added', previewImages.length, 'preview images')
+          // Create preview image objects (without URLs until uploaded)
+          const previewImages: ItemImage[] = newFiles.map((file, index) => ({
+            url: `preview_${file.name}_${file.size}_${Date.now()}_${index}`, // Unique key for preview images
+            alt: file.name,
+            isPrimary: itemImages.length === 0 && index === 0, // First image is primary if no images exist
+            uploadedAt: new Date(),
+            fileName: file.name,
+            size: file.size,
+            mimeType: file.type
+          }))
+
+          setItemImages(prev => [...prev, ...previewImages])
+          console.log('Added', previewImages.length, 'new preview images')
+        } else {
+          console.log('All selected files are already present')
+        }
       } else {
         console.log('No files selected from gallery')
       }
@@ -140,7 +154,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
 
     // Notify parent about image files if callback exists
     if (onImageFilesChange && imageFiles.length > 0) {
-      onImageFilesChange(formData.id, imageFiles)
+      onImageFilesChange(stableTempId, imageFiles)
     }
 
     onSave(itemWithImages)

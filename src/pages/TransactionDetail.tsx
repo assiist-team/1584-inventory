@@ -4,11 +4,12 @@ import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
-import { Transaction, Project, Item } from '@/types'
+import { Transaction, Project, Item, TransactionItemFormData } from '@/types'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
+import TransactionItemForm from '@/components/TransactionItemForm'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -39,6 +40,8 @@ export default function TransactionDetail() {
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
   const [isUploadingReceiptImages, setIsUploadingReceiptImages] = useState(false)
   const [isUploadingOtherImages, setIsUploadingOtherImages] = useState(false)
+  const [isAddingItem, setIsAddingItem] = useState(false)
+  const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
   const { showError, showSuccess } = useToast()
 
 
@@ -278,6 +281,105 @@ export default function TransactionDetail() {
       console.error('Error deleting other image:', error)
       showError('Failed to delete other image. Please try again.')
     }
+  }
+
+  const handleImageFilesChange = (itemId: string, imageFiles: File[]) => {
+    setImageFilesMap(prev => {
+      const newMap = new Map(prev)
+      newMap.set(itemId, imageFiles)
+      return newMap
+    })
+  }
+
+  const handleSaveItem = async (item: TransactionItemFormData) => {
+    if (!projectId || !transactionId || !transaction) return
+
+    try {
+      // Create the item linked to the existing transaction
+      const itemId = await itemService.addItemToTransaction(
+        projectId,
+        transactionId,
+        transaction.transaction_date || new Date().toISOString(),
+        transaction.source,
+        item
+      )
+
+      // Upload item images if any
+      // Try to get files from the map first, then fall back to item.imageFiles
+      let imageFiles = imageFilesMap.get(item.id)
+      if (!imageFiles && item.imageFiles) {
+        imageFiles = item.imageFiles
+      }
+
+      if (imageFiles && imageFiles.length > 0) {
+        try {
+          const uploadedImages = await Promise.all(
+            imageFiles.map(async (file, index) => {
+              try {
+                const uploadResult = await ImageUploadService.uploadItemImage(
+                  file,
+                  project ? project.name : 'Unknown Project',
+                  itemId
+                )
+
+                return {
+                  url: uploadResult.url,
+                  alt: file.name,
+                  isPrimary: index === 0, // First image is primary
+                  uploadedAt: new Date(),
+                  fileName: file.name,
+                  size: file.size,
+                  mimeType: file.type
+                }
+              } catch (uploadError) {
+                console.error(`Failed to upload ${file.name}:`, uploadError)
+                // Return a placeholder for failed uploads so the process continues
+                return {
+                  url: '',
+                  alt: file.name,
+                  isPrimary: false,
+                  uploadedAt: new Date(),
+                  fileName: file.name,
+                  size: file.size,
+                  mimeType: file.type
+                }
+              }
+            })
+          )
+
+          // Filter out failed uploads (empty URLs)
+          const validImages = uploadedImages.filter(img => img.url && img.url.trim() !== '')
+
+          // Update the item with uploaded images
+          if (validImages.length > 0) {
+            await itemService.updateItemImages(projectId, itemId, validImages)
+          }
+        } catch (error) {
+          console.error('Error in image upload process:', error)
+        }
+      }
+
+      // Refresh the transaction items list
+      const itemIds = await itemService.getTransactionItems(projectId, transactionId)
+      const itemsPromises = itemIds.map(id => itemService.getItem(projectId, id))
+      const items = await Promise.all(itemsPromises)
+      const validItems = items.filter(item => item !== null) as Item[]
+      setTransactionItems(validItems)
+
+      // Reset state
+      setIsAddingItem(false)
+      setImageFilesMap(new Map())
+
+      showSuccess('Item added successfully')
+    } catch (error) {
+      console.error('Error adding item:', error)
+      showError('Failed to add item. Please try again.')
+    }
+  }
+
+  const handleCancelAddItem = () => {
+    setIsAddingItem(false)
+    setImageFilesMap(new Map())
   }
 
   // Convert all transaction images (receipt and other) to ItemImage format for the gallery
@@ -583,64 +685,96 @@ export default function TransactionDetail() {
 
         {/* Transaction Items */}
         <div className="px-6 py-6 border-t border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <Package className="h-5 w-5 mr-2" />
-            Transaction Items
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900 flex items-center">
+              <Package className="h-5 w-5 mr-2" />
+              Transaction Items
+            </h3>
+            {/* Add Item Button - Show when no items exist or when items exist (styled like add images button) */}
+            {(!isLoadingItems && !isAddingItem) && (
+              <button
+                onClick={() => setIsAddingItem(true)}
+                className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                title="Add new item"
+              >
+                <Package className="h-3 w-3 mr-1" />
+                Add Item
+              </button>
+            )}
+          </div>
+
           {isLoadingItems ? (
             <div className="flex justify-center items-center h-16">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
               <span className="ml-2 text-sm text-gray-600">Loading items...</span>
             </div>
-          ) : transactionItems.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {transactionItems.map((item) => (
-                <Link
-                  key={item.item_id}
-                  to={`/project/${projectId}/item/${item.item_id}?from=transaction`}
-                  className="block p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-primary-600">
-                        {item.description}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {formatCurrency(item.price)}
-                      </p>
-                      {item.sku && (
-                        <p className="text-xs text-gray-400 mt-1">
-                          SKU: {item.sku}
-                        </p>
-                      )}
-                      {item.disposition && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-2 ${
-                          item.disposition === 'keep'
-                            ? 'bg-green-100 text-green-800'
-                            : item.disposition === 'return'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {item.disposition}
-                        </span>
-                      )}
-                    </div>
-                    <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-primary-500 flex-shrink-0 ml-2" />
-                  </div>
-                </Link>
-              ))}
-            </div>
           ) : (
-            <div className="text-center py-8">
-              <Package className="mx-auto h-8 w-8 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No items linked</h3>
-              <Link
-                to={`/project/${projectId}/transaction/${transactionId}/edit`}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
-              >
-                <Package className="h-3 w-3 mr-1" />
-                Add Items
-              </Link>
+            <div className="space-y-4">
+              {/* Existing Items Display */}
+              {transactionItems.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {transactionItems.map((item) => (
+                    <Link
+                      key={item.item_id}
+                      to={`/project/${projectId}/item/${item.item_id}?from=transaction`}
+                      className="block p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-primary-600">
+                            {item.description}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {formatCurrency(item.price)}
+                          </p>
+                          {item.sku && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              SKU: {item.sku}
+                            </p>
+                          )}
+                          {item.disposition && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-2 ${
+                              item.disposition === 'keep'
+                                ? 'bg-green-100 text-green-800'
+                                : item.disposition === 'return'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {item.disposition}
+                            </span>
+                          )}
+                        </div>
+                        <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-primary-500 flex-shrink-0 ml-2" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {/* In-line Item Addition */}
+              {isAddingItem && (
+                <TransactionItemForm
+                  onSave={handleSaveItem}
+                  onCancel={handleCancelAddItem}
+                  projectId={projectId}
+                  projectName={project ? project.name : ''}
+                  onImageFilesChange={handleImageFilesChange}
+                />
+              )}
+
+              {/* Empty State - Only show when no items exist and not adding */}
+              {transactionItems.length === 0 && !isAddingItem && (
+                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                  <button
+                    onClick={() => setIsAddingItem(true)}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    title="Add new item"
+                  >
+                    <Package className="h-4 w-4 mr-2" />
+                    Add Item
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
