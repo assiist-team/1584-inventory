@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus, ChevronDown } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
@@ -18,7 +18,9 @@ export default function ItemDetail() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [openDispositionMenu, setOpenDispositionMenu] = useState(false)
+  const [isSticky, setIsSticky] = useState(false)
   const { showError } = useToast()
+  const stickyRef = useRef<HTMLDivElement>(null)
 
   // Use itemId if available (from /project/:id/item/:itemId), otherwise use id (from /item/:id)
   const actualItemId = itemId || id
@@ -147,6 +149,24 @@ export default function ItemDetail() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [openDispositionMenu])
+
+  // Handle sticky header border
+  useEffect(() => {
+    const handleScroll = () => {
+      if (stickyRef.current) {
+        const rect = stickyRef.current.getBoundingClientRect()
+        const isElementSticky = rect.top <= 0
+        setIsSticky(isElementSticky)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    handleScroll() // Check initial state
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
 
   const toggleBookmark = async () => {
     if (!item) return
@@ -381,8 +401,11 @@ export default function ItemDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-4">
+      {/* Sticky Header Controls */}
+      <div
+        ref={stickyRef}
+        className={`sticky top-0 bg-gray-50 z-10 px-4 py-2 ${isSticky ? 'border-b border-gray-200' : ''}`}
+      >
         {/* Back button and controls row */}
         <div className="flex items-center justify-between gap-4">
           <Link
@@ -426,15 +449,15 @@ export default function ItemDetail() {
             <div className="relative">
               <span
                 onClick={toggleDispositionMenu}
-                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
+                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition || 'keep')}`}
               >
-                {item.disposition === 'to return' ? 'To Return' : item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1)}
+                {item.disposition === 'to return' ? 'To Return' : (item.disposition || 'keep').charAt(0).toUpperCase() + (item.disposition || 'keep').slice(1)}
                 <ChevronDown className="h-3 w-3 ml-1" />
               </span>
 
               {/* Dropdown menu */}
               {openDispositionMenu && (
-                <div className="disposition-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                <div className="disposition-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20">
                   <div className="py-2">
                     {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
                       <button
@@ -455,15 +478,19 @@ export default function ItemDetail() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Content */}
+      <div className="space-y-4">
 
         {/* Item information */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-4">
             <h1 className="text-xl font-semibold text-gray-900">{item.description}</h1>
           </div>
 
           {/* Item Images */}
-          <div className="px-6 py-4 border-t border-gray-200">
+          <div className="px-6 py-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-medium text-gray-900 flex items-center">
                 <ImagePlus className="h-5 w-5 mr-2" />
@@ -503,7 +530,7 @@ export default function ItemDetail() {
           </div>
 
           {/* Item Details */}
-          <div className="px-6 py-4 border-t border-gray-200">
+          <div className="px-6 py-4">
             <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
               <FileText className="h-5 w-5 mr-2" />
               Item Details
@@ -590,7 +617,7 @@ export default function ItemDetail() {
 
 
           {/* Metadata */}
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <div className="px-6 py-4 bg-gray-50">
             <div className="relative">
               <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
                 <div>
