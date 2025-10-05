@@ -449,7 +449,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (
-                <li key={item.item_id} className="relative bg-gray-50">
+                <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200">
                   {/* Top row: Controls - stays outside Link */}
                   <div className="flex items-center justify-between mb-0 px-4 py-3">
                     <div className="flex items-center">
@@ -530,7 +530,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
                   {/* Main tappable content - wrapped in Link */}
                   <Link to={`/item/${item.item_id}?project=${projectId}`}>
-                    <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200">
+                    <div className="block bg-transparent">
                       <div className="px-4 pb-3 sm:px-6">
                         {/* Middle row: Thumbnail and Description - now tappable */}
                         <div className="flex items-center gap-3 py-3">
