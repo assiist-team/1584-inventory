@@ -1,4 +1,4 @@
-import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
@@ -717,34 +717,87 @@ export default function TransactionDetail() {
                     <Link
                       key={item.item_id}
                       to={`/project/${projectId}/item/${item.item_id}?from=transaction`}
-                      className="block p-4 border border-gray-200 rounded-lg hover:border-primary-300 hover:shadow-sm transition-all duration-200 group"
+                      className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-primary-600">
-                            {item.description}
-                          </p>
-                          <p className="text-sm text-gray-500 mt-1">
-                            {formatCurrency(item.price)}
-                          </p>
-                          {item.sku && (
-                            <p className="text-xs text-gray-400 mt-1">
-                              SKU: {item.sku}
-                            </p>
-                          )}
-                          {item.disposition && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-2 ${
-                              item.disposition === 'keep'
-                                ? 'bg-green-100 text-green-800'
-                                : item.disposition === 'return'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {item.disposition}
-                            </span>
+                      {/* Disposition badge in upper right corner */}
+                      {item.disposition && (
+                        <div className="absolute top-2 right-2 z-10">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                            item.disposition === 'keep'
+                              ? 'bg-green-100 text-green-800'
+                              : item.disposition === 'to return'
+                              ? 'bg-red-100 text-red-700'
+                              : item.disposition === 'return' // Backward compatibility
+                              ? 'bg-red-100 text-red-700'
+                              : item.disposition === 'returned'
+                              ? 'bg-red-800 text-red-100'
+                              : item.disposition === 'inventory'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Image and Description row - side by side like inventory list */}
+                      <div className="flex items-center gap-3 py-3">
+                        <div className="flex-shrink-0">
+                          {item.images && item.images.length > 0 ? (
+                            // Show primary image thumbnail or first image if no primary
+                            (() => {
+                              const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
+                              return (
+                                <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                                  <img
+                                    src={primaryImage.url}
+                                    alt={primaryImage.alt || 'Item image'}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )
+                            })()
+                          ) : (
+                            // Show placeholder when no images
+                            <div className="w-16 h-16 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-400 bg-gray-100">
+                              <Package className="h-6 w-6" />
+                            </div>
                           )}
                         </div>
-                        <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-primary-500 flex-shrink-0 ml-2" />
+
+                        {/* Item description - matching inventory list styling */}
+                        <div className="flex-1 min-w-0 flex items-center">
+                          <div>
+                            <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
+                              {item.description}
+                            </h3>
+                            {/* Space field - if available */}
+                            {item.space && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                {item.space}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                        {item.price && (
+                          <span className="font-medium text-gray-700">{formatCurrency(item.price)}</span>
+                        )}
+                        {item.source && (
+                          <>
+                            {(item.price) && <span className="hidden sm:inline">•</span>}
+                            <span className="font-medium text-gray-700">{item.source}</span>
+                          </>
+                        )}
+                        {item.sku && (
+                          <>
+                            {(item.price || item.source) && <span className="hidden sm:inline">•</span>}
+                            <span className="font-medium text-gray-700">{item.sku}</span>
+                          </>
+                        )}
                       </div>
                     </Link>
                   ))}
