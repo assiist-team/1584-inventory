@@ -1,4 +1,4 @@
-import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package } from 'lucide-react'
 import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
@@ -690,8 +690,8 @@ export default function TransactionDetail() {
               <Package className="h-5 w-5 mr-2" />
               Transaction Items
             </h3>
-            {/* Add Item Button - Show when no items exist or when items exist (styled like add images button) */}
-            {(!isLoadingItems && !isAddingItem) && (
+            {/* Add Item Button - Only show when items exist (like Receipt Images section) */}
+            {(!isLoadingItems && !isAddingItem && transactionItems.length > 0) && (
               <button
                 onClick={() => setIsAddingItem(true)}
                 className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
@@ -817,13 +817,15 @@ export default function TransactionDetail() {
 
               {/* Empty State - Only show when no items exist and not adding */}
               {transactionItems.length === 0 && !isAddingItem && (
-                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                <div className="text-center py-8">
+                  <Package className="mx-auto h-8 w-8 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No items added</h3>
                   <button
                     onClick={() => setIsAddingItem(true)}
-                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
                     title="Add new item"
                   >
-                    <Package className="h-4 w-4 mr-2" />
+                    <Package className="h-3 w-3 mr-1" />
                     Add Item
                   </button>
                 </div>

@@ -205,6 +205,7 @@ export interface TransactionItemFormData {
   sku?: string;
   price: string;
   market_value?: string;
+  space?: string;
   notes?: string;
   images?: ItemImage[]; // Images associated with this item
   imageFiles?: File[]; // File objects for upload (not persisted)
@@ -231,6 +232,7 @@ export interface TransactionItemValidationErrors {
   sku?: string;
   price?: string;
   market_value?: string;
+  space?: string;
   notes?: string;
 }
 

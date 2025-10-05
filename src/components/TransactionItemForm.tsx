@@ -29,6 +29,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       sku: '',
       price: '',
       market_value: '',
+      space: '',
       notes: ''
     }
   )
@@ -52,6 +53,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
         sku: item.sku || '',
         price: item.price,
         market_value: item.market_value || '',
+        space: item.space || '',
         notes: item.notes || ''
       })
     }
@@ -132,9 +134,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       newErrors.description = 'Description is required'
     }
 
-    if (!formData.price.trim()) {
-      newErrors.price = 'Price is required'
-    } else if (isNaN(Number(formData.price)) || Number(formData.price) <= 0) {
+    if (formData.price && (isNaN(Number(formData.price)) || Number(formData.price) <= 0)) {
       newErrors.price = 'Price must be a positive number'
     }
 
@@ -185,6 +185,34 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       </div>
 
       <div className="space-y-4">
+        {/* Item Images */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Item Images
+          </label>
+
+          {/* Image upload button */}
+          <button
+            type="button"
+            onClick={handleSelectFromGallery}
+            disabled={isUploadingImage}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 mb-3"
+            title="Add images from gallery or camera"
+          >
+            <Camera className="h-4 w-4 mr-2" />
+            {isUploadingImage ? 'Uploading...' : 'Add Images'}
+          </button>
+
+          {/* Image preview */}
+          <ImagePreview
+            images={itemImages}
+            onRemoveImage={handleRemoveImage}
+            onSetPrimary={handleSetPrimaryImage}
+            maxImages={3}
+            size="md"
+          />
+        </div>
+
         {/* Description */}
         <div>
           <label htmlFor="description" className="block text-sm font-medium text-gray-700">
@@ -228,7 +256,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
         {/* Price */}
         <div>
           <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-            Price *
+            Price
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -275,6 +303,21 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
           )}
         </div>
 
+        {/* Space */}
+        <div>
+          <label htmlFor="space" className="block text-sm font-medium text-gray-700">
+            Space
+          </label>
+          <input
+            type="text"
+            id="space"
+            value={formData.space}
+            onChange={(e) => handleInputChange('space', e.target.value)}
+            placeholder="e.g., Living Room, Master Bedroom, Kitchen"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+
         {/* Notes */}
         <div>
           <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
@@ -293,34 +336,6 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
           {errors.notes && (
             <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
           )}
-        </div>
-
-        {/* Item Images */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Item Images
-          </label>
-
-          {/* Image upload button */}
-          <button
-            type="button"
-            onClick={handleSelectFromGallery}
-            disabled={isUploadingImage}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 mb-3"
-            title="Add images from gallery or camera"
-          >
-            <Camera className="h-4 w-4 mr-2" />
-            {isUploadingImage ? 'Uploading...' : 'Add Images'}
-          </button>
-
-          {/* Image preview */}
-          <ImagePreview
-            images={itemImages}
-            onRemoveImage={handleRemoveImage}
-            onSetPrimary={handleSetPrimaryImage}
-            maxImages={3}
-            size="md"
-          />
         </div>
 
         {/* Form Actions */}
