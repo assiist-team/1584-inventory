@@ -617,12 +617,11 @@ export default function BusinessInventory() {
                 </Link>
               </div>
 
-              {/* Search and Filter Controls - Sticky Container */}
-              <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-3 mb-2">
-                {/* Search Bar and Filter Button Row */}
-                <div className="flex gap-3 items-center">
+              {/* Search and Controls - Sticky Container */}
+              <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-0 mb-2">
+                <div className="space-y-0">
                   {/* Search Bar */}
-                  <div className="relative flex-1 pt-2">
+                  <div className="relative pt-2">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Search className="h-5 w-5 text-gray-400" />
                     </div>
@@ -635,71 +634,74 @@ export default function BusinessInventory() {
                     />
                   </div>
 
-                  {/* Filter Button */}
-                  <div className="relative pt-2">
-                    <button
-                      onClick={() => setShowTransactionFilterMenu(!showTransactionFilterMenu)}
-                      className={`transaction-filter-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
-                        transactionFilterMode === 'all'
-                          ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                          : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
-                      }`}
-                      title="Filter transactions"
-                    >
-                      <Filter className="h-4 w-4" />
-                    </button>
+                  {/* Filter Controls */}
+                  <div className="flex items-center justify-end gap-4 p-3 rounded-lg">
+                    {/* Filter Button */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowTransactionFilterMenu(!showTransactionFilterMenu)}
+                        className={`transaction-filter-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                          transactionFilterMode === 'all'
+                            ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                            : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
+                        }`}
+                        title="Filter transactions"
+                      >
+                        <Filter className="h-4 w-4" />
+                      </button>
 
-                    {/* Transaction Filter Dropdown Menu */}
-                    {showTransactionFilterMenu && (
-                      <div className="transaction-filter-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                        <div className="py-1">
-                          <button
-                            onClick={() => {
-                              setTransactionFilterMode('all')
-                              setShowTransactionFilterMenu(false)
-                            }}
-                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                              transactionFilterMode === 'all' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
-                            }`}
-                          >
-                            All Status
-                          </button>
-                          <button
-                            onClick={() => {
-                              setTransactionFilterMode('pending')
-                              setShowTransactionFilterMenu(false)
-                            }}
-                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                              transactionFilterMode === 'pending' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
-                            }`}
-                          >
-                            Pending
-                          </button>
-                          <button
-                            onClick={() => {
-                              setTransactionFilterMode('completed')
-                              setShowTransactionFilterMenu(false)
-                            }}
-                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                              transactionFilterMode === 'completed' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
-                            }`}
-                          >
-                            Completed
-                          </button>
-                          <button
-                            onClick={() => {
-                              setTransactionFilterMode('cancelled')
-                              setShowTransactionFilterMenu(false)
-                            }}
-                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                              transactionFilterMode === 'cancelled' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
-                            }`}
-                          >
-                            Cancelled
-                          </button>
+                      {/* Transaction Filter Dropdown Menu */}
+                      {showTransactionFilterMenu && (
+                        <div className="transaction-filter-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                          <div className="py-1">
+                            <button
+                              onClick={() => {
+                                setTransactionFilterMode('all')
+                                setShowTransactionFilterMenu(false)
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                transactionFilterMode === 'all' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                              }`}
+                            >
+                              All Status
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTransactionFilterMode('pending')
+                                setShowTransactionFilterMenu(false)
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                transactionFilterMode === 'pending' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                              }`}
+                            >
+                              Pending
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTransactionFilterMode('completed')
+                                setShowTransactionFilterMenu(false)
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                transactionFilterMode === 'completed' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                              }`}
+                            >
+                              Completed
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTransactionFilterMode('cancelled')
+                                setShowTransactionFilterMenu(false)
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                transactionFilterMode === 'cancelled' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                              }`}
+                            >
+                              Cancelled
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
