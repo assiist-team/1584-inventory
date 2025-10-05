@@ -25,9 +25,9 @@ export default function Header() {
             <nav className="flex space-x-1">
               <Link
                 to="/"
-                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                   isProjectsActive
-                    ? 'bg-primary-100 text-primary-700 border-b-2 border-primary-500'
+                    ? 'bg-primary-600 text-white shadow-sm'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
               >
@@ -36,9 +36,9 @@ export default function Header() {
               </Link>
               <Link
                 to="/business-inventory"
-                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                   isBusinessInventoryActive
-                    ? 'bg-primary-100 text-primary-700 border-b-2 border-primary-500'
+                    ? 'bg-primary-600 text-white shadow-sm'
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
               >

@@ -108,9 +108,6 @@ export default function EditBusinessInventoryItem() {
     }
   }
 
-  const handleCancel = () => {
-    navigate(`/business-inventory/${id}`)
-  }
 
   if (isLoading) {
     return (

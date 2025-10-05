@@ -42,15 +42,33 @@ export default function ProjectDetail() {
 
   // Calculate amounts owed
   const calculateOwedTo1584 = () => {
-    return transactions
-      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes')
-      .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
+    const clientOwesTransactions = transactions.filter(transaction => {
+      // For "owed to 1584", we want transactions where the client owes 1584
+      // This happens when 1584 paid for the transaction
+
+      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes'
+      const isLegacyClientOwes = (!transaction.status || transaction.status === 'pending') &&
+                                transaction.payment_method === '1584 Card'
+
+      return isExplicitlyClientOwes || isLegacyClientOwes
+    })
+    console.log('Owed to 1584 - Client Owes transactions:', clientOwesTransactions.length)
+    return clientOwesTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
   const calculateOwedToClient = () => {
-    return transactions
-      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'We Owe')
-      .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
+    const weOweTransactions = transactions.filter(transaction => {
+      // For "owed to client", we want transactions where 1584 owes the client
+      // This happens when the client paid for the transaction
+
+      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === 'We Owe'
+      const isLegacyWeOwe = (!transaction.status || transaction.status === 'pending') &&
+                           transaction.payment_method === 'Client Card'
+
+      return isExplicitlyWeOwe || isLegacyWeOwe
+    })
+    console.log('Owed to Client - We Owe transactions:', weOweTransactions.length)
+    return weOweTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
 

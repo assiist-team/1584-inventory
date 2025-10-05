@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Edit, Trash2, ArrowLeft, Package, TrendingUp, Plus, ImagePlus, FileText } from 'lucide-react'
 import { BusinessInventoryItem, Project } from '@/types'
 import { businessInventoryService, projectService } from '@/services/inventoryService'
-import { formatCurrency, formatDate } from '@/utils/dateUtils'
+import { formatDate } from '@/utils/dateUtils'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { ImageUploadService } from '@/services/imageService'
 
