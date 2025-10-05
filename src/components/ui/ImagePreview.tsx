@@ -114,7 +114,7 @@ export default function ImagePreview({
 
                 {/* Primary indicator */}
                 {image.isPrimary && (
-                  <div className="absolute top-1 left-1 bg-yellow-500 text-white text-xs p-1 rounded flex items-center justify-center">
+                  <div className="absolute top-1 left-1 bg-primary-500 bg-opacity-40 text-white text-xs p-1 rounded flex items-center justify-center border border-white">
                     <Crown className="h-3 w-3 fill-current" />
                   </div>
                 )}

@@ -142,7 +142,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
               <li key={transaction.transaction_id} className="relative">
                 <Link
                   to={`/project/${projectId}/transaction/${transaction.transaction_id}`}
-                  className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200"
+                  className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
                   <div className="px-4 py-4 sm:px-6">
                     {/* Top row: Header with source and type */}

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Edit, Trash2, ArrowLeft, Package, TrendingUp, Plus } from 'lucide-react'
+import { Edit, Trash2, ArrowLeft, Package, TrendingUp, Plus, ImagePlus, FileText } from 'lucide-react'
 import { BusinessInventoryItem, Project } from '@/types'
 import { businessInventoryService, projectService } from '@/services/inventoryService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
+import ImagePreview from '@/components/ui/ImagePreview'
+import { ImageUploadService } from '@/services/imageService'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
@@ -18,6 +20,10 @@ export default function BusinessInventoryItemDetail() {
     amount: '',
     notes: ''
   })
+
+  // Image upload state
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
 
   useEffect(() => {
     if (id) {
@@ -153,6 +159,110 @@ export default function BusinessInventoryItemDetail() {
     }
   }
 
+  // Image handling functions
+  const handleSelectFromGallery = async () => {
+    if (!item || !item.item_id) return
+
+    try {
+      setIsUploadingImage(true)
+      setUploadProgress(0)
+
+      const files = await ImageUploadService.selectFromGallery()
+
+      if (files && files.length > 0) {
+        console.log('Selected', files.length, 'files from gallery')
+
+        // Process all selected files sequentially
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          await processImageUpload(file, files)
+        }
+      } else {
+        console.log('No files selected from gallery')
+      }
+    } catch (error: any) {
+      console.error('Error selecting from gallery:', error)
+
+      // Handle cancel/timeout gracefully - don't show error for user cancellation
+      if (error.message?.includes('timeout') || error.message?.includes('canceled')) {
+        console.log('User canceled image selection or selection timed out')
+        return
+      }
+
+      alert('Failed to add images. Please try again.')
+    } finally {
+      setIsUploadingImage(false)
+      setUploadProgress(0)
+    }
+  }
+
+  const processImageUpload = async (file: File, allFiles?: File[]) => {
+    if (!item?.item_id) return
+
+    const uploadResult = await ImageUploadService.uploadItemImage(
+      file,
+      'Business Inventory',
+      item.item_id
+    )
+
+    const newImage = {
+      url: uploadResult.url,
+      alt: file.name,
+      isPrimary: item.images?.length === 0, // First image is always primary when added from detail view
+      uploadedAt: new Date(),
+      fileName: file.name,
+      size: file.size,
+      mimeType: file.type
+    }
+
+    // Update the item with the new image
+    const currentImages = item.images || []
+    const updatedImages = [...currentImages, newImage]
+
+    await businessInventoryService.updateBusinessInventoryItem(item.item_id, { images: updatedImages })
+
+    // Show success notification on the last file
+    if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
+      const message = allFiles.length > 1 ? `${allFiles.length} images uploaded successfully!` : 'Image uploaded successfully!'
+      alert(message)
+    }
+  }
+
+  const handleRemoveImage = async (imageUrl: string) => {
+    if (!item?.item_id) return
+
+    try {
+      // Update in database
+      const updatedImages = item.images?.filter(img => img.url !== imageUrl) || []
+      await businessInventoryService.updateBusinessInventoryItem(item.item_id, { images: updatedImages })
+
+      // Update local state
+      setItem({ ...item, images: updatedImages })
+    } catch (error) {
+      console.error('Error removing image:', error)
+      alert('Error removing image. Please try again.')
+    }
+  }
+
+  const handleSetPrimaryImage = async (imageUrl: string) => {
+    if (!item?.item_id) return
+
+    try {
+      // Update in database
+      const updatedImages = item.images?.map(img => ({
+        ...img,
+        isPrimary: img.url === imageUrl
+      })) || []
+      await businessInventoryService.updateBusinessInventoryItem(item.item_id, { images: updatedImages })
+
+      // Update local state
+      setItem({ ...item, images: updatedImages })
+    } catch (error) {
+      console.error('Error setting primary image:', error)
+      alert('Error setting primary image. Please try again.')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-32">
@@ -183,209 +293,129 @@ export default function BusinessInventoryItemDetail() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Link
-                to="/business-inventory"
-                className="mr-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{item.description}</h1>
-                <p className="text-sm text-gray-600">SKU: {item.sku}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                to={`/business-inventory/${id}/edit`}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-              >
-                <Edit className="h-4 w-4 mr-2" />
-                Edit
-              </Link>
+    <div className="space-y-6">
+      {/* Sticky Header Controls */}
+      <div className="sticky top-0 bg-gray-50 z-10 px-4 py-2 border-b border-gray-200">
+        {/* Back button and controls row */}
+        <div className="flex items-center justify-between gap-4">
+          <Link
+            to="/business-inventory"
+            className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Link>
+
+          <div className="flex flex-wrap gap-2 sm:space-x-2">
+            {item.inventory_status === 'available' && (
               <button
-                onClick={handleDelete}
-                className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50 transition-colors"
+                onClick={openAllocationModal}
+                disabled={isUpdating}
+                className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                title="Allocate to Project"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
+                <Plus className="h-4 w-4" />
               </button>
-            </div>
+            )}
+            <Link
+              to={`/business-inventory/${id}/edit`}
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              title="Edit Item"
+            >
+              <Edit className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* Content */}
+      <div className="space-y-4">
+
+        {/* Item information */}
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="px-6 py-4">
+            <h1 className="text-xl font-semibold text-gray-900">{item.description}</h1>
+          </div>
+
+          {/* Item Images */}
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <ImagePlus className="h-5 w-5 mr-2" />
+                Item Images
+              </h3>
+              <button
+                onClick={handleSelectFromGallery}
+                disabled={isUploadingImage}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                title="Add images from gallery or camera"
+              >
+                <ImagePlus className="h-3 w-3 mr-1" />
+                {isUploadingImage
+                  ? uploadProgress > 0 && uploadProgress < 100
+                    ? `Uploading... ${Math.round(uploadProgress)}%`
+                    : 'Uploading...'
+                  : 'Add Images'
+                }
+              </button>
+            </div>
+
+            {item.images && item.images.length > 0 ? (
+              <ImagePreview
+                images={item.images}
+                onRemoveImage={handleRemoveImage}
+                onSetPrimary={handleSetPrimaryImage}
+                maxImages={5}
+                size="md"
+                showControls={true}
+              />
+            ) : (
+              <div className="text-center py-8">
+                <ImagePlus className="mx-auto h-8 w-8 text-gray-400" />
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No images uploaded</h3>
+              </div>
+            )}
+          </div>
+
           {/* Item Details */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Item Details</h3>
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Price</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatCurrency(item.price)}</dd>
-                </div>
-                {item.market_value && (
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Market Value</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{formatCurrency(item.market_value)}</dd>
-                  </div>
-                )}
+          <div className="px-6 py-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+              <FileText className="h-5 w-5 mr-2" />
+              Item Details
+            </h3>
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+              {item.source && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Source</dt>
                   <dd className="mt-1 text-sm text-gray-900 capitalize">{item.source}</dd>
                 </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Status</dt>
-                  <dd className="mt-1">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      item.inventory_status === 'available'
-                        ? 'bg-green-100 text-green-800'
-                        : item.inventory_status === 'pending'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {item.inventory_status === 'available' ? 'Available' :
-                       item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
-                    </span>
-                  </dd>
-                </div>
-                {item.business_inventory_location && (
-                  <div>
-                    <dt className="text-sm font-medium text-gray-500">Location</dt>
-                    <dd className="mt-1 text-sm text-gray-900">{item.business_inventory_location}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Date Added</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Last Updated</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.last_updated)}</dd>
-                </div>
-              </dl>
+              )}
 
-              {item.notes && (
-                <div className="mt-6">
-                  <dt className="text-sm font-medium text-gray-500">Notes</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{item.notes}</dd>
+              {item.sku && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">SKU</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.sku}</dd>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Project Assignment */}
-          {item.current_project_id && (
-            <div className="bg-white shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Project Assignment</h3>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">
-                      Currently allocated to project: <span className="font-medium">{item.current_project_id}</span>
-                    </p>
-                    {item.pending_transaction_id && (
-                      <p className="text-sm text-gray-500 mt-1">
-                        Pending transaction: {item.pending_transaction_id}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    {item.inventory_status === 'pending' && (
-                      <>
-                        <button
-                          onClick={handleReturnFromProject}
-                          disabled={isUpdating}
-                          className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
-                        >
-                          Return to Inventory
-                        </button>
-                        <button
-                          onClick={() => handleMarkAsSold('Client Card')}
-                          disabled={isUpdating}
-                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors disabled:opacity-50"
-                        >
-                          <TrendingUp className="h-4 w-4 mr-2" />
-                          Mark as Sold
-                        </button>
-                      </>
-                    )}
-                  </div>
+              {item.price && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Price</dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Images */}
-          {item.images && item.images.length > 0 && (
-            <div className="bg-white shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Images</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {item.images.map((image, index) => (
-                    <div key={index} className="relative">
-                      <img
-                        src={image.url}
-                        alt={image.alt || `Image ${index + 1}`}
-                        className="w-full h-32 object-cover rounded-lg"
-                      />
-                      {image.caption && (
-                        <p className="mt-2 text-sm text-gray-600">{image.caption}</p>
-                      )}
-                    </div>
-                  ))}
+              {item.market_value && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Market Value</dt>
+                  <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value}</dd>
                 </div>
-              </div>
-            </div>
-          )}
-        </div>
+              )}
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Quick Actions */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                {item.inventory_status === 'available' && (
-                  <>
-                    <button
-                      onClick={openAllocationModal}
-                      disabled={isUpdating}
-                      className="w-full inline-flex justify-center items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors disabled:opacity-50"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Allocate to Project
-                    </button>
-                  </>
-                )}
-                <Link
-                  to={`/business-inventory/${id}/edit`}
-                  className="w-full inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Item
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Status History */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Status History</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Current Status:</span>
-                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Status</dt>
+                <dd className="mt-1">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     item.inventory_status === 'available'
                       ? 'bg-green-100 text-green-800'
                       : item.inventory_status === 'pending'
@@ -395,20 +425,94 @@ export default function BusinessInventoryItemDetail() {
                     {item.inventory_status === 'available' ? 'Available' :
                      item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
                   </span>
+                </dd>
+              </div>
+
+              {item.business_inventory_location && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Location</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.business_inventory_location}</dd>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Date Created:</span>
-                  <span className="text-gray-900">{formatDate(item.date_created)}</span>
+              )}
+
+              {item.notes && item.notes !== 'No notes' && (
+                <div className="sm:col-span-2">
+                  <dt className="text-sm font-medium text-gray-500">Notes</dt>
+                  <dd className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{item.notes}</dd>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Last Updated:</span>
-                  <span className="text-gray-900">{formatDate(item.last_updated)}</span>
+              )}
+            </dl>
+          </div>
+
+          {/* Project Assignment */}
+          {item.current_project_id && (
+            <div className="px-6 py-4 bg-blue-50">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Project Assignment</h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">
+                    Currently allocated to project: <span className="font-medium">{item.current_project_id}</span>
+                  </p>
+                  {item.pending_transaction_id && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      Pending transaction: {item.pending_transaction_id}
+                    </p>
+                  )}
                 </div>
+                <div className="flex gap-2">
+                  {item.inventory_status === 'pending' && (
+                    <>
+                      <button
+                        onClick={handleReturnFromProject}
+                        disabled={isUpdating}
+                        className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      >
+                        Return to Inventory
+                      </button>
+                      <button
+                        onClick={() => handleMarkAsSold('Client Card')}
+                        disabled={isUpdating}
+                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors disabled:opacity-50"
+                      >
+                        <TrendingUp className="h-4 w-4 mr-2" />
+                        Mark as Sold
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div className="px-6 py-4 bg-gray-50">
+            <div className="relative">
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Date Added</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Last Updated</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.last_updated)}</dd>
+                </div>
+              </dl>
+
+              {/* Delete button in lower right corner */}
+              <div className="absolute bottom-0 right-0">
+                <button
+                  onClick={handleDelete}
+                  className="inline-flex items-center justify-center p-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  title="Delete Item"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
+
 
       {/* Allocation Modal */}
       {showAllocationModal && (

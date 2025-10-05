@@ -141,193 +141,179 @@ export default function EditBusinessInventoryItem() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="space-y-4">
+        {/* Back button row */}
+        <div className="flex items-center justify-between">
+          <Link
+            to={`/business-inventory/${id}`}
+            className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Link>
+        </div>
+      </div>
+
       <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center">
-              <Link
-                to={`/business-inventory/${id}`}
-                className="mr-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Edit Business Inventory Item</h1>
-                <p className="text-sm text-gray-600">Update item details and information</p>
-              </div>
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* General Information */}
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h1 className="text-2xl font-bold text-gray-900">Edit Item</h1>
+        </div>
+        <div className="px-6 py-4">
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Description */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">General Information</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                    Description *
-                  </label>
-                  <input
-                    type="text"
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
-                      formErrors.description ? 'border-red-300' : ''
-                    }`}
-                    placeholder="e.g., Vintage leather armchair"
-                  />
-                  {formErrors.description && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.description}</p>
-                  )}
+              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                Description *
+              </label>
+              <input
+                type="text"
+                id="description"
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                placeholder="e.g., Vintage leather armchair"
+                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  formErrors.description ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              {formErrors.description && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.description}</p>
+              )}
+            </div>
+
+            {/* Source */}
+            <div>
+              <label htmlFor="source" className="block text-sm font-medium text-gray-700">
+                Source *
+              </label>
+              <input
+                type="text"
+                id="source"
+                value={formData.source}
+                onChange={(e) => handleInputChange('source', e.target.value)}
+                placeholder="e.g., purchased, found, donated"
+                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  formErrors.source ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              {formErrors.source && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.source}</p>
+              )}
+            </div>
+
+            {/* SKU */}
+            <div>
+              <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
+                SKU
+              </label>
+              <input
+                type="text"
+                id="sku"
+                value={formData.sku}
+                onChange={(e) => handleInputChange('sku', e.target.value)}
+                placeholder="e.g., CHR-001"
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+
+            {/* Purchase Price */}
+            <div>
+              <label htmlFor="price" className="block text-sm font-medium text-gray-700">
+                Purchase Price *
+              </label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
                 </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  id="price"
+                  value={formData.price}
+                  onChange={(e) => handleInputChange('price', e.target.value)}
+                  placeholder="0.00"
+                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                    formErrors.price ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                />
+              </div>
+              {formErrors.price && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.price}</p>
+              )}
+            </div>
 
-                <div>
-                  <label htmlFor="source" className="block text-sm font-medium text-gray-700">
-                    Source *
-                  </label>
-                  <input
-                    type="text"
-                    id="source"
-                    value={formData.source}
-                    onChange={(e) => handleInputChange('source', e.target.value)}
-                    className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
-                      formErrors.source ? 'border-red-300' : ''
-                    }`}
-                    placeholder="e.g., purchased, found, donated"
-                  />
-                  {formErrors.source && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.source}</p>
-                  )}
+            {/* Market Value */}
+            <div>
+              <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+                Market Value
+              </label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
                 </div>
-
-                <div>
-                  <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
-                    SKU
-                  </label>
-                  <input
-                    type="text"
-                    id="sku"
-                    value={formData.sku}
-                    onChange={(e) => handleInputChange('sku', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                    placeholder="e.g., CHR-001"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="business_inventory_location" className="block text-sm font-medium text-gray-700">
-                    Storage Location *
-                  </label>
-                  <input
-                    type="text"
-                    id="business_inventory_location"
-                    value={formData.business_inventory_location}
-                    onChange={(e) => handleInputChange('business_inventory_location', e.target.value)}
-                    className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
-                      formErrors.business_inventory_location ? 'border-red-300' : ''
-                    }`}
-                    placeholder="e.g., Warehouse A - Section 3 - Shelf 5"
-                  />
-                  {formErrors.business_inventory_location && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.business_inventory_location}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                    Purchase Price *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    id="price"
-                    value={formData.price}
-                    onChange={(e) => handleInputChange('price', e.target.value)}
-                    className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
-                      formErrors.price ? 'border-red-300' : ''
-                    }`}
-                    placeholder="0.00"
-                  />
-                  {formErrors.price && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.price}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
-                    Market Value
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    id="market_value"
-                    value={formData.market_value}
-                    onChange={(e) => handleInputChange('market_value', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                    placeholder="0.00"
-                  />
-                </div>
-
-
+                <input
+                  type="number"
+                  step="0.01"
+                  id="market_value"
+                  value={formData.market_value}
+                  onChange={(e) => handleInputChange('market_value', e.target.value)}
+                  placeholder="0.00"
+                  className="mt-1 block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
               </div>
             </div>
 
-            {/* Additional Details */}
+            {/* Storage Location */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Additional Details</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
-                    Notes
-                  </label>
-                  <textarea
-                    id="notes"
-                    rows={3}
-                    value={formData.notes}
-                    onChange={(e) => handleInputChange('notes', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                    placeholder="Additional notes about this item..."
-                  />
-                </div>
+              <label htmlFor="business_inventory_location" className="block text-sm font-medium text-gray-700">
+                Storage Location *
+              </label>
+              <input
+                type="text"
+                id="business_inventory_location"
+                value={formData.business_inventory_location}
+                onChange={(e) => handleInputChange('business_inventory_location', e.target.value)}
+                placeholder="e.g., Warehouse A - Section 3 - Shelf 5"
+                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  formErrors.business_inventory_location ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              {formErrors.business_inventory_location && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.business_inventory_location}</p>
+              )}
+            </div>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="bookmark"
-                    checked={formData.bookmark}
-                    onChange={(e) => handleInputChange('bookmark', e.target.checked)}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="bookmark" className="ml-2 block text-sm text-gray-700">
-                    Bookmark this item
-                  </label>
-                </div>
-              </div>
+            {/* Notes */}
+            <div>
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+                Notes
+              </label>
+              <textarea
+                id="notes"
+                rows={3}
+                value={formData.notes}
+                onChange={(e) => handleInputChange('notes', e.target.value)}
+                placeholder="Additional notes about this item..."
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+              />
             </div>
 
             {/* Inventory Status */}
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Inventory Status</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label htmlFor="inventory_status" className="block text-sm font-medium text-gray-700">
-                    Status
-                  </label>
-                  <select
-                    id="inventory_status"
-                    value={formData.inventory_status}
-                    onChange={(e) => handleInputChange('inventory_status', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  >
-                    <option value="available">Available</option>
-                    <option value="pending">Allocated</option>
-                    <option value="sold">Sold</option>
-                  </select>
-                </div>
-              </div>
+              <label htmlFor="inventory_status" className="block text-sm font-medium text-gray-700">
+                Inventory Status
+              </label>
+              <select
+                id="inventory_status"
+                value={formData.inventory_status}
+                onChange={(e) => handleInputChange('inventory_status', e.target.value)}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              >
+                <option value="available">Available</option>
+                <option value="pending">Allocated</option>
+                <option value="sold">Sold</option>
+              </select>
               {item.current_project_id && (
                 <div className="mt-4 p-4 bg-yellow-50 rounded-md">
                   <p className="text-sm text-yellow-800">
@@ -338,27 +324,40 @@ export default function EditBusinessInventoryItem() {
               )}
             </div>
 
-            {/* Error Message */}
+            {/* Bookmark */}
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="bookmark"
+                checked={formData.bookmark}
+                onChange={(e) => handleInputChange('bookmark', e.target.checked)}
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              />
+              <label htmlFor="bookmark" className="ml-2 block text-sm text-gray-700">
+                Bookmark this item
+              </label>
+            </div>
+
+            {/* Error message */}
             {formErrors.general && (
-              <div className="rounded-md bg-red-50 p-4">
-                <div className="text-sm text-red-800">{formErrors.general}</div>
+              <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                <p className="text-sm text-red-600">{formErrors.general}</p>
               </div>
             )}
 
-            {/* Form Actions */}
-            <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pt-6 border-t border-gray-200">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors duration-200"
+            {/* Form Actions - Desktop */}
+            <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
+              <Link
+                to={`/business-inventory/${id}`}
+                className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
                 <X className="h-4 w-4 mr-2" />
                 Cancel
-              </button>
+              </Link>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 disabled:opacity-50"
+                className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-4 w-4 mr-2" />
                 {isSubmitting ? 'Updating Item...' : 'Update Item'}
@@ -366,7 +365,38 @@ export default function EditBusinessInventoryItem() {
             </div>
           </form>
         </div>
+
+        {/* Sticky mobile action bar */}
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
+          <div className="flex space-x-3">
+            <Link
+              to={`/business-inventory/${id}`}
+              className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              onClick={(e) => {
+                // Find the form and submit it
+                const form = e.currentTarget.closest('.space-y-6')?.querySelector('form') as HTMLFormElement
+                if (form) {
+                  form.requestSubmit()
+                }
+              }}
+              className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isSubmitting ? 'Updating...' : 'Update'}
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Add bottom padding to account for sticky bar on mobile */}
+      <div className="sm:hidden h-20"></div>
     </div>
   )
 }

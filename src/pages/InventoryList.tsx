@@ -436,7 +436,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (
-                <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100 active:bg-gray-200">
+                <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                   {/* Top row: Controls - stays outside Link */}
                   <div className="flex items-center justify-between mb-0 px-4 py-3">
                     <div className="flex items-center">
