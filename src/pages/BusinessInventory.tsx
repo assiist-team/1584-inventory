@@ -1,10 +1,12 @@
-import { Plus, Search, Package, Receipt, Edit, Eye, Filter, QrCode, Trash2 } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Eye, Filter, QrCode, Trash2, Camera, Edit, Bookmark } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { BusinessInventoryItem, BusinessInventoryStats, Transaction } from '@/types'
+import { BusinessInventoryItem, Transaction, ItemImage } from '@/types'
 import { businessInventoryService, transactionService, projectService } from '@/services/inventoryService'
+import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
+import { useBookmark } from '@/hooks/useBookmark'
 
 interface FilterOptions {
   status?: string
@@ -15,7 +17,6 @@ export default function BusinessInventory() {
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<BusinessInventoryItem[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [stats, setStats] = useState<BusinessInventoryStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [filters, setFilters] = useState<FilterOptions>({
     status: '',
@@ -26,6 +27,9 @@ export default function BusinessInventory() {
   // Filter state for transactions tab
   const [showTransactionFilterMenu, setShowTransactionFilterMenu] = useState(false)
   const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all')
+
+  // Image upload state
+  const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
 
   // Filter and selection state for inventory items (matching InventoryList.tsx)
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
@@ -52,29 +56,21 @@ export default function BusinessInventory() {
 
   // Compute filtered items (matching InventoryList.tsx)
   const filteredItems = useMemo(() => {
-    let filtered = items
+    return items.filter(item => {
+      // Apply search filter
+      const matchesSearch = !filters.searchQuery ||
+        item.description?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
+        item.sku?.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
+        item.business_inventory_location?.toLowerCase().includes(filters.searchQuery.toLowerCase())
 
-    // Apply search filter
-    if (filters.searchQuery) {
-      const query = filters.searchQuery.toLowerCase()
-      filtered = filtered.filter(item =>
-        item.description?.toLowerCase().includes(query) ||
-        item.sku?.toLowerCase().includes(query) ||
-        item.business_inventory_location?.toLowerCase().includes(query)
-      )
-    }
+      // Apply status filter
+      const matchesStatus = !filters.status || item.inventory_status === filters.status
 
-    // Apply status filter
-    if (filters.status) {
-      filtered = filtered.filter(item => item.inventory_status === filters.status)
-    }
+      // Apply bookmark filter
+      const matchesFilter = filterMode === 'all' || (filterMode === 'bookmarked' && item.bookmark)
 
-    // Apply bookmark filter
-    if (filterMode === 'bookmarked') {
-      filtered = filtered.filter(item => item.bookmark)
-    }
-
-    return filtered
+      return matchesSearch && matchesStatus && matchesFilter
+    })
   }, [items, filters.searchQuery, filters.status, filterMode])
 
   // Compute filtered transactions
@@ -107,7 +103,6 @@ export default function BusinessInventory() {
 
   useEffect(() => {
     loadBusinessInventory()
-    loadStats()
     loadBusinessTransactions()
   }, [])
 
@@ -135,6 +130,13 @@ export default function BusinessInventory() {
     loadTransactionsOnTabChange()
   }, [activeTab])
 
+  // Reset uploading state on unmount to prevent hanging state
+  useEffect(() => {
+    return () => {
+      setUploadingImages(new Set())
+    }
+  }, [])
+
   const loadBusinessInventory = async () => {
     try {
       const data = await businessInventoryService.getBusinessInventoryItems(filters)
@@ -147,14 +149,6 @@ export default function BusinessInventory() {
     }
   }
 
-  const loadStats = async () => {
-    try {
-      const statsData = await businessInventoryService.getBusinessInventoryStats()
-      setStats(statsData)
-    } catch (error) {
-      console.error('Error loading stats:', error)
-    }
-  }
 
   const loadBusinessTransactions = async () => {
     try {
@@ -199,6 +193,74 @@ export default function BusinessInventory() {
     handleFilterChange({ ...filters, searchQuery })
   }
 
+  // Use centralized bookmark hook
+  const { toggleBookmark } = useBookmark<BusinessInventoryItem>({
+    items,
+    setItems,
+    updateItemService: businessInventoryService.updateBusinessInventoryItem
+  })
+
+  // Image handling functions
+  const handleAddImage = async (itemId: string) => {
+    try {
+      setUploadingImages(prev => new Set(prev).add(itemId))
+
+      const files = await ImageUploadService.selectFromGallery()
+
+      if (files.length > 0) {
+        // Process all selected files sequentially
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          await processImageUpload(itemId, file, files)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error adding image:', error)
+
+      // Handle cancel/timeout gracefully - don't show error for user cancellation
+      if (error.message?.includes('timeout') || error.message?.includes('canceled')) {
+        console.log('User canceled image selection or selection timed out')
+        return
+      }
+
+      // Show error for actual failures
+      alert('Failed to add image. Please try again.')
+    } finally {
+      setUploadingImages(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(itemId)
+        return newSet
+      })
+    }
+  }
+
+  const processImageUpload = async (itemId: string, file: File, allFiles?: File[]) => {
+    const uploadResult = await ImageUploadService.uploadItemImage(
+      file,
+      'Business Inventory',
+      itemId
+    )
+
+    const newImage: ItemImage = {
+      url: uploadResult.url,
+      alt: file.name,
+      isPrimary: true, // First image is always primary when added from list
+      uploadedAt: new Date(),
+      fileName: file.name,
+      size: file.size,
+      mimeType: file.type
+    }
+
+    // Update the item with the new image
+    await businessInventoryService.updateBusinessInventoryItem(itemId, { images: [newImage] })
+
+    // Show success notification on the last file
+    if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
+      const message = allFiles.length > 1 ? `${allFiles.length} images uploaded successfully!` : 'Image uploaded successfully!'
+      alert(message)
+    }
+  }
+
 
   // Filter handlers (matching InventoryList.tsx)
   const handleSelectAll = (checked: boolean) => {
@@ -229,98 +291,6 @@ export default function BusinessInventory() {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards - Only show on Inventory tab */}
-      {activeTab === 'inventory' && stats && (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                    <span className="text-white font-semibold text-sm">{stats.totalItems}</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Total Items
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.totalItems}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                    <span className="text-white font-semibold text-sm">{stats.availableItems}</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Available
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.availableItems}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                    <span className="text-white font-semibold text-sm">{stats.pendingItems}</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Allocated
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.pendingItems}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
-                    <span className="text-white font-semibold text-sm">{stats.soldItems}</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Sold
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.soldItems}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="bg-white shadow rounded-lg">
@@ -352,7 +322,7 @@ export default function BusinessInventory() {
           {activeTab === 'inventory' && (
             <>
               {/* Header - Just Add Item button */}
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
                 <Link
                   to="/business-inventory/add"
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
@@ -511,12 +481,10 @@ export default function BusinessInventory() {
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                // TODO: Implement bookmark toggle
+                                toggleBookmark(item.item_id)
                               }}
                             >
-                              <svg className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                              </svg>
+                              <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                             </button>
                             <Link
                               to={`/business-inventory/${item.item_id}/edit`}
@@ -524,73 +492,111 @@ export default function BusinessInventory() {
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Edit item"
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
+                              <Edit className="h-4 w-4" />
                             </Link>
+                            {/* Status badge moved to top-right corner */}
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                              item.inventory_status === 'available'
+                                ? 'bg-green-100 text-green-800'
+                                : item.inventory_status === 'pending'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {item.inventory_status === 'available' ? 'Available' :
+                               item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
+                            </span>
                           </div>
                         </div>
 
                         {/* Main tappable content - wrapped in Link */}
-                        <Link
-                          to={`/business-inventory/${item.item_id}`}
-                          className="block bg-transparent"
-                        >
-                          <div className="px-4 py-4 sm:px-6">
-                            {/* Top row: Header with description and status */}
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center">
-                                <h3 className="text-base font-medium text-gray-900">
-                                  {item.description}
-                                </h3>
-                                {item.bookmark && (
-                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                                    ⭐ Bookmarked
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                                  item.inventory_status === 'available'
-                                    ? 'bg-green-100 text-green-800'
-                                    : item.inventory_status === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {item.inventory_status === 'available' ? 'Available' :
-                                   item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Bottom row: Details */}
-                            <div className="space-y-2">
-                              {/* Details row - Price, source, location */}
-                              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
-                                <span className="font-medium text-gray-700">{formatCurrency(item.price)}</span>
-                                <span className="hidden sm:inline">•</span>
-                                <span className="font-medium text-gray-700 capitalize">{item.source}</span>
-                                {item.business_inventory_location && (
-                                  <>
-                                    <span className="hidden sm:inline">•</span>
-                                    <span className="font-medium text-gray-700">{item.business_inventory_location}</span>
-                                  </>
-                                )}
-                              </div>
-
-                              {/* Project assignment */}
-                              {item.current_project_id && (
-                                <div className="text-sm text-gray-600">
-                                  <span className="font-medium">Allocated to Project:</span> {item.current_project_id}
+                        <Link to={`/business-inventory/${item.item_id}`}>
+                          <div className="block bg-transparent">
+                            <div className="px-4 pb-3 sm:px-6">
+                              {/* Middle row: Thumbnail and Description - now tappable */}
+                              <div className="flex items-center gap-3 py-3">
+                                <div className="flex-shrink-0">
+                                  {item.images && item.images.length > 0 ? (
+                                    // Show primary image thumbnail or first image if no primary
+                                    (() => {
+                                      const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
+                                      return (
+                                        <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                                          <img
+                                            src={primaryImage.url}
+                                            alt={primaryImage.alt || 'Item image'}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        </div>
+                                      )
+                                    })()
+                                  ) : (
+                                    // Show camera placeholder when no images
+                                    <button
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        handleAddImage(item.item_id)
+                                      }}
+                                      disabled={uploadingImages.has(item.item_id)}
+                                      className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
+                                      title="Add image (camera or gallery)"
+                                    >
+                                      <Camera className="h-6 w-6" />
+                                    </button>
+                                  )}
                                 </div>
-                              )}
 
-                              {/* Notes */}
-                              {item.notes && (
-                                <p className="text-sm text-gray-600 line-clamp-2">
-                                  {item.notes}
-                                </p>
-                              )}
+                                {/* Item description - now tappable */}
+                                <div className="flex-1 min-w-0 flex items-center">
+                                  <div>
+                                    <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
+                                      {item.description}
+                                    </h3>
+                                    {/* Storage Location field */}
+                                    {item.business_inventory_location && (
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        {item.business_inventory_location}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Bottom row: Content - now tappable */}
+                              <div className="space-y-2">
+                                {/* Price, Source, SKU on same row */}
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                                  {item.price && (
+                                    <span className="font-medium text-gray-700">${item.price}</span>
+                                  )}
+                                  {item.source && (
+                                    <>
+                                      {(item.price) && <span className="hidden sm:inline">•</span>}
+                                      <span className="font-medium text-gray-700">{item.source}</span>
+                                    </>
+                                  )}
+                                  {item.sku && (
+                                    <>
+                                      {(item.price || item.source) && <span className="hidden sm:inline">•</span>}
+                                      <span className="font-medium text-gray-700">{item.sku}</span>
+                                    </>
+                                  )}
+                                </div>
+
+                                {/* Project assignment */}
+                                {item.current_project_id && (
+                                  <div className="text-sm text-gray-600">
+                                    <span className="font-medium">Allocated to Project:</span> {item.current_project_id}
+                                  </div>
+                                )}
+
+                                {/* Notes */}
+                                {item.notes && (
+                                  <p className="text-sm text-gray-600 line-clamp-2">
+                                    {item.notes}
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </Link>

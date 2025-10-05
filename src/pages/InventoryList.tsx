@@ -5,8 +5,9 @@ import { itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
+import { useBookmark } from '@/hooks/useBookmark'
 
-interface InventoryItem {
+interface InventoryListItem {
   item_id: string
   description: string
   source: string
@@ -34,7 +35,7 @@ interface InventoryListProps {
 export default function InventoryList({ projectId, projectName }: InventoryListProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
-  const [items, setItems] = useState<InventoryItem[]>([])
+  const [items, setItems] = useState<InventoryListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
@@ -120,31 +121,17 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     setSelectedItems(newSelected)
   }
 
-  const toggleBookmark = async (itemId: string) => {
-    try {
-      const item = items.find(item => item.item_id === itemId)
-      if (!item) return
-
-      const newBookmarkState = !item.bookmark
-
-      // Update in Firestore
-      await itemService.updateItem(projectId, itemId, { bookmark: newBookmarkState })
-
-      // Update local state optimistically
-      setItems(items.map(item =>
-        item.item_id === itemId
-          ? { ...item, bookmark: newBookmarkState }
-          : item
-      ))
-    } catch (error) {
-      console.error('Failed to update bookmark:', error)
-      setError('Failed to update bookmark. Please try again.')
-    }
-  }
+  // Use centralized bookmark hook
+  const { toggleBookmark } = useBookmark<InventoryListItem>({
+    items,
+    setItems,
+    updateItemService: (itemId, updates) => itemService.updateItem(projectId, itemId, updates),
+    projectId
+  })
 
   const updateDisposition = async (itemId: string, newDisposition: string) => {
     try {
-      const item = items.find(item => item.item_id === itemId)
+      const item = items.find((item: InventoryListItem) => item.item_id === itemId)
       if (!item) return
 
       // Update in Firestore
@@ -288,7 +275,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
         <Link
           to={`/project/${projectId}/item/add`}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
@@ -299,7 +286,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       </div>
 
       {/* Search and Controls - Sticky Container */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-0 mb-3">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-0 mb-2">
         <div className="space-y-0">
           {/* Search Bar */}
           <div className="relative pt-2">

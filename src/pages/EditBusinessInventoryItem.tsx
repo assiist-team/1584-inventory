@@ -16,10 +16,8 @@ export default function EditBusinessInventoryItem() {
     sku: '',
     price: '',
     market_value: '',
-    payment_method: '',
     disposition: 'keep',
     notes: '',
-    space: '',
     bookmark: false,
     business_inventory_location: '',
     inventory_status: 'available' as 'available' | 'pending' | 'sold'
@@ -45,10 +43,8 @@ export default function EditBusinessInventoryItem() {
           sku: itemData.sku,
           price: itemData.price,
           market_value: itemData.market_value || '',
-          payment_method: itemData.payment_method,
           disposition: itemData.disposition || 'keep',
           notes: itemData.notes || '',
-          space: itemData.space || '',
           bookmark: itemData.bookmark,
           business_inventory_location: itemData.business_inventory_location || '',
           inventory_status: itemData.inventory_status
@@ -275,38 +271,7 @@ export default function EditBusinessInventoryItem() {
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="payment_method" className="block text-sm font-medium text-gray-700">
-                    Payment Method
-                  </label>
-                  <select
-                    id="payment_method"
-                    value={formData.payment_method}
-                    onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  >
-                    <option value="">Select payment method</option>
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="check">Check</option>
-                    <option value="bank transfer">Bank Transfer</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
 
-                <div>
-                  <label htmlFor="space" className="block text-sm font-medium text-gray-700">
-                    Space/Location (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    id="space"
-                    value={formData.space}
-                    onChange={(e) => handleInputChange('space', e.target.value)}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                    placeholder="e.g., Living Room, Bedroom, Office"
-                  />
-                </div>
               </div>
             </div>
 

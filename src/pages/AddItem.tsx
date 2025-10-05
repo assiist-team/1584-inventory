@@ -311,10 +311,26 @@ export default function AddItem() {
         <form onSubmit={handleSubmit} className="space-y-8 p-8">
           {/* Item Images */}
           <div>
-            <div className="mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <label className="block text-sm font-medium text-gray-700">
-                Add Image
+                Item Images
               </label>
+              {images.length > 0 && (
+                <button
+                  onClick={handleSelectFromGallery}
+                  disabled={isUploadingImage || images.length >= 5}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                >
+                  {isUploadingImage
+                    ? uploadProgress > 0 && uploadProgress < 100
+                      ? `Uploading... ${Math.round(uploadProgress)}%`
+                      : 'Uploading...'
+                    : images.length >= 5
+                      ? 'Max reached'
+                      : 'Add Images'
+                  }
+                </button>
+              )}
             </div>
 
             {images.length > 0 ? (
@@ -331,7 +347,7 @@ export default function AddItem() {
                 <button
                   onClick={handleSelectFromGallery}
                   disabled={isUploadingImage}
-                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
                 >
                   {isUploadingImage
                     ? uploadProgress > 0 && uploadProgress < 100

@@ -290,3 +290,9 @@ export interface BusinessInventoryStats {
 
 // Utility type for date values that might be Firestore Timestamp, Date, string, or number
 export type DateValue = Date | string | number | { toDate?: () => Date; seconds?: number; nanoseconds?: number } | null | undefined
+
+// Common interface for items that can be bookmarked
+export interface BookmarkableItem {
+  item_id: string;
+  bookmark: boolean;
+}

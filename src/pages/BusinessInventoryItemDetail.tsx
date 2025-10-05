@@ -243,10 +243,6 @@ export default function BusinessInventoryItemDetail() {
                   <dd className="mt-1 text-sm text-gray-900 capitalize">{item.source}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
-                  <dd className="mt-1 text-sm text-gray-900 capitalize">{item.payment_method}</dd>
-                </div>
-                <div>
                   <dt className="text-sm font-medium text-gray-500">Status</dt>
                   <dd className="mt-1">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
