@@ -1,6 +1,6 @@
-import { Plus, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { Plus, Search, Filter } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Transaction } from '@/types'
 import { transactionService } from '@/services/inventoryService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
@@ -29,7 +29,11 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
   const projectId = propProjectId || routeProjectId
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [showPendingOnly, setShowPendingOnly] = useState(false)
+
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [filterMode, setFilterMode] = useState<'all' | 'we-owe' | 'client-owes'>('all')
 
   useEffect(() => {
     const loadTransactions = async () => {
@@ -63,10 +67,48 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     return unsubscribe
   }, [projectId])
 
-  // Filter transactions based on pending filter
-  const filteredTransactions = showPendingOnly
-    ? transactions.filter(t => t.status === 'pending')
-    : transactions
+  // Filter transactions based on search and filter mode
+  const filteredTransactions = useMemo(() => {
+    let filtered = transactions
+
+    // Apply reimbursement type filter based on filter mode
+    if (filterMode !== 'all') {
+      if (filterMode === 'we-owe') {
+        filtered = filtered.filter(t => t.reimbursement_type === 'We Owe')
+      } else if (filterMode === 'client-owes') {
+        filtered = filtered.filter(t => t.reimbursement_type === 'Client Owes')
+      }
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(t =>
+        t.source?.toLowerCase().includes(query) ||
+        t.transaction_type?.toLowerCase().includes(query) ||
+        t.notes?.toLowerCase().includes(query)
+      )
+    }
+
+    return filtered
+  }, [transactions, filterMode, searchQuery])
+
+  // Close filter menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!event.target) return
+
+      const target = event.target as Element
+      if (!target.closest('.filter-menu') && !target.closest('.filter-button')) {
+        setShowFilterMenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   // Clean up any unwanted icons from transaction type badges
   useEffect(() => {
@@ -90,36 +132,93 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            to={`/project/${projectId}/transaction/add`}
-            className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Transaction
-          </Link>
+      {/* Header - Add Transaction button */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+        <Link
+          to={`/project/${projectId}/transaction/add`}
+          className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Transaction
+        </Link>
+      </div>
 
-          {/* Pending Filter Toggle */}
-          <button
-            onClick={() => setShowPendingOnly(!showPendingOnly)}
-            className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-              showPendingOnly
-                ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <Clock className="h-4 w-4 mr-2" />
-            {showPendingOnly ? 'Show All' : 'Show Pending Only'}
-          </button>
-        </div>
-
-        {showPendingOnly && (
-          <div className="text-sm text-gray-600">
-            Showing {filteredTransactions.length} pending transaction{filteredTransactions.length !== 1 ? 's' : ''}
+      {/* Search and Controls - Sticky Container */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 pb-0 mb-2">
+        <div className="space-y-0">
+          {/* Search Bar */}
+          <div className="relative pt-2">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base"
+              placeholder="Search transactions by source, type, or notes..."
+              value={searchQuery || ''}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-        )}
+
+          {/* Filter Controls */}
+          <div className="flex items-center justify-end gap-4 p-3 rounded-lg">
+            {/* Filter Button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowFilterMenu(!showFilterMenu)}
+                className={`filter-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                  filterMode === 'all'
+                    ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                    : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
+                }`}
+                title="Filter transactions"
+              >
+                <Filter className="h-4 w-4" />
+              </button>
+
+              {/* Filter Dropdown Menu */}
+              {showFilterMenu && (
+                <div className="filter-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        setFilterMode('all')
+                        setShowFilterMenu(false)
+                      }}
+                      className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                        filterMode === 'all' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                      }`}
+                    >
+                      All Transactions
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFilterMode('we-owe')
+                        setShowFilterMenu(false)
+                      }}
+                      className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                        filterMode === 'we-owe' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                      }`}
+                    >
+                      We Owe
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFilterMode('client-owes')
+                        setShowFilterMenu(false)
+                      }}
+                      className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                        filterMode === 'client-owes' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                      }`}
+                    >
+                      Client Owes
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Transactions List */}
@@ -127,13 +226,14 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
         <div className="text-center py-12 px-4">
           <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">🧾</div>
           <h3 className="text-lg font-medium text-gray-900 mb-1">
-            {showPendingOnly ? 'No pending transactions' : 'No transactions yet'}
+            No transactions found
           </h3>
-          {showPendingOnly && (
-            <p className="text-sm text-gray-500 mb-4">
-              All transactions have been completed or cancelled.
-            </p>
-          )}
+          <p className="text-sm text-gray-500 mb-4">
+            {searchQuery || filterMode !== 'all'
+              ? 'Try adjusting your search or filter criteria.'
+              : 'No transactions found.'
+            }
+          </p>
         </div>
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
@@ -153,37 +253,6 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                         </h3>
                       </div>
                       <div className="flex items-center flex-wrap gap-2">
-                        {/* Status Badge */}
-                        {transaction.status === 'pending' && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Pending
-                          </span>
-                        )}
-                        {transaction.status === 'completed' && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Completed
-                          </span>
-                        )}
-                        {transaction.status === 'cancelled' && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Cancelled
-                          </span>
-                        )}
-
-                        {/* Reimbursement Type Badge */}
-                        {transaction.reimbursement_type && (
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            transaction.reimbursement_type === 'Client owes us'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-purple-100 text-purple-800'
-                          }`}>
-                            {transaction.reimbursement_type}
-                          </span>
-                        )}
-
                         {transaction.budget_category && (
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                             transaction.budget_category === 'Design Fee'
@@ -210,10 +279,13 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                             ? 'bg-green-100 text-green-800'
                             : transaction.transaction_type === 'Return'
                             ? 'bg-red-100 text-red-800'
+                            : transaction.transaction_type === 'To Inventory'
+                            ? 'bg-primary-100 text-primary-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
                           {transaction.transaction_type}
                         </span>
+
                       </div>
                     </div>
 

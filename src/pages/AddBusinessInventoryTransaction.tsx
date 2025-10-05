@@ -21,7 +21,7 @@ export default function AddBusinessInventoryTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'pending' as const,
-    reimbursement_type: 'Client owes us' as const,
+    reimbursement_type: 'Client Owes' as const,
     trigger_event: 'Manual' as const,
     receipt_emailed: false
   })

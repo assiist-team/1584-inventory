@@ -171,7 +171,7 @@ export interface Transaction {
 
   // NEW: Pending Transaction fields for Enhanced Transaction System
   status?: 'pending' | 'completed' | 'cancelled';
-  reimbursement_type?: 'Client owes us' | 'We owe client';
+  reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
   trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
 }
 
@@ -204,7 +204,7 @@ export interface TransactionFormData {
   budget_category?: string;
   notes?: string;
   status?: 'pending' | 'completed' | 'cancelled';
-  reimbursement_type?: 'Client owes us' | 'We owe client';
+  reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
   trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
   transaction_images?: File[]; // Legacy field for backward compatibility
   receipt_images?: File[]; // New field for receipt image files

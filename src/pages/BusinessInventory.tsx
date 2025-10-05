@@ -772,10 +772,14 @@ export default function BusinessInventory() {
                               </p>
                             )}
 
-                            {transaction.reimbursement_type && (
+                            {transaction.reimbursement_type && (transaction.reimbursement_type as string) !== '' && (
                               <div className="mt-2">
-                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800">
-                                  {transaction.reimbursement_type}
+                                <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
+                                  transaction.reimbursement_type === 'Client Owes'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {transaction.reimbursement_type === 'Client Owes' ? 'Client Owes' : 'We Owe'}
                                 </span>
                               </div>
                             )}

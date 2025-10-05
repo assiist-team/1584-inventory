@@ -21,7 +21,7 @@ export default function EditBusinessInventoryTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'pending' as 'pending' | 'completed' | 'cancelled',
-    reimbursement_type: 'Client owes us' as 'Client owes us' | 'We owe client',
+    reimbursement_type: 'Client Owes' as 'Client Owes' | 'We Owe',
     trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual',
     receipt_emailed: false
   })
@@ -50,7 +50,7 @@ export default function EditBusinessInventoryTransaction() {
             budget_category: transactionData.budget_category || 'Furnishings',
             notes: transactionData.notes || '',
             status: transactionData.status || 'pending',
-            reimbursement_type: transactionData.reimbursement_type || 'Client owes us',
+            reimbursement_type: transactionData.reimbursement_type || 'Client Owes',
             trigger_event: transactionData.trigger_event || 'Manual',
             receipt_emailed: transactionData.receipt_emailed
           })

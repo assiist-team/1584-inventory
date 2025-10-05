@@ -71,7 +71,7 @@ export default function AddTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'completed',
-    reimbursement_type: 'Client owes us',
+    reimbursement_type: 'Client Owes',
     trigger_event: 'Manual',
     transaction_images: [], // Legacy field for backward compatibility
     receipt_images: [],
@@ -735,13 +735,13 @@ export default function AddTransaction() {
                   type="radio"
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
-                  value="Client owes us"
-                  checked={formData.reimbursement_type === 'Client owes us'}
+                  value="Client Owes"
+                  checked={formData.reimbursement_type === 'Client Owes'}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
-                  Client owes us
+                  Client Owes
                 </label>
               </div>
               <div className="flex items-center">
@@ -749,13 +749,13 @@ export default function AddTransaction() {
                   type="radio"
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
-                  value="We owe client"
-                  checked={formData.reimbursement_type === 'We owe client'}
+                  value="We Owe"
+                  checked={formData.reimbursement_type === 'We Owe'}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
-                  We owe client
+                  We Owe
                 </label>
               </div>
             </div>

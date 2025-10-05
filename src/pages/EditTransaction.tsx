@@ -49,7 +49,7 @@ export default function EditTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'completed',
-    reimbursement_type: 'Client owes us',
+    reimbursement_type: 'Client Owes',
     trigger_event: 'Manual',
     receipt_images: [],
     other_images: [],
@@ -96,7 +96,7 @@ export default function EditTransaction() {
             budget_category: transaction.budget_category || 'Furnishings',
             notes: transaction.notes || '',
             status: transaction.status || 'completed',
-            reimbursement_type: transaction.reimbursement_type || 'Client owes us',
+            reimbursement_type: transaction.reimbursement_type || 'Client Owes',
             trigger_event: transaction.trigger_event || 'Manual',
             receipt_images: [],
             other_images: [],
@@ -320,7 +320,21 @@ export default function EditTransaction() {
   }
 
   const handleInputChange = (field: keyof TransactionFormData, value: string | boolean | File[]) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    setFormData(prev => {
+      const newData = { ...prev, [field]: value }
+
+      // Apply business rules for status and reimbursement type
+      if (field === 'status' && value === 'completed' && prev.reimbursement_type) {
+        // If setting status to completed, clear reimbursement type by setting to empty string
+        // The service layer will convert this to deleteField()
+        newData.reimbursement_type = ''
+      } else if (field === 'reimbursement_type' && value && prev.status === 'completed') {
+        // If setting reimbursement type while status is completed, change status to pending
+        newData.status = 'pending'
+      }
+
+      return newData
+    })
 
     // Clear error when user starts typing
     if (errors[field]) {
@@ -557,19 +571,33 @@ export default function EditTransaction() {
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Reimbursement Type
             </label>
-            <div className="flex items-center space-x-6">
+            <div className="space-y-2">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="reimbursement_none"
+                  name="reimbursement_type"
+                  value=""
+                  checked={!formData.reimbursement_type}
+                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="reimbursement_none" className="ml-2 block text-sm text-gray-900">
+                  None
+                </label>
+              </div>
               <div className="flex items-center">
                 <input
                   type="radio"
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
-                  value="Client owes us"
-                  checked={formData.reimbursement_type === 'Client owes us'}
+                  value="Client Owes"
+                  checked={formData.reimbursement_type === 'Client Owes'}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
-                  Client owes us
+                  Client Owes
                 </label>
               </div>
               <div className="flex items-center">
@@ -577,13 +605,13 @@ export default function EditTransaction() {
                   type="radio"
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
-                  value="We owe client"
-                  checked={formData.reimbursement_type === 'We owe client'}
+                  value="We Owe"
+                  checked={formData.reimbursement_type === 'We Owe'}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
-                  We owe client
+                  We Owe
                 </label>
               </div>
             </div>

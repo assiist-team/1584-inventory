@@ -43,34 +43,16 @@ export default function ProjectDetail() {
   // Calculate amounts owed
   const calculateOwedTo1584 = () => {
     return transactions
-      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'Client owes us')
+      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes')
       .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
   const calculateOwedToClient = () => {
     return transactions
-      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'We owe client')
+      .filter(transaction => transaction.status === 'pending' && transaction.reimbursement_type === 'We Owe')
       .reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
-  // Calculate pending transactions impact on budget
-  const calculatePendingTransactions = () => {
-    const pendingTransactions = transactions.filter(t => t.status === 'pending')
-
-    let clientOwesUs = 0
-    let weOweClient = 0
-
-    pendingTransactions.forEach(transaction => {
-      const amount = parseFloat(transaction.amount || '0')
-      if (transaction.reimbursement_type === 'Client owes us') {
-        clientOwesUs += amount
-      } else if (transaction.reimbursement_type === 'We owe client') {
-        weOweClient += amount
-      }
-    })
-
-    return { clientOwesUs, weOweClient }
-  }
 
   const loadProjectAndTransactions = async () => {
     if (!id) {
@@ -335,33 +317,6 @@ export default function ProjectDetail() {
                   </div>
                 </div>
 
-                {/* Pending Transactions Impact */}
-                {(() => {
-                  const pending = calculatePendingTransactions()
-                  return (pending.clientOwesUs > 0 || pending.weOweClient > 0) ? (
-                    <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                      <div className="text-sm font-medium text-yellow-800 mb-2">Pending Transactions</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        {pending.clientOwesUs > 0 && (
-                          <div>
-                            <div className="text-xs text-yellow-600">Client owes us</div>
-                            <div className="text-lg font-semibold text-yellow-900">
-                              ${pending.clientOwesUs.toFixed(2)}
-                            </div>
-                          </div>
-                        )}
-                        {pending.weOweClient > 0 && (
-                          <div>
-                            <div className="text-xs text-yellow-600">We owe client</div>
-                            <div className="text-lg font-semibold text-yellow-900">
-                              ${pending.weOweClient.toFixed(2)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null
-                })()}
               </>
             )}
           </div>

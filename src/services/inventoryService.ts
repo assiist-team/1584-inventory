@@ -13,7 +13,8 @@ import {
   limit,
   onSnapshot,
   writeBatch,
-  getCountFromServer
+  getCountFromServer,
+  deleteField
 } from 'firebase/firestore'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
 import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, ItemImage, BusinessInventoryItem, BusinessInventoryStats } from '@/types'
@@ -734,7 +735,27 @@ export const transactionService = {
   // Update transaction
   async updateTransaction(projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
     const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
-    await updateDoc(transactionRef, updates)
+
+    // Apply business rules for reimbursement type and status
+    const finalUpdates: any = { ...updates }
+
+    // If status is being set to 'completed', clear reimbursement_type
+    if (finalUpdates.status === 'completed' && finalUpdates.reimbursement_type !== undefined) {
+      finalUpdates.reimbursement_type = deleteField()
+    }
+
+    // If reimbursement_type is being set to empty string, also clear it
+    if (finalUpdates.reimbursement_type === '') {
+      finalUpdates.reimbursement_type = deleteField()
+    }
+
+    // If reimbursement_type is being set to a non-empty value, ensure status is not 'completed'
+    if (finalUpdates.reimbursement_type && finalUpdates.status === 'completed') {
+      // Set status to 'pending' if reimbursement_type is being set to a non-empty value and status is 'completed'
+      finalUpdates.status = 'pending'
+    }
+
+    await updateDoc(transactionRef, finalUpdates)
   },
 
   // Delete transaction
@@ -1049,7 +1070,7 @@ export const businessInventoryService = {
       notes: notes || 'Item allocated from business inventory',
       created_by: 'system',
       status: 'pending' as const,
-      reimbursement_type: 'Client owes us' as const,
+      reimbursement_type: 'Client Owes' as const,
       trigger_event: 'Inventory allocation' as const
     }
 
@@ -1135,7 +1156,7 @@ export const businessInventoryService = {
       notes: notes || 'Client-purchased item moved to business inventory',
       created_by: 'system',
       status: 'pending' as const,
-      reimbursement_type: 'We owe client' as const,
+      reimbursement_type: 'We Owe' as const,
       trigger_event: 'Purchase from client' as const
     }
 

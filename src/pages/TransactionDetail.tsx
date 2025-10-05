@@ -506,6 +506,8 @@ export default function TransactionDetail() {
                     ? 'bg-green-100 text-green-800'
                     : transaction.transaction_type === 'Return'
                     ? 'bg-red-100 text-red-800'
+                    : transaction.transaction_type === 'To Inventory'
+                    ? 'bg-primary-100 text-primary-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
                   {transaction.transaction_type}
@@ -541,30 +543,16 @@ export default function TransactionDetail() {
 
             <div>
               <dt className="text-sm font-medium text-gray-500">Status</dt>
-              <dd className="mt-1">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  transaction.status === 'completed'
-                    ? 'bg-green-100 text-green-800'
-                    : transaction.status === 'pending'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {transaction.status || 'pending'}
-                </span>
+              <dd className="mt-1 text-sm text-gray-900">
+                {(transaction.status || 'pending').charAt(0).toUpperCase() + (transaction.status || 'pending').slice(1)}
               </dd>
             </div>
 
-            {transaction.reimbursement_type && (
+            {transaction.reimbursement_type && (transaction.reimbursement_type as string) !== '' && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Reimbursement Type</dt>
-                <dd className="mt-1">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    transaction.reimbursement_type === 'Client owes us'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-orange-100 text-orange-800'
-                  }`}>
-                    {transaction.reimbursement_type}
-                  </span>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {transaction.reimbursement_type === 'Client Owes' ? 'Client Owes' : 'We Owe'}
                 </dd>
               </div>
             )}
@@ -751,8 +739,8 @@ export default function TransactionDetail() {
                     >
                       {/* Disposition badge in upper right corner */}
                       {item.disposition && (
-                        <div className="absolute top-2 right-2 z-10">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                        <div className="absolute top-1 right-1 z-10">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             item.disposition === 'keep'
                               ? 'bg-green-100 text-green-800'
                               : item.disposition === 'to return'
