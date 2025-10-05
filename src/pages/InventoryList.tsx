@@ -18,7 +18,7 @@ interface InventoryItem {
   space?: string
   qr_key: string
   bookmark: boolean
-  disposition: string
+  disposition?: string
   date_created: string
   last_updated: string
   transaction_id: string
@@ -169,7 +169,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
   }
 
-  const getDispositionBadgeClasses = (disposition: string) => {
+  const getDispositionBadgeClasses = (disposition?: string) => {
     const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
 
     switch (disposition) {
@@ -495,7 +495,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           }}
                           className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
                         >
-                          {item.disposition === 'to return' ? 'To Return' : item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1)}
+                          {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
                           <ChevronDown className="h-3 w-3 ml-1" />
                         </span>
 
@@ -516,6 +516,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                                       ? 'bg-gray-100 text-gray-900'
                                       : 'text-gray-700'
                                   }`}
+                                  disabled={!item.disposition}
                                 >
                                   {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
                                 </button>

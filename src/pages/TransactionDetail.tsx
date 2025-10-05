@@ -1,10 +1,12 @@
 import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package, ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
+import { TransactionImagePreview } from '@/components/ui/ImagePreview'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Transaction, Project, Item } from '@/types'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
+import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
 
@@ -35,7 +37,9 @@ export default function TransactionDetail() {
   const [isLoadingItems, setIsLoadingItems] = useState(true)
   const [showGallery, setShowGallery] = useState(false)
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0)
-  const { showError } = useToast()
+  const [isUploadingReceiptImages, setIsUploadingReceiptImages] = useState(false)
+  const [isUploadingOtherImages, setIsUploadingOtherImages] = useState(false)
+  const { showError, showSuccess } = useToast()
 
 
   useEffect(() => {
@@ -154,11 +158,132 @@ export default function TransactionDetail() {
     setShowGallery(false)
   }
 
+  const handleReceiptImagesUpload = async (files: File[]) => {
+    if (!projectId || !transactionId || !project || files.length === 0) return
+
+    setIsUploadingReceiptImages(true)
+
+    try {
+      // Upload receipt images
+      const uploadResults = await ImageUploadService.uploadMultipleReceiptImages(
+        files,
+        project.name,
+        transactionId
+      )
+
+      // Convert to TransactionImage format
+      const newReceiptImages = ImageUploadService.convertFilesToReceiptImages(uploadResults)
+
+      // Update transaction with new receipt images
+      const currentReceiptImages = transaction?.receipt_images || []
+      const updatedReceiptImages = [...currentReceiptImages, ...newReceiptImages]
+
+      await transactionService.updateTransaction(projectId, transactionId, {
+        receipt_images: updatedReceiptImages,
+        transaction_images: updatedReceiptImages // Also update legacy field for compatibility
+      })
+
+      // Refresh transaction data
+      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      setTransaction(updatedTransaction)
+
+      showSuccess('Receipt images uploaded successfully')
+    } catch (error) {
+      console.error('Error uploading receipt images:', error)
+      showError('Failed to upload receipt images. Please try again.')
+    } finally {
+      setIsUploadingReceiptImages(false)
+    }
+  }
+
+  const handleOtherImagesUpload = async (files: File[]) => {
+    if (!projectId || !transactionId || !project || files.length === 0) return
+
+    setIsUploadingOtherImages(true)
+
+    try {
+      // Upload other images
+      const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
+        files,
+        project.name,
+        transactionId
+      )
+
+      // Convert to TransactionImage format
+      const newOtherImages = ImageUploadService.convertFilesToOtherImages(uploadResults)
+
+      // Update transaction with new other images
+      const currentOtherImages = transaction?.other_images || []
+      const updatedOtherImages = [...currentOtherImages, ...newOtherImages]
+
+      await transactionService.updateTransaction(projectId, transactionId, {
+        other_images: updatedOtherImages
+      })
+
+      // Refresh transaction data
+      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      setTransaction(updatedTransaction)
+
+      showSuccess('Other images uploaded successfully')
+    } catch (error) {
+      console.error('Error uploading other images:', error)
+      showError('Failed to upload other images. Please try again.')
+    } finally {
+      setIsUploadingOtherImages(false)
+    }
+  }
+
+  const handleDeleteReceiptImage = async (imageUrl: string) => {
+    if (!projectId || !transactionId || !transaction) return
+
+    try {
+      // Filter out the image to be deleted
+      const currentReceiptImages = transaction.receipt_images || []
+      const updatedReceiptImages = currentReceiptImages.filter(img => img.url !== imageUrl)
+
+      await transactionService.updateTransaction(projectId, transactionId, {
+        receipt_images: updatedReceiptImages,
+        transaction_images: updatedReceiptImages // Also update legacy field for compatibility
+      })
+
+      // Refresh transaction data
+      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      setTransaction(updatedTransaction)
+
+      showSuccess('Receipt image deleted successfully')
+    } catch (error) {
+      console.error('Error deleting receipt image:', error)
+      showError('Failed to delete receipt image. Please try again.')
+    }
+  }
+
+  const handleDeleteOtherImage = async (imageUrl: string) => {
+    if (!projectId || !transactionId || !transaction) return
+
+    try {
+      // Filter out the image to be deleted
+      const currentOtherImages = transaction.other_images || []
+      const updatedOtherImages = currentOtherImages.filter(img => img.url !== imageUrl)
+
+      await transactionService.updateTransaction(projectId, transactionId, {
+        other_images: updatedOtherImages
+      })
+
+      // Refresh transaction data
+      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      setTransaction(updatedTransaction)
+
+      showSuccess('Other image deleted successfully')
+    } catch (error) {
+      console.error('Error deleting other image:', error)
+      showError('Failed to delete other image. Please try again.')
+    }
+  }
+
   // Convert all transaction images (receipt and other) to ItemImage format for the gallery
   const allTransactionImages = [
     ...(transaction?.receipt_images || []),
-    ...(transaction?.other_images || []),
-    ...(transaction?.transaction_images || []) // Include legacy images for backward compatibility
+    ...(transaction?.other_images || [])
   ]
 
   const itemImages = allTransactionImages.map((img, index) => ({
@@ -339,51 +464,70 @@ export default function TransactionDetail() {
 
         {/* Receipt Images */}
         <div className="px-6 py-6 border-t border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <ImageIcon className="h-5 w-5 mr-2" />
-            Receipt Images
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900 flex items-center">
+              <ImageIcon className="h-5 w-5 mr-2" />
+              Receipt Images
+            </h3>
+            {transaction.receipt_images && transaction.receipt_images.length > 0 && (
+              <button
+                onClick={() => {
+                  // Trigger file input click programmatically
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.multiple = true
+                  input.accept = 'image/*'
+                  input.onchange = (e) => {
+                    const files = (e.target as HTMLInputElement).files
+                    if (files) {
+                      handleReceiptImagesUpload(Array.from(files))
+                    }
+                  }
+                  input.click()
+                }}
+                disabled={isUploadingReceiptImages}
+                className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+              >
+                <ImageIcon className="h-3 w-3 mr-1" />
+                {isUploadingReceiptImages ? 'Uploading...' : 'Add Images'}
+              </button>
+            )}
+          </div>
           {transaction.receipt_images && transaction.receipt_images.length > 0 ? (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
-                {transaction.receipt_images.map((image, index) => (
-                  <div
-                    key={`receipt-${index}`}
-                    className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
-                    onClick={() => handleImageClick(index)}
-                  >
-                    <img
-                      src={image.url}
-                      alt={image.fileName}
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    />
-
-                    {/* Image index */}
-                    {transaction.receipt_images && transaction.receipt_images.length > 1 && (
-                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
-                        {index + 1}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Image count */}
-              <p className="text-xs text-gray-500 mt-2">
-                {transaction.receipt_images.length} image{transaction.receipt_images.length !== 1 ? 's' : ''}
-              </p>
-            </>
+            <TransactionImagePreview
+              images={transaction.receipt_images}
+              onRemoveImage={handleDeleteReceiptImage}
+              onImageClick={handleImageClick}
+              maxImages={5}
+              showControls={true}
+              size="md"
+              className="mb-4"
+            />
           ) : (
             <div className="text-center py-8">
               <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">No receipt images uploaded</h3>
-              <Link
-                to={`/project/${projectId}/transaction/${transactionId}/edit`}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
+              <button
+                onClick={() => {
+                  // Trigger file input click programmatically
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.multiple = true
+                  input.accept = 'image/*'
+                  input.onchange = (e) => {
+                    const files = (e.target as HTMLInputElement).files
+                    if (files) {
+                      handleReceiptImagesUpload(Array.from(files))
+                    }
+                  }
+                  input.click()
+                }}
+                disabled={isUploadingReceiptImages}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3 disabled:opacity-50"
               >
                 <ImageIcon className="h-3 w-3 mr-1" />
-                Add Receipt Images
-              </Link>
+                {isUploadingReceiptImages ? 'Uploading...' : 'Add Receipt Images'}
+              </button>
             </div>
           )}
         </div>
@@ -391,44 +535,49 @@ export default function TransactionDetail() {
         {/* Other Images - Only show if there are other images */}
         {transaction.other_images && transaction.other_images.length > 0 && (
           <div className="px-6 py-6 border-t border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-              <ImageIcon className="h-5 w-5 mr-2" />
-              Other Images
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6" style={{width: 'fit-content'}}>
-              {transaction.other_images.map((image, index) => {
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900 flex items-center">
+                <ImageIcon className="h-5 w-5 mr-2" />
+                Other Images
+              </h3>
+              <button
+                onClick={() => {
+                  // Trigger file input click programmatically
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.multiple = true
+                  input.accept = 'image/*'
+                  input.onchange = (e) => {
+                    const files = (e.target as HTMLInputElement).files
+                    if (files) {
+                      handleOtherImagesUpload(Array.from(files))
+                    }
+                  }
+                  input.click()
+                }}
+                disabled={isUploadingOtherImages}
+                className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+              >
+                <ImageIcon className="h-3 w-3 mr-1" />
+                {isUploadingOtherImages ? 'Uploading...' : 'Add Images'}
+              </button>
+            </div>
+            <TransactionImagePreview
+              images={transaction.other_images}
+              onRemoveImage={handleDeleteOtherImage}
+              onImageClick={(index) => {
                 // Find the correct index in the combined array for gallery navigation
                 const receiptCount = transaction.receipt_images?.length || 0
                 const legacyCount = transaction.transaction_images?.length || 0
                 const galleryIndex = receiptCount + legacyCount + index
+                handleImageClick(galleryIndex)
+              }}
+              maxImages={5}
+              showControls={true}
+              size="md"
+              className="mb-4"
+            />
 
-                return (
-                  <div
-                    key={`other-${index}`}
-                    className="w-24 h-24 sm:w-20 sm:h-20 relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-primary-300 transition-colors"
-                    onClick={() => handleImageClick(galleryIndex)}
-                  >
-                    <img
-                      src={image.url}
-                      alt={image.fileName}
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    />
-
-                    {/* Image index */}
-                    {transaction.other_images && transaction.other_images.length > 1 && (
-                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-70 text-white text-xs px-1 py-0.5 rounded">
-                        {index + 1}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Image count */}
-            <p className="text-xs text-gray-500 mt-2">
-              {transaction.other_images.length} image{transaction.other_images.length !== 1 ? 's' : ''}
-            </p>
           </div>
         )}
 

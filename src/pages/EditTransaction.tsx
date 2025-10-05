@@ -48,7 +48,6 @@ export default function EditTransaction() {
     amount: '',
     budget_category: 'Furnishings',
     notes: '',
-    transaction_images: [], // Legacy field for backward compatibility
     receipt_images: [],
     other_images: [],
     receipt_emailed: false
@@ -58,7 +57,6 @@ export default function EditTransaction() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isUploadingImages, setIsUploadingImages] = useState(false)
-  const [existingReceiptImages, setExistingReceiptImages] = useState<TransactionImage[]>([])
   const [existingOtherImages, setExistingOtherImages] = useState<TransactionImage[]>([])
 
   // Transaction items state
@@ -94,7 +92,6 @@ export default function EditTransaction() {
             amount: transaction.amount,
             budget_category: transaction.budget_category || 'Furnishings',
             notes: transaction.notes || '',
-            transaction_images: [], // Legacy field for backward compatibility
             receipt_images: [],
             other_images: [],
             receipt_emailed: transaction.receipt_emailed
@@ -102,15 +99,8 @@ export default function EditTransaction() {
 
           setIsCustomSource(sourceIsCustom)
 
-          // Handle legacy transaction_images for backward compatibility (now stored in receipt_images)
-          const legacyImages = transaction.transaction_images || []
-          if (legacyImages.length > 0) {
-            setExistingReceiptImages(Array.isArray(legacyImages) ? legacyImages : [])
-          }
-
-          // Handle new separate image fields
-          const receiptImages = transaction.receipt_images || []
-          setExistingReceiptImages(Array.isArray(receiptImages) ? receiptImages : [])
+          // Handle legacy and new image fields for loading transaction data
+          // Note: Legacy transaction_images is loaded but not stored in local state, receipt_images is the current field
 
           const otherImages = transaction.other_images || []
           setExistingOtherImages(Array.isArray(otherImages) ? otherImages : [])
@@ -279,13 +269,9 @@ export default function EditTransaction() {
         // Note: Item image upload functionality removed for now - focusing on transaction images
       }
 
-      // Note: Receipt images removed from Edit Transaction form
-
       // Upload other images
       let otherImages: TransactionImage[] = [...existingOtherImages]
       if (formData.other_images && formData.other_images.length > 0) {
-        setIsUploadingImages(true)
-
         try {
           const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
             formData.other_images,
@@ -304,23 +290,20 @@ export default function EditTransaction() {
           setIsUploadingImages(false)
           return
         }
-
-        setIsUploadingImages(false)
       } else {
         // Use existing images if no new ones uploaded
         otherImages = existingOtherImages
       }
 
       // Update transaction with new data and images
-      const { receipt_images, ...formDataWithoutReceiptImages } = formData
+      const { other_images, receipt_images, transaction_images, ...formDataWithoutImages } = formData
       const updateData = {
-        ...formDataWithoutReceiptImages,
-        transaction_images: existingReceiptImages, // Legacy field for backward compatibility - use existing receipt images as the main transaction images
+        ...formDataWithoutImages,
         other_images: otherImages
       }
 
       await transactionService.updateTransaction(projectId, transactionId, updateData)
-      navigate(`/project/${projectId}?tab=transactions`)
+      navigate(`/project/${projectId}/transaction/${transactionId}`)
     } catch (error) {
       console.error('Error updating transaction:', error)
       // Set a general error message instead of targeting specific fields
@@ -346,6 +329,7 @@ export default function EditTransaction() {
   }
 
 
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -363,13 +347,13 @@ export default function EditTransaction() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={`/project/${projectId}?tab=transactions`}
+          <button
+            onClick={() => navigate(-1)}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </button>
         </div>
 
       </div>
@@ -766,13 +750,13 @@ export default function EditTransaction() {
 
           {/* Form Actions */}
           <div className="flex justify-between sm:justify-end sm:space-x-3 pt-4">
-            <Link
-              to={`/project/${projectId}?tab=transactions`}
+            <button
+              onClick={() => navigate(-1)}
               className="flex-1 sm:flex-none inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <X className="h-4 w-4 mr-2" />
               Cancel
-            </Link>
+            </button>
             <button
               type="submit"
               disabled={isSubmitting || isUploadingImages}
