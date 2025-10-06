@@ -15,6 +15,7 @@ export default function BusinessInventoryItemDetail() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [showAllocationModal, setShowAllocationModal] = useState(false)
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false)
   const [allocationForm, setAllocationForm] = useState({
     projectId: '',
     amount: '',
@@ -31,6 +32,23 @@ export default function BusinessInventoryItemDetail() {
       loadProjects()
     }
   }, [id])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showProjectDropdown && !event.target) return
+
+      const target = event.target as Element
+      if (!target.closest('.project-dropdown') && !target.closest('.project-dropdown-button')) {
+        setShowProjectDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showProjectDropdown])
 
   const loadProjects = async () => {
     try {
@@ -131,11 +149,17 @@ export default function BusinessInventoryItemDetail() {
 
   const closeAllocationModal = () => {
     setShowAllocationModal(false)
+    setShowProjectDropdown(false)
     setAllocationForm({
       projectId: '',
       amount: '',
       notes: ''
     })
+  }
+
+  const getSelectedProjectName = () => {
+    const selectedProject = projects.find(p => p.id === allocationForm.projectId)
+    return selectedProject ? `${selectedProject.name} - ${selectedProject.clientName}` : 'Select a project...'
   }
 
   const handleAllocationSubmit = async () => {
@@ -523,22 +547,46 @@ export default function BusinessInventoryItemDetail() {
 
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="project-select" className="block text-sm font-medium text-gray-700">
+                  <label className="block text-sm font-medium text-gray-700">
                     Select Project
                   </label>
-                  <select
-                    id="project-select"
-                    value={allocationForm.projectId}
-                    onChange={(e) => setAllocationForm(prev => ({ ...prev, projectId: e.target.value }))}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  >
-                    <option value="">Select a project...</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} - {project.clientName}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+                      className="project-dropdown-button relative w-full bg-white border border-gray-300 rounded-md shadow-sm pl-3 pr-10 py-2 text-left cursor-default focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    >
+                      <span className={`block truncate ${!allocationForm.projectId ? 'text-gray-500' : 'text-gray-900'}`}>
+                        {getSelectedProjectName()}
+                      </span>
+                      <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </span>
+                    </button>
+
+                    {showProjectDropdown && (
+                      <div className="project-dropdown absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base border border-gray-200 overflow-auto focus:outline-none sm:text-sm">
+                        {projects.map((project) => (
+                          <button
+                            key={project.id}
+                            type="button"
+                            onClick={() => {
+                              setAllocationForm(prev => ({ ...prev, projectId: project.id }))
+                              setShowProjectDropdown(false)
+                            }}
+                            className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                              allocationForm.projectId === project.id ? 'bg-primary-50 text-primary-600' : 'text-gray-900'
+                            }`}
+                          >
+                            <div className="font-medium">{project.name}</div>
+                            <div className="text-sm text-gray-500">{project.clientName}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
