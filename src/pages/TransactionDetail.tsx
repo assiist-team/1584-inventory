@@ -532,7 +532,7 @@ export default function TransactionDetail() {
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="px-6 py-6 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-            {transaction.source} - {transaction.transaction_type}
+            {transaction.source} - {formatCurrency(transaction.amount)}
           </h1>
         </div>
 

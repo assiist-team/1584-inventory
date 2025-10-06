@@ -41,7 +41,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
-  const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
+  const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const { showSuccess, showError } = useToast()
 
@@ -267,8 +267,24 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.payment_method.toLowerCase().includes(searchQuery.toLowerCase())
 
-    // Apply bookmark filter
-    const matchesFilter = filterMode === 'all' || (filterMode === 'bookmarked' && item.bookmark)
+    // Apply filter based on filterMode
+    let matchesFilter = false
+    switch (filterMode) {
+      case 'all':
+        matchesFilter = true
+        break
+      case 'bookmarked':
+        matchesFilter = item.bookmark
+        break
+      case 'to-inventory':
+        matchesFilter = item.disposition === 'inventory'
+        break
+      case 'from-inventory':
+        matchesFilter = item.source === 'Inventory'
+        break
+      default:
+        matchesFilter = true
+    }
 
     return matchesSearch && matchesFilter
   })
@@ -343,7 +359,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
                 {/* Filter Dropdown Menu */}
                 {showFilterMenu && (
-                  <div className="filter-menu absolute top-full left-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <div className="filter-menu absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                     <div className="py-1">
                       <button
                         onClick={() => {
@@ -365,7 +381,29 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           filterMode === 'bookmarked' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
                         }`}
                       >
-                        Bookmarked Only
+                        Bookmarked
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterMode('to-inventory')
+                          setShowFilterMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          filterMode === 'to-inventory' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                        }`}
+                      >
+                        To Inventory
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterMode('from-inventory')
+                          setShowFilterMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          filterMode === 'from-inventory' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                        }`}
+                      >
+                        From Inventory
                       </button>
                     </div>
                   </div>
