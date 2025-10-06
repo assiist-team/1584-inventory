@@ -393,7 +393,7 @@ export default function BusinessInventory() {
               {/* Header - Just Add Item button */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
                 <Link
-                  to="/business-inventory/add"
+                  to="/business-inventory/add?returnTo=/business-inventory"
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
@@ -556,7 +556,7 @@ export default function BusinessInventory() {
                               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                             </button>
                             <Link
-                              to={`/business-inventory/${item.item_id}/edit`}
+                              to={`/business-inventory/${item.item_id}/edit?returnTo=/business-inventory`}
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Edit item"

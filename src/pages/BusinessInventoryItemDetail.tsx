@@ -313,7 +313,7 @@ export default function BusinessInventoryItemDetail() {
               </button>
             )}
             <Link
-              to={`/business-inventory/${id}/edit`}
+              to={`/business-inventory/${id}/edit?returnTo=/business-inventory/${id}`}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
