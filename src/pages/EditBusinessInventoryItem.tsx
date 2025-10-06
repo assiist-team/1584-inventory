@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { BusinessInventoryItem } from '@/types'
 import { businessInventoryService } from '@/services/inventoryService'

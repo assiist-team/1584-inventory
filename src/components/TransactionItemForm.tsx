@@ -27,7 +27,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       id: stableTempId,
       description: '',
       sku: '',
-      price: '',
+      purchase_price: '',
       market_value: '',
       space: '',
       notes: ''
@@ -51,7 +51,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
         id: item.id,
         description: item.description,
         sku: item.sku || '',
-        price: item.price,
+        purchase_price: item.purchase_price,
         market_value: item.market_value || '',
         space: item.space || '',
         notes: item.notes || ''
@@ -134,8 +134,8 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       newErrors.description = 'Description is required'
     }
 
-    if (formData.price && (isNaN(Number(formData.price)) || Number(formData.price) <= 0)) {
-      newErrors.price = 'Price must be a positive number'
+    if (formData.purchase_price && (isNaN(Number(formData.purchase_price)) || Number(formData.purchase_price) <= 0)) {
+      newErrors.purchase_price = 'Price must be a positive number'
     }
 
     setErrors(newErrors)
@@ -165,7 +165,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
 
     // Clear error when user starts typing
     if (errors[field as keyof TransactionItemValidationErrors]) {
-      setErrors(prev => ({ ...prev, [field]: undefined } as TransactionItemValidationErrors))
+      setErrors(prev => ({ ...prev, [field]: undefined }))
     }
   }
 
@@ -255,7 +255,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
 
         {/* Price */}
         <div>
-          <label htmlFor="price" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
             Price
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
@@ -264,17 +264,17 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
             </div>
             <input
               type="text"
-              id="price"
-              value={formData.price}
-              onChange={(e) => handleInputChange('price', e.target.value)}
+              id="purchase_price"
+              value={formData.purchase_price}
+              onChange={(e) => handleInputChange('purchase_price', e.target.value)}
               placeholder="0.00"
               className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.price ? 'border-red-300' : 'border-gray-300'
+                errors.purchase_price ? 'border-red-300' : 'border-gray-300'
               }`}
             />
           </div>
-          {errors.price && (
-            <p className="mt-1 text-sm text-red-600">{errors.price}</p>
+          {errors.purchase_price && (
+            <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
           )}
         </div>
 

@@ -1,5 +1,6 @@
 import { ArrowLeft, Save, X, Shield } from 'lucide-react'
-import { Link, useNavigate, useLocation, useMemo } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useMemo } from 'react'
 import { useState, FormEvent, useEffect } from 'react'
 import { businessInventoryService, transactionService, projectService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'

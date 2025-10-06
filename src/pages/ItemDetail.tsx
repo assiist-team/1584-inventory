@@ -59,7 +59,7 @@ export default function ItemDetail() {
     description: 'Marble Countertop Sample',
     source: 'Home Depot',
     sku: 'MCT-001',
-    price: '150.00',
+    purchase_price: '150.00',
     market_value: '300.00',
     payment_method: '1584 Design',
     notes: 'High-end marble sample for client presentation',
@@ -573,13 +573,13 @@ export default function ItemDetail() {
                 </div>
               )}
 
-              {item.price && (
+              {item.purchase_price && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500 flex items-center">
                     <DollarSign className="h-4 w-4 mr-1" />
                     Price
                   </dt>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
                 </div>
               )}
 

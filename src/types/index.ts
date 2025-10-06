@@ -251,7 +251,7 @@ export interface TransactionValidationErrors {
 export interface TransactionItemValidationErrors {
   description?: string;
   sku?: string;
-  price?: string;
+  purchase_price?: string;
   market_value?: string;
   space?: string;
   notes?: string;
