@@ -2,7 +2,8 @@ import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as Image
 import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Transaction, Project, Item, TransactionItemFormData } from '@/types'
 import { transactionService, projectService, itemService } from '@/services/inventoryService'
@@ -31,6 +32,7 @@ const removeUnwantedIcons = () => {
 export default function TransactionDetail() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [transactionItems, setTransactionItems] = useState<Item[]>([])
@@ -43,6 +45,28 @@ export default function TransactionDetail() {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
   const { showError, showSuccess } = useToast()
+
+  // Navigation context logic
+  const currentSearchParams = new URLSearchParams(location.search)
+  const fromBusinessInventoryItem = currentSearchParams.get('from') === 'business-inventory-item'
+
+  const backDestination = useMemo(() => {
+    // Check if we have a returnTo parameter (highest priority)
+    const returnTo = currentSearchParams.get('returnTo')
+    if (returnTo) return returnTo
+
+    // If we came from business inventory item, go back there
+    if (fromBusinessInventoryItem) {
+      // Extract the item ID from the returnTo URL if available, otherwise go to main inventory
+      const returnToUrl = currentSearchParams.get('returnTo')
+      if (returnToUrl && returnToUrl.includes('/business-inventory/')) {
+        return returnToUrl
+      }
+      return '/business-inventory' // Fallback to main inventory
+    }
+
+    return `/project/${projectId}?tab=transactions` // Default to project transactions tab
+  }, [fromBusinessInventoryItem, currentSearchParams, projectId])
 
 
   useEffect(() => {
@@ -417,7 +441,7 @@ export default function TransactionDetail() {
         <p className="mt-1 text-sm text-gray-500">The transaction you're looking for doesn't exist.</p>
         <div className="mt-6">
           <Link
-            to={`/project/${projectId}?tab=transactions`}
+            to={backDestination}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -435,7 +459,7 @@ export default function TransactionDetail() {
         {/* Back button row */}
         <div className="flex items-center justify-between">
           <Link
-            to={`/project/${projectId}?tab=transactions`}
+            to={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />

@@ -1,5 +1,6 @@
 import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign } from 'lucide-react'
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
@@ -12,6 +13,7 @@ import { useToast } from '@/components/ui/ToastContext'
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [project, setProject] = useState<Project | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -27,6 +29,28 @@ export default function ProjectDetail() {
 
   // Budget tabs state, default to 'budget'
   const [activeBudgetTab, setActiveBudgetTab] = useState('budget')
+
+  // Navigation context logic
+  const currentSearchParams = new URLSearchParams(location.search)
+  const fromBusinessInventoryItem = currentSearchParams.get('from') === 'business-inventory-item'
+
+  const backDestination = useMemo(() => {
+    // Check if we have a returnTo parameter (highest priority)
+    const returnTo = currentSearchParams.get('returnTo')
+    if (returnTo) return returnTo
+
+    // If we came from business inventory item, go back there
+    if (fromBusinessInventoryItem) {
+      // Extract the item ID from the returnTo URL if available, otherwise go to main inventory
+      const returnToUrl = currentSearchParams.get('returnTo')
+      if (returnToUrl && returnToUrl.includes('/business-inventory/')) {
+        return returnToUrl
+      }
+      return '/business-inventory' // Fallback to main inventory
+    }
+
+    return '/projects' // Default to projects list
+  }, [fromBusinessInventoryItem, currentSearchParams])
 
   // Update URL when tab changes
   const handleTabChange = (tabId: string) => {
@@ -211,7 +235,7 @@ export default function ProjectDetail() {
             Try Again
           </button>
           <Link
-            to="/projects"
+            to={backDestination}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -230,7 +254,7 @@ export default function ProjectDetail() {
         <p className="mt-1 text-sm text-gray-500">The project you're looking for doesn't exist.</p>
         <div className="mt-6">
           <Link
-            to="/projects"
+            to={backDestination}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -248,7 +272,7 @@ export default function ProjectDetail() {
         {/* Back button row */}
         <div className="flex items-center justify-between">
           <Link
-            to="/projects"
+            to={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />

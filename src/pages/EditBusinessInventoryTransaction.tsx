@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Transaction, Project } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
@@ -7,6 +7,7 @@ import { transactionService, projectService } from '@/services/inventoryService'
 export default function EditBusinessInventoryTransaction() {
   const { projectId, transactionId } = useParams<{ projectId: string; transactionId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -26,6 +27,17 @@ export default function EditBusinessInventoryTransaction() {
     receipt_emailed: false
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
+  // Navigation context logic
+  const backDestination = useMemo(() => {
+    // Check if we have a returnTo parameter
+    const searchParams = new URLSearchParams(location.search)
+    const returnTo = searchParams.get('returnTo')
+    if (returnTo) return returnTo
+
+    // Default fallback
+    return '/business-inventory'
+  }, [location.search])
 
   // Load projects and transaction data
   useEffect(() => {
@@ -117,7 +129,7 @@ export default function EditBusinessInventoryTransaction() {
   }
 
   const handleCancel = () => {
-    navigate('/business-inventory')
+    navigate(backDestination)
   }
 
   if (isLoading) {
@@ -139,7 +151,7 @@ export default function EditBusinessInventoryTransaction() {
           The transaction you're looking for doesn't exist or has been deleted.
         </p>
         <Link
-          to="/business-inventory"
+          to={backDestination}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
         >
           Back to Business Inventory
@@ -156,7 +168,7 @@ export default function EditBusinessInventoryTransaction() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center">
               <Link
-                to="/business-inventory"
+                to={backDestination}
                 className="mr-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />

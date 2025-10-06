@@ -26,6 +26,9 @@ export default function BusinessInventoryItemDetail() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
 
+  // Navigation context logic for basic back navigation
+  const backDestination = '/business-inventory' // Always go back to main inventory list
+
   // Helper functions
   const formatLinkedProjectText = (projectId: string): string => {
     const project = projects.find(p => p.id === projectId)
@@ -274,7 +277,7 @@ export default function BusinessInventoryItemDetail() {
           The item you're looking for doesn't exist or has been deleted.
         </p>
         <Link
-          to="/business-inventory"
+          to={backDestination}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -291,7 +294,7 @@ export default function BusinessInventoryItemDetail() {
         {/* Back button and controls row */}
         <div className="flex items-center justify-between gap-4">
           <Link
-            to="/business-inventory"
+            to={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -457,7 +460,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.current_project_id}`}
+                        to={`/project/${item.current_project_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {formatLinkedProjectText(item.current_project_id)}
@@ -471,7 +474,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.current_project_id}/transaction/${item.pending_transaction_id}`}
+                        to={`/project/${item.current_project_id}/transaction/${item.pending_transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {item.pending_transaction_id}

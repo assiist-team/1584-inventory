@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { ArrowLeft, X, Plus } from 'lucide-react'
 import { Transaction, Project } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
 
 export default function AddBusinessInventoryTransaction() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [formData, setFormData] = useState({
@@ -26,6 +27,17 @@ export default function AddBusinessInventoryTransaction() {
     receipt_emailed: false
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
+  // Navigation context logic
+  const backDestination = useMemo(() => {
+    // Check if we have a returnTo parameter
+    const searchParams = new URLSearchParams(location.search)
+    const returnTo = searchParams.get('returnTo')
+    if (returnTo) return returnTo
+
+    // Default fallback
+    return '/business-inventory'
+  }, [location.search])
 
   // Load projects on mount
   useEffect(() => {
@@ -98,7 +110,7 @@ export default function AddBusinessInventoryTransaction() {
   }
 
   const handleCancel = () => {
-    navigate('/business-inventory')
+    navigate(backDestination)
   }
 
   return (
@@ -109,7 +121,7 @@ export default function AddBusinessInventoryTransaction() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center">
               <Link
-                to="/business-inventory"
+                to={backDestination}
                 className="mr-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />
