@@ -652,13 +652,6 @@ export default function BusinessInventory() {
                                   )}
                                 </div>
 
-                                {/* Project assignment */}
-                                {item.current_project_id && (
-                                  <div className="text-sm text-gray-600">
-                                    <span className="font-medium">Allocated to Project:</span> {item.current_project_id}
-                                  </div>
-                                )}
-
                                 {/* Notes */}
                                 {item.notes && (
                                   <p className="text-sm text-gray-600 line-clamp-2">

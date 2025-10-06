@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Edit, Trash2, ArrowLeft, Package, TrendingUp, Plus, ImagePlus, FileText } from 'lucide-react'
+import { Edit, Trash2, ArrowLeft, Package, Plus, ImagePlus, FileText } from 'lucide-react'
 import { BusinessInventoryItem, Project } from '@/types'
 import { businessInventoryService, projectService } from '@/services/inventoryService'
 import { formatDate } from '@/utils/dateUtils'
@@ -25,6 +25,12 @@ export default function BusinessInventoryItemDetail() {
   // Image upload state
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
+
+  // Helper functions
+  const formatLinkedProjectText = (projectId: string): string => {
+    const project = projects.find(p => p.id === projectId)
+    return project ? `${project.name} - ${project.clientName}` : projectId
+  }
 
   useEffect(() => {
     if (id) {
@@ -104,44 +110,6 @@ export default function BusinessInventoryItemDetail() {
   }
 
 
-  const handleReturnFromProject = async () => {
-    if (!id || !item?.pending_transaction_id) return
-
-    setIsUpdating(true)
-    try {
-      await businessInventoryService.returnItemFromProject(
-        id,
-        item.pending_transaction_id,
-        item.current_project_id!
-      )
-      // Item will be updated via real-time subscription
-    } catch (error) {
-      console.error('Error returning item:', error)
-      alert('Error returning item. Please try again.')
-    } finally {
-      setIsUpdating(false)
-    }
-  }
-
-  const handleMarkAsSold = async (paymentMethod: string) => {
-    if (!id || !item?.pending_transaction_id) return
-
-    setIsUpdating(true)
-    try {
-      await businessInventoryService.markItemAsSold(
-        id,
-        item.pending_transaction_id,
-        item.current_project_id!,
-        paymentMethod
-      )
-      // Item will be updated via real-time subscription
-    } catch (error) {
-      console.error('Error marking item as sold:', error)
-      alert('Error marking item as sold. Please try again.')
-    } finally {
-      setIsUpdating(false)
-    }
-  }
 
   const openAllocationModal = () => {
     setShowAllocationModal(true)
@@ -470,50 +438,11 @@ export default function BusinessInventoryItemDetail() {
             </dl>
           </div>
 
-          {/* Project Assignment */}
-          {item.current_project_id && (
-            <div className="px-6 py-4 bg-blue-50">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Project Assignment</h3>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">
-                    Currently allocated to project: <span className="font-medium">{item.current_project_id}</span>
-                  </p>
-                  {item.pending_transaction_id && (
-                    <p className="text-sm text-gray-500 mt-1">
-                      Pending transaction: {item.pending_transaction_id}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {item.inventory_status === 'pending' && (
-                    <>
-                      <button
-                        onClick={handleReturnFromProject}
-                        disabled={isUpdating}
-                        className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
-                      >
-                        Return to Inventory
-                      </button>
-                      <button
-                        onClick={() => handleMarkAsSold('Client Card')}
-                        disabled={isUpdating}
-                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors disabled:opacity-50"
-                      >
-                        <TrendingUp className="h-4 w-4 mr-2" />
-                        Mark as Sold
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Metadata */}
           <div className="px-6 py-4 bg-gray-50">
             <div className="relative">
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Date Added</dt>
                   <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
@@ -522,6 +451,43 @@ export default function BusinessInventoryItemDetail() {
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Last Updated</dt>
                   <dd className="mt-1 text-sm text-gray-900">{formatDate(item.last_updated)}</dd>
                 </div>
+
+                {item.current_project_id && (
+                  <div>
+                    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      <Link
+                        to={`/project/${item.current_project_id}`}
+                        className="text-primary-600 hover:text-primary-800 font-medium"
+                      >
+                        {formatLinkedProjectText(item.current_project_id)}
+                      </Link>
+                    </dd>
+                  </div>
+                )}
+
+                {item.pending_transaction_id && (
+                  <div>
+                    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      <Link
+                        to={`/project/${item.current_project_id}/transaction/${item.pending_transaction_id}`}
+                        className="text-primary-600 hover:text-primary-800 font-medium"
+                      >
+                        {item.pending_transaction_id}
+                      </Link>
+                    </dd>
+                  </div>
+                )}
+
+                {item.transaction_id && (
+                  <div>
+                    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Original Transaction</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      <span className="text-gray-600 font-medium">{item.transaction_id}</span>
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               {/* Delete button in lower right corner */}
