@@ -2,7 +2,7 @@ import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, B
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { BusinessInventoryItem, Transaction, ItemImage } from '@/types'
+import { BusinessInventoryItem, Transaction, ItemImage, Project } from '@/types'
 import { businessInventoryService, transactionService, projectService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
@@ -36,6 +36,16 @@ export default function BusinessInventory() {
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+
+  // Batch allocation state
+  const [projects, setProjects] = useState<Project[]>([])
+  const [showBatchAllocationModal, setShowBatchAllocationModal] = useState(false)
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false)
+  const [batchAllocationForm, setBatchAllocationForm] = useState({
+    projectId: '',
+    space: ''
+  })
+  const [isAllocating, setIsAllocating] = useState(false)
 
   // Close filter menus when clicking outside
   useEffect(() => {
@@ -105,6 +115,7 @@ export default function BusinessInventory() {
   useEffect(() => {
     loadBusinessInventory()
     loadBusinessTransactions()
+    loadProjects()
   }, [])
 
   // Subscribe to real-time updates for inventory
@@ -185,6 +196,15 @@ export default function BusinessInventory() {
     }
   }
 
+  const loadProjects = async () => {
+    try {
+      const projectsData = await projectService.getProjects()
+      setProjects(projectsData)
+    } catch (error) {
+      console.error('Error loading projects:', error)
+    }
+  }
+
   const handleInventorySearchChange = (searchQuery: string) => {
     setInventorySearchQuery(searchQuery)
   }
@@ -195,6 +215,55 @@ export default function BusinessInventory() {
     setItems,
     updateItemService: businessInventoryService.updateBusinessInventoryItem
   })
+
+  // Batch allocation functions
+  const openBatchAllocationModal = () => {
+    setShowBatchAllocationModal(true)
+  }
+
+  const closeBatchAllocationModal = () => {
+    setShowBatchAllocationModal(false)
+    setShowProjectDropdown(false)
+    setBatchAllocationForm({
+      projectId: '',
+      space: ''
+    })
+  }
+
+  const getSelectedProjectName = () => {
+    const selectedProject = projects.find(p => p.id === batchAllocationForm.projectId)
+    return selectedProject ? `${selectedProject.name} - ${selectedProject.clientName}` : 'Select a project...'
+  }
+
+  const handleBatchAllocationSubmit = async () => {
+    if (!batchAllocationForm.projectId || selectedItems.size === 0) return
+
+    setIsAllocating(true)
+    try {
+      const itemIds = Array.from(selectedItems)
+      await businessInventoryService.batchAllocateItemsToProject(
+        itemIds,
+        batchAllocationForm.projectId,
+        {
+          space: batchAllocationForm.space
+        }
+      )
+
+      // Clear selections and close modal
+      setSelectedItems(new Set())
+      closeBatchAllocationModal()
+
+      // Show success message
+      alert(`Successfully allocated ${itemIds.length} items to project!`)
+
+      // Items will be updated via real-time subscription
+    } catch (error) {
+      console.error('Error batch allocating items:', error)
+      alert('Error allocating items. Please try again.')
+    } finally {
+      setIsAllocating(false)
+    }
+  }
 
   // Image handling functions
   const handleAddImage = async (itemId: string) => {
@@ -364,12 +433,6 @@ export default function BusinessInventory() {
 
             {/* Right section - counter and buttons */}
             <div className="flex items-center gap-3">
-              {/* Counter (when visible) */}
-              {selectedItems.size > 0 && (
-                <span className="text-sm text-gray-500">
-                  {selectedItems.size} of {filteredItems.length} selected
-                </span>
-              )}
 
               {/* Bulk action buttons */}
               <div className="flex items-center space-x-2">
@@ -377,11 +440,7 @@ export default function BusinessInventory() {
                 <div className="relative">
                   <button
                     onClick={() => setShowFilterMenu(!showFilterMenu)}
-                    className={`filter-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
-                      filterMode === 'all'
-                        ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                        : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
-                    }`}
+                    className="filter-button inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
                     title="Filter items"
                   >
                     <Filter className="h-4 w-4" />
@@ -417,6 +476,16 @@ export default function BusinessInventory() {
                     </div>
                   )}
                 </div>
+
+                {/* Allocate to Project Button */}
+                <button
+                  onClick={openBatchAllocationModal}
+                  className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
+                  disabled={selectedItems.size === 0}
+                  title="Allocate selected items to project"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
 
                 <button
                   className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
@@ -566,18 +635,18 @@ export default function BusinessInventory() {
                               <div className="space-y-2">
                                 {/* Price, Source, SKU on same row */}
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                                  {item.price && (
-                                    <span className="font-medium text-gray-700">${item.price}</span>
+                                  {item.resale_price && (
+                                    <span className="font-medium text-gray-700">${item.resale_price}</span>
                                   )}
                                   {item.source && (
                                     <>
-                                      {(item.price) && <span className="hidden sm:inline">•</span>}
+                                      {(item.resale_price) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.source}</span>
                                     </>
                                   )}
                                   {item.sku && (
                                     <>
-                                      {(item.price || item.source) && <span className="hidden sm:inline">•</span>}
+                                      {(item.resale_price || item.source) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.sku}</span>
                                     </>
                                   )}
@@ -793,6 +862,95 @@ export default function BusinessInventory() {
           )}
         </div>
       </div>
+
+      {/* Batch Allocation Modal */}
+      {showBatchAllocationModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Allocate {selectedItems.size} Items to Project
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Select Project
+                  </label>
+                  <div className="relative mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+                      className="project-dropdown-button relative w-full bg-white border border-gray-300 rounded-md shadow-sm pl-3 pr-10 py-2 text-left cursor-default focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    >
+                      <span className={`block truncate ${!batchAllocationForm.projectId ? 'text-gray-500' : 'text-gray-900'}`}>
+                        {getSelectedProjectName()}
+                      </span>
+                      <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </span>
+                    </button>
+
+                    {showProjectDropdown && (
+                      <div className="project-dropdown absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base border border-gray-200 overflow-auto focus:outline-none sm:text-sm">
+                        {projects.map((project) => (
+                          <button
+                            key={project.id}
+                            type="button"
+                            onClick={() => {
+                              setBatchAllocationForm(prev => ({ ...prev, projectId: project.id }))
+                              setShowProjectDropdown(false)
+                            }}
+                            className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${
+                              batchAllocationForm.projectId === project.id ? 'bg-primary-50 text-primary-600' : 'text-gray-900'
+                            }`}
+                          >
+                            <div className="font-medium">{project.name}</div>
+                            <div className="text-sm text-gray-500">{project.clientName}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Space (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={batchAllocationForm.space}
+                    onChange={(e) => setBatchAllocationForm(prev => ({ ...prev, space: e.target.value }))}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    placeholder="e.g. Living Room, Bedroom, etc."
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={closeBatchAllocationModal}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchAllocationSubmit}
+                  disabled={!batchAllocationForm.projectId || isAllocating}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {isAllocating ? 'Allocating...' : `Allocate ${selectedItems.size} Items`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

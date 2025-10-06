@@ -14,7 +14,8 @@ export default function EditBusinessInventoryItem() {
     description: '',
     source: '',
     sku: '',
-    price: '',
+    purchase_price: '',
+    resale_price: '',
     market_value: '',
     disposition: 'keep',
     notes: '',
@@ -41,7 +42,8 @@ export default function EditBusinessInventoryItem() {
           description: itemData.description,
           source: itemData.source,
           sku: itemData.sku,
-          price: itemData.price,
+          purchase_price: itemData.purchase_price || '',
+          resale_price: itemData.resale_price || '',
           market_value: itemData.market_value || '',
           disposition: itemData.disposition || 'keep',
           notes: itemData.notes || '',
@@ -70,18 +72,6 @@ export default function EditBusinessInventoryItem() {
 
     if (!formData.description.trim()) {
       errors.description = 'Description is required'
-    }
-
-    if (!formData.source.trim()) {
-      errors.source = 'Source is required'
-    }
-
-    if (!formData.price.trim()) {
-      errors.price = 'Price is required'
-    }
-
-    if (!formData.business_inventory_location.trim()) {
-      errors.business_inventory_location = 'Location is required'
     }
 
     setFormErrors(errors)
@@ -182,7 +172,7 @@ export default function EditBusinessInventoryItem() {
             {/* Source */}
             <div>
               <label htmlFor="source" className="block text-sm font-medium text-gray-700">
-                Source *
+                Source
               </label>
               <input
                 type="text"
@@ -216,9 +206,10 @@ export default function EditBusinessInventoryItem() {
 
             {/* Purchase Price */}
             <div>
-              <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                Purchase Price *
+              <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+                Purchase Price
               </label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <span className="text-gray-500 sm:text-sm">$</span>
@@ -226,17 +217,44 @@ export default function EditBusinessInventoryItem() {
                 <input
                   type="number"
                   step="0.01"
-                  id="price"
-                  value={formData.price}
-                  onChange={(e) => handleInputChange('price', e.target.value)}
+                  id="purchase_price"
+                  value={formData.purchase_price}
+                  onChange={(e) => handleInputChange('purchase_price', e.target.value)}
                   placeholder="0.00"
                   className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    formErrors.price ? 'border-red-300' : 'border-gray-300'
+                    formErrors.purchase_price ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
               </div>
-              {formErrors.price && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.price}</p>
+              {formErrors.purchase_price && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.purchase_price}</p>
+              )}
+            </div>
+
+            {/* Resale Price */}
+            <div>
+              <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
+                Resale Price
+              </label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">What the client is paying for the item</p>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  id="resale_price"
+                  value={formData.resale_price}
+                  onChange={(e) => handleInputChange('resale_price', e.target.value)}
+                  placeholder="0.00"
+                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                    formErrors.resale_price ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                />
+              </div>
+              {formErrors.resale_price && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.resale_price}</p>
               )}
             </div>
 
@@ -245,6 +263,7 @@ export default function EditBusinessInventoryItem() {
               <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
                 Market Value
               </label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <span className="text-gray-500 sm:text-sm">$</span>
@@ -264,7 +283,7 @@ export default function EditBusinessInventoryItem() {
             {/* Storage Location */}
             <div>
               <label htmlFor="business_inventory_location" className="block text-sm font-medium text-gray-700">
-                Storage Location *
+                Storage Location
               </label>
               <input
                 type="text"

@@ -12,7 +12,8 @@ interface InventoryListItem {
   description: string
   source: string
   sku: string
-  price: string
+  purchase_price?: string
+  resale_price?: string
   market_value?: string
   payment_method: string
   notes?: string
@@ -473,45 +474,45 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                       >
                         <Edit className="h-4 w-4" />
                       </Link>
-                      <div className="relative ml-1">
-                        <span
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            toggleDispositionMenu(item.item_id)
-                          }}
+                        <div className="relative ml-1">
+                          <span
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              toggleDispositionMenu(item.item_id)
+                            }}
                           className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
                         >
                           {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
-                          <ChevronDown className="h-3 w-3 ml-1" />
-                        </span>
+                            <ChevronDown className="h-3 w-3 ml-1" />
+                          </span>
 
-                        {/* Dropdown menu */}
-                        {openDispositionMenu === item.item_id && (
-                          <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                            <div className="py-1">
-                              {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
-                                <button
-                                  key={disposition}
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    updateDisposition(item.item_id, disposition)
-                                  }}
-                                  className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
-                                    (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
-                                      ? 'bg-gray-100 text-gray-900'
-                                      : 'text-gray-700'
-                                  }`}
-                                  disabled={!item.disposition}
-                                >
-                                  {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
-                                </button>
-                              ))}
+                          {/* Dropdown menu */}
+                          {openDispositionMenu === item.item_id && (
+                            <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                              <div className="py-1">
+                                {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                                  <button
+                                    key={disposition}
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      updateDisposition(item.item_id, disposition)
+                                    }}
+                                    className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
+                                      (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
+                                        ? 'bg-gray-100 text-gray-900'
+                                        : 'text-gray-700'
+                                    }`}
+                                    disabled={!item.disposition}
+                                  >
+                                    {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
                     </div>
                   </div>
 
@@ -573,18 +574,18 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         <div className="space-y-2">
                           {/* Price, Source, SKU on same row */}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                            {item.price && (
-                              <span className="font-medium text-gray-700">${item.price}</span>
+                            {item.resale_price && (
+                              <span className="font-medium text-gray-700">${item.resale_price}</span>
                             )}
                             {item.source && (
                               <>
-                                {(item.price) && <span className="hidden sm:inline">•</span>}
+                                {(item.resale_price) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.source}</span>
                               </>
                             )}
                             {item.sku && (
                               <>
-                                {(item.price || item.source) && <span className="hidden sm:inline">•</span>}
+                                {(item.resale_price || item.source) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.sku}</span>
                               </>
                             )}

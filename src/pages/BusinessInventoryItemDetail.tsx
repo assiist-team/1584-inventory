@@ -422,17 +422,19 @@ export default function BusinessInventoryItemDetail() {
                 </div>
               )}
 
-              {item.price && (
+              {item.purchase_price && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Price</dt>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.price}</dd>
+                  <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
+                  <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
                 </div>
               )}
 
-              {item.market_value && (
+              {item.resale_price && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Market Value</dt>
-                  <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value}</dd>
+                  <dt className="text-sm font-medium text-gray-500">Resale Price</dt>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.resale_price}</dd>
+                  <p className="text-xs text-gray-500 mt-1">What the client is paying for the item</p>
                 </div>
               )}
 

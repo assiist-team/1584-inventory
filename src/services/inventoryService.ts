@@ -118,11 +118,11 @@ export const itemService = {
 
     // Apply filters
     if (filters?.status) {
-      q = query(q, where('status', '==', filters.status))
+      q = query(q, where('disposition', '==', filters.status))
     }
 
     if (filters?.category) {
-      q = query(q, where('category', '==', filters.category))
+      q = query(q, where('source', '==', filters.category))
     }
 
     if (filters?.tags && filters.tags.length > 0) {
@@ -180,6 +180,7 @@ export const itemService = {
     return items
   },
 
+
   // Get single item
   async getItem(projectId: string, itemId: string): Promise<Item | null> {
     console.log('getItem called with:', { projectId, itemId })
@@ -201,7 +202,8 @@ export const itemService = {
         description: data.description,
         source: data.source,
         sku: data.sku,
-        price: data.price,
+        purchase_price: data.purchase_price,
+        resale_price: data.resale_price,
         market_value: data.market_value, // Direct mapping
         payment_method: data.payment_method,
         disposition: data.disposition,
@@ -236,7 +238,8 @@ export const itemService = {
       description: itemData.description,
       source: itemData.source,
       sku: itemData.sku,
-      price: itemData.price,
+      purchase_price: itemData.purchase_price,
+      resale_price: itemData.resale_price,
       market_value: itemData.market_value, // Direct mapping
       payment_method: itemData.payment_method,
       disposition: itemData.disposition || 'keep', // Default to 'keep' if not provided
@@ -272,13 +275,14 @@ export const itemService = {
       last_updated: new Date().toISOString()
     }
 
+    if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
+    if (updates.resale_price !== undefined) firebaseUpdates.resale_price = updates.resale_price
     if (updates.market_value !== undefined) {
       firebaseUpdates.market_value = updates.market_value // Direct mapping
     }
     if (updates.description !== undefined) firebaseUpdates.description = updates.description
     if (updates.source !== undefined) firebaseUpdates.source = updates.source
     if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-    if (updates.price !== undefined) firebaseUpdates.price = updates.price
     if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
     if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
     if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
@@ -413,7 +417,8 @@ export const itemService = {
           description: data.description,
           source: data.source,
           sku: data.sku,
-          price: data.price,
+          purchase_price: data.purchase_price,
+          resale_price: data.resale_price,
           market_value: data.market_value, // Direct mapping
           payment_method: data.payment_method,
           disposition: data.disposition,
@@ -468,7 +473,8 @@ export const itemService = {
         description: data.description,
         source: data.source,
         sku: data.sku,
-        price: data.price,
+        purchase_price: data.purchase_price,
+        resale_price: data.resale_price,
         market_value: data.market_value, // Direct mapping
         payment_method: data.payment_method,
         disposition: data.disposition,
@@ -496,13 +502,14 @@ export const itemService = {
         last_updated: new Date().toISOString()
       }
 
+      if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
+      if (updates.resale_price !== undefined) firebaseUpdates.resale_price = updates.resale_price
       if (updates.market_value !== undefined) {
         firebaseUpdates.market_value = updates.market_value // Direct mapping
       }
       if (updates.description !== undefined) firebaseUpdates.description = updates.description
       if (updates.source !== undefined) firebaseUpdates.source = updates.source
       if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-      if (updates.price !== undefined) firebaseUpdates.price = updates.price
       if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
       if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
       if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
@@ -539,7 +546,8 @@ export const itemService = {
         description: itemData.description,
         source: transactionSource, // Use transaction source for all items
         sku: itemData.sku || '',
-        price: itemData.price,
+        purchase_price: itemData.purchase_price,
+        resale_price: itemData.resale_price,
         market_value: itemData.market_value || '',
         payment_method: 'Client Card', // Default payment method
         disposition: 'keep',
@@ -601,7 +609,8 @@ export const itemService = {
       description: itemData.description,
       source: transactionSource,
       sku: itemData.sku || '',
-      price: itemData.price,
+      purchase_price: itemData.purchase_price,
+      resale_price: itemData.resale_price,
       market_value: itemData.market_value || '',
       payment_method: 'Client Card', // Default payment method
       disposition: 'keep',
@@ -962,10 +971,11 @@ export const businessInventoryService = {
     if (updates.current_project_id !== undefined) firebaseUpdates.current_project_id = updates.current_project_id
     if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
     if (updates.pending_transaction_id !== undefined) firebaseUpdates.pending_transaction_id = updates.pending_transaction_id
+    if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
+    if (updates.resale_price !== undefined) firebaseUpdates.resale_price = updates.resale_price
     if (updates.description !== undefined) firebaseUpdates.description = updates.description
     if (updates.source !== undefined) firebaseUpdates.source = updates.source
     if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-    if (updates.price !== undefined) firebaseUpdates.price = updates.price
     if (updates.market_value !== undefined) firebaseUpdates.market_value = updates.market_value
     if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
     if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
@@ -1085,6 +1095,106 @@ export const businessInventoryService = {
     })
 
     return transactionRef.id
+  },
+
+  // Batch allocate multiple items to a project
+  async batchAllocateItemsToProject(
+    itemIds: string[],
+    projectId: string,
+    allocationData: {
+      amount?: string;
+      notes?: string;
+      space?: string;
+    } = {}
+  ): Promise<string[]> {
+    const batch = writeBatch(db)
+    const transactionIds: string[] = []
+    const now = new Date()
+
+    // Get the business inventory items first
+    const businessItemsRef = collection(db, 'business_inventory')
+    const businessItemsQuery = query(businessItemsRef, where('__name__', 'in', itemIds))
+    const businessItemsSnapshot = await getDocs(businessItemsQuery)
+
+    if (businessItemsSnapshot.empty) {
+      throw new Error('No business inventory items found')
+    }
+
+    // Create a single transaction for the batch allocation
+    const transactionData = {
+      project_id: projectId,
+      transaction_date: now.toISOString(),
+      source: 'Batch Inventory Allocation',
+      transaction_type: 'Reimbursement',
+      payment_method: 'Pending',
+      amount: allocationData.amount || '0.00',
+      budget_category: 'Furnishings',
+      notes: allocationData.notes || `Batch allocation of ${itemIds.length} items from business inventory`,
+      created_by: 'system',
+      status: 'pending' as const,
+      reimbursement_type: 'Client Owes' as const,
+      trigger_event: 'Inventory allocation' as const
+    }
+
+    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
+    const transactionRef = doc(transactionsRef)
+    batch.set(transactionRef, transactionData)
+    transactionIds.push(transactionRef.id)
+
+    // Create project items from business inventory items
+    businessItemsSnapshot.docs.forEach((businessItemDoc) => {
+      const businessItemData = businessItemDoc.data()
+
+      // Create the item in project collection with specified defaults
+      const projectItemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+      const projectItemRef = doc(db, 'projects', projectId, 'items', projectItemId)
+
+      const projectItemData = {
+        item_id: projectItemId,
+        description: businessItemData.description,
+        source: businessItemData.source,
+        sku: businessItemData.sku,
+        resale_price: businessItemData.resale_price, // 1584 design resale price from business inventory
+        market_value: businessItemData.market_value || '',
+        payment_method: '1584', // Default payment method for allocated items
+        disposition: 'keep', // Default disposition for allocated items
+        notes: businessItemData.notes || '',
+        space: allocationData.space || '', // Optional space field
+        qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`, // Generate new QR key
+        bookmark: false, // Default bookmark to false
+        transaction_id: transactionRef.id, // Link to allocation transaction
+        project_id: projectId,
+        date_created: businessItemData.date_created, // Preserve original date
+        last_updated: now.toISOString(),
+        images: businessItemData.images || [] // Preserve images
+      }
+
+      batch.set(projectItemRef, projectItemData)
+    })
+
+    // Mark business inventory items as sold (since they've been moved to project)
+    itemIds.forEach(itemId => {
+      const itemRef = doc(db, 'business_inventory', itemId)
+      batch.update(itemRef, {
+        inventory_status: 'sold',
+        current_project_id: projectId,
+        pending_transaction_id: transactionRef.id,
+        last_updated: now.toISOString()
+      })
+    })
+
+    await batch.commit()
+
+    // Update project metadata
+    const currentItemCount = await itemService.getItemCount(projectId)
+    await projectService.updateProject(projectId, {
+      metadata: {
+        totalItems: currentItemCount,
+        lastActivity: now
+      }
+    } as Partial<Project>)
+
+    return transactionIds
   },
 
   // Return item from project (cancels pending transaction)

@@ -41,7 +41,8 @@ export default function EditItem() {
     description: '',
     source: '',
     sku: '',
-    price: '',
+    purchase_price: '',
+    resale_price: '',
     market_value: '',
     payment_method: '',
     space: '',
@@ -82,7 +83,8 @@ export default function EditItem() {
               description: String(fetchedItem.description || ''),
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
-              price: String(fetchedItem.price || ''),
+              purchase_price: String(fetchedItem.purchase_price || ''),
+              resale_price: String(fetchedItem.resale_price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
               space: String(fetchedItem.space || ''),
@@ -93,7 +95,8 @@ export default function EditItem() {
               description: String(fetchedItem.description || ''),
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
-              price: String(fetchedItem.price || ''),
+              purchase_price: String(fetchedItem.purchase_price || ''),
+              resale_price: String(fetchedItem.resale_price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
               notes: String(fetchedItem.notes || '')
@@ -135,11 +138,6 @@ export default function EditItem() {
 
     if (!formData.description.trim()) {
       newErrors.description = 'Description is required'
-    }
-
-    // Validate market value if provided
-    if (formData.market_value.trim() && (isNaN(Number(formData.market_value)) || Number(formData.market_value) <= 0)) {
-      newErrors.market_value = 'Market value must be a positive number'
     }
 
     setErrors(newErrors)
@@ -277,7 +275,7 @@ export default function EditItem() {
                 error={errors.selectedTransactionId}
                 disabled={loadingTransactions}
               >
-                <option value="">Select a transaction (optional)</option>
+                <option value="">Select a transaction</option>
                 {loadingTransactions ? (
                   <option disabled>Loading transactions...</option>
                 ) : (
@@ -397,37 +395,64 @@ export default function EditItem() {
                 />
               </div>
 
-              {/* Price */}
+              {/* Purchase Price */}
               <div>
-                <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                  Price
+                <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+                  Purchase Price
                 </label>
+                <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
                 <div className="mt-1 relative rounded-md shadow-sm">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span className="text-gray-500 sm:text-sm">$</span>
                   </div>
                   <input
                     type="text"
-                    id="price"
-                    value={formData.price}
-                    onChange={(e) => handleInputChange('price', e.target.value)}
+                    id="purchase_price"
+                    value={formData.purchase_price}
+                    onChange={(e) => handleInputChange('purchase_price', e.target.value)}
                     placeholder="0.00"
                     className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                      errors.price ? 'border-red-300' : 'border-gray-300'
+                      errors.purchase_price ? 'border-red-300' : 'border-gray-300'
                     }`}
                   />
                 </div>
-                {errors.price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.price}</p>
+                {errors.purchase_price && (
+                  <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
                 )}
               </div>
 
+              {/* Resale Price */}
+              <div>
+                <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
+                  Resale Price
+                </label>
+                <p className="text-xs text-gray-500 mt-1 mb-2">What the client is paying for the item</p>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">$</span>
+                  </div>
+                  <input
+                    type="text"
+                    id="resale_price"
+                    value={formData.resale_price}
+                    onChange={(e) => handleInputChange('resale_price', e.target.value)}
+                    placeholder="0.00"
+                    className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                      errors.resale_price ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                  />
+                </div>
+                {errors.resale_price && (
+                  <p className="mt-1 text-sm text-red-600">{errors.resale_price}</p>
+                )}
+              </div>
 
               {/* Market Value */}
               <div>
                 <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
                   Market Value
                 </label>
+                <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
                 <div className="mt-1 relative rounded-md shadow-sm">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span className="text-gray-500 sm:text-sm">$</span>
