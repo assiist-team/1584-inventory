@@ -35,6 +35,7 @@ function App() {
               <Route path="/business-inventory/:id" element={<BusinessInventoryItemDetail />} />
               <Route path="/business-inventory/:id/edit" element={<EditBusinessInventoryItem />} />
               <Route path="/business-inventory/transaction/add" element={<AddBusinessInventoryTransaction />} />
+              <Route path="/business-inventory/transaction/:transactionId" element={<TransactionDetail />} />
               <Route path="/business-inventory/transaction/:projectId/:transactionId/edit" element={<EditBusinessInventoryTransaction />} />
             </Routes>
             </Suspense>

@@ -695,6 +695,26 @@ export const transactionService = {
     return null
   },
 
+  // Get transaction by ID across all projects (for business inventory)
+  async getTransactionById(transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
+    // Get all projects first
+    const projects = await projectService.getProjects()
+
+    // Search through each project's transactions
+    for (const project of projects) {
+      try {
+        const transaction = await this.getTransaction(project.id, transactionId)
+        if (transaction) {
+          return { transaction, projectId: project.id }
+        }
+      } catch (error) {
+        console.error(`Error searching for transaction ${transactionId} in project ${project.id}:`, error)
+      }
+    }
+
+    return { transaction: null, projectId: null }
+  },
+
   // Create new transaction
   async createTransaction(
     projectId: string,

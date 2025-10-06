@@ -30,7 +30,7 @@ const removeUnwantedIcons = () => {
 
 
 export default function TransactionDetail() {
-  const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
+  const { id: projectId, transactionId } = useParams<{ id?: string; transactionId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
@@ -65,21 +65,63 @@ export default function TransactionDetail() {
       return '/business-inventory' // Fallback to main inventory
     }
 
+    // If we're viewing a business inventory transaction (no projectId in URL), go back to business inventory
+    if (!projectId && transaction) {
+      return '/business-inventory?tab=transactions'
+    }
+
     return `/project/${projectId}?tab=transactions` // Default to project transactions tab
-  }, [fromBusinessInventoryItem, currentSearchParams, projectId])
+  }, [fromBusinessInventoryItem, currentSearchParams, projectId, transaction])
 
 
   useEffect(() => {
     const loadTransaction = async () => {
-      if (!projectId || !transactionId) return
+      if (!transactionId) return
 
       try {
-        // Fetch transaction, project data, and transaction items
-        const [transactionData, projectData, itemIds] = await Promise.all([
-          transactionService.getTransaction(projectId, transactionId),
-          projectService.getProject(projectId),
-          itemService.getTransactionItems(projectId, transactionId)
-        ])
+        let actualProjectId = projectId
+        let transactionData: any
+        let projectData: Project | null = null
+
+        if (!actualProjectId) {
+          // For business inventory transactions, we need to find the transaction across all projects
+          console.log('TransactionDetail - No projectId provided, searching across all projects for business inventory transaction')
+          const result = await transactionService.getTransactionById(transactionId)
+
+          if (!result.transaction || !result.projectId) {
+            console.error('TransactionDetail - Transaction not found in any project')
+            setIsLoading(false)
+            setIsLoadingItems(false)
+            return
+          }
+
+          transactionData = result.transaction
+          actualProjectId = result.projectId
+
+          // Get project data for the found project
+          projectData = await projectService.getProject(actualProjectId)
+        } else {
+          // Fetch transaction, project data, and transaction items for regular project transactions
+          const [fetchedTransactionData, fetchedProjectData, itemIds] = await Promise.all([
+            transactionService.getTransaction(actualProjectId, transactionId),
+            projectService.getProject(actualProjectId),
+            itemService.getTransactionItems(actualProjectId, transactionId)
+          ])
+
+          transactionData = fetchedTransactionData
+          projectData = fetchedProjectData
+
+          // Fetch the actual item details for regular project transactions
+          if (itemIds.length > 0 && actualProjectId) {
+            const itemsPromises = itemIds.map(itemId => itemService.getItem(actualProjectId!, itemId))
+            const items = await Promise.all(itemsPromises)
+            const validItems = items.filter(item => item !== null) as Item[]
+            console.log('TransactionDetail - fetched items:', validItems.length)
+            setTransactionItems(validItems)
+          } else {
+            setTransactionItems([])
+          }
+        }
 
         const convertedTransaction: Transaction = {
           ...transactionData,
@@ -88,19 +130,23 @@ export default function TransactionDetail() {
 
         console.log('TransactionDetail - loaded transactionData:', transactionData)
         console.log('TransactionDetail - convertedTransaction:', convertedTransaction)
-        console.log('TransactionDetail - item IDs:', itemIds)
+        console.log('TransactionDetail - actualProjectId:', actualProjectId)
         setTransaction(convertedTransaction)
         setProject(projectData)
 
-        // Fetch the actual item details
-        if (itemIds.length > 0) {
-          const itemsPromises = itemIds.map(itemId => itemService.getItem(projectId, itemId))
-          const items = await Promise.all(itemsPromises)
-          const validItems = items.filter(item => item !== null) as Item[]
-          console.log('TransactionDetail - fetched items:', validItems.length)
-          setTransactionItems(validItems)
-        } else {
-          setTransactionItems([])
+        // Fetch transaction items for business inventory transactions
+        if (!projectId && actualProjectId) {
+          // For business inventory transactions, fetch items after we have the project ID
+          const itemIds = await itemService.getTransactionItems(actualProjectId!, transactionId)
+          if (itemIds.length > 0) {
+            const itemsPromises = itemIds.map(itemId => itemService.getItem(actualProjectId!, itemId))
+            const items = await Promise.all(itemsPromises)
+            const validItems = items.filter(item => item !== null) as Item[]
+            console.log('TransactionDetail - fetched items for business inventory transaction:', validItems.length)
+            setTransactionItems(validItems)
+          } else {
+            setTransactionItems([])
+          }
         }
 
       } catch (error) {
@@ -117,11 +163,16 @@ export default function TransactionDetail() {
 
   // Set up real-time subscription for transaction updates
   useEffect(() => {
-    if (!projectId || !transactionId) return
+    if (!transactionId || !transaction) return
+
+    // Use the actual project ID (whether from URL params or discovered from transaction lookup)
+    const actualProjectId = projectId || transaction.project_id
+
+    if (!actualProjectId) return
 
     // Temporarily disable real-time subscription to debug
     // const unsubscribe = transactionService.subscribeToTransaction(
-    //   projectId,
+    //   actualProjectId,
     //   transactionId,
     //   (updatedTransaction) => {
     //     if (updatedTransaction) {
@@ -145,7 +196,7 @@ export default function TransactionDetail() {
     // return () => {
     //   unsubscribe()
     // }
-  }, [projectId, transactionId])
+  }, [projectId, transactionId, transaction])
 
 
   // Clean up any unwanted icons from transaction type badges

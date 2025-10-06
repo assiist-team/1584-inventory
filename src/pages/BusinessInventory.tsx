@@ -791,8 +791,9 @@ export default function BusinessInventory() {
                   <ul className="divide-y divide-gray-200">
                     {filteredTransactions.map((transaction) => (
                       <li key={transaction.transaction_id} className="relative">
-                        <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
-                          <div className="px-4 py-4 sm:px-6">
+                        <Link to={`/business-inventory/transaction/${transaction.transaction_id}`}>
+                          <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
+                            <div className="px-4 py-4 sm:px-6">
                             {/* Top row: Header with source and status */}
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center">
@@ -844,8 +845,9 @@ export default function BusinessInventory() {
 
                             </div>
 
+                            </div>
                           </div>
-                        </div>
+                        </Link>
                       </li>
                     ))}
                   </ul>
