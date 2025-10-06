@@ -1,4 +1,4 @@
-import { ArrowLeft, Edit, Trash2, Calendar, CreditCard, FileText, Image as ImageIcon, Package } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-react'
 import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
@@ -487,8 +487,7 @@ export default function TransactionDetail() {
 
 
         <div className="px-6 py-4 border-t border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            <CreditCard className="h-5 w-5 mr-2" />
+          <h3 className="text-lg font-medium text-gray-900 mb-4">
             Transaction Details
           </h3>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
@@ -540,28 +539,19 @@ export default function TransactionDetail() {
             </div>
 
             <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
-                <CreditCard className="h-4 w-4 mr-1" />
-                Amount
-              </dt>
+              <dt className="text-sm font-medium text-gray-500">Amount</dt>
               <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.amount)}</dd>
             </div>
 
             <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
-                <Calendar className="h-4 w-4 mr-1" />
-                Transaction Date
-              </dt>
+              <dt className="text-sm font-medium text-gray-500">Transaction Date</dt>
               <dd className="mt-1 text-sm text-gray-900">
                 {transaction.transaction_date ? formatDate(transaction.transaction_date) : 'No date'}
               </dd>
             </div>
 
             <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center">
-                <CreditCard className="h-4 w-4 mr-1" />
-                Payment Method
-              </dt>
+              <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
               <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
             </div>
 
@@ -596,10 +586,7 @@ export default function TransactionDetail() {
 
             {transaction.notes && (
               <div className="sm:col-span-2">
-                <dt className="text-sm font-medium text-gray-500 flex items-center">
-                  <FileText className="h-4 w-4 mr-1" />
-                  Notes
-                </dt>
+                <dt className="text-sm font-medium text-gray-500">Notes</dt>
                 <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{transaction.notes}</dd>
               </div>
             )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ShoppingBag, Tag, DollarSign, CreditCard, ImagePlus, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
@@ -538,10 +538,7 @@ export default function ItemDetail() {
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
               {item.transaction_id && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <ShoppingBag className="h-4 w-4 mr-1" />
-                    Transaction
-                  </dt>
+                  <dt className="text-sm font-medium text-gray-500">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
                     <Link
                       to={`/project/${projectId}/transaction/${item.transaction_id}`}
@@ -555,30 +552,21 @@ export default function ItemDetail() {
 
               {item.source && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <ShoppingBag className="h-4 w-4 mr-1" />
-                    Source
-                  </dt>
-                  <dd className="mt-1 text-sm text-gray-900">{item.source}</dd>
+                  <dt className="text-sm font-medium text-gray-500">Source</dt>
+                  <dd className="mt-1 text-sm text-gray-900 capitalize">{item.source}</dd>
                 </div>
               )}
 
               {item.sku && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <Tag className="h-4 w-4 mr-1" />
-                    SKU
-                  </dt>
+                  <dt className="text-sm font-medium text-gray-500">SKU</dt>
                   <dd className="mt-1 text-sm text-gray-900">{item.sku}</dd>
                 </div>
               )}
 
               {item.purchase_price && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <DollarSign className="h-4 w-4 mr-1" />
-                    Price
-                  </dt>
+                  <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
                   <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
                 </div>
@@ -586,10 +574,7 @@ export default function ItemDetail() {
 
               {item.market_value && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <DollarSign className="h-4 w-4 mr-1" />
-                    Market Value
-                  </dt>
+                  <dt className="text-sm font-medium text-gray-500">Market Value</dt>
                   <p className="text-xs text-gray-500 mt-1">The fair market value of the item</p>
                   <dd className="mt-1 text-sm text-gray-900 font-medium">${item.market_value}</dd>
                 </div>
@@ -597,20 +582,14 @@ export default function ItemDetail() {
 
               {item.payment_method && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <CreditCard className="h-4 w-4 mr-1" />
-                    Payment Method
-                  </dt>
+                  <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
                   <dd className="mt-1 text-sm text-gray-900">{item.payment_method}</dd>
                 </div>
               )}
 
               {item.notes && item.notes !== 'No notes' && (
                 <div className="sm:col-span-2">
-                  <dt className="text-sm font-medium text-gray-500 flex items-center">
-                    <FileText className="h-4 w-4 mr-1" />
-                    Notes
-                  </dt>
+                  <dt className="text-sm font-medium text-gray-500">Notes</dt>
                   <dd className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{item.notes}</dd>
                 </div>
               )}
