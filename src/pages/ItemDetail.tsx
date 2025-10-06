@@ -579,6 +579,7 @@ export default function ItemDetail() {
                     <DollarSign className="h-4 w-4 mr-1" />
                     Price
                   </dt>
+                  <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
                   <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
                 </div>
               )}
@@ -589,7 +590,8 @@ export default function ItemDetail() {
                     <DollarSign className="h-4 w-4 mr-1" />
                     Market Value
                   </dt>
-                  <dd className="mt-1 text-sm text-green-600 font-medium">${item.market_value}</dd>
+                  <p className="text-xs text-gray-500 mt-1">The fair market value of the item</p>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.market_value}</dd>
                 </div>
               )}
 

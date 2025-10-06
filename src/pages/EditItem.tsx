@@ -42,7 +42,6 @@ export default function EditItem() {
     source: '',
     sku: '',
     purchase_price: '',
-    resale_price: '',
     market_value: '',
     payment_method: '',
     space: '',
@@ -84,7 +83,6 @@ export default function EditItem() {
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
               purchase_price: String(fetchedItem.purchase_price || ''),
-              resale_price: String(fetchedItem.resale_price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
               space: String(fetchedItem.space || ''),
@@ -96,7 +94,6 @@ export default function EditItem() {
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
               purchase_price: String(fetchedItem.purchase_price || ''),
-              resale_price: String(fetchedItem.resale_price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
               notes: String(fetchedItem.notes || '')
@@ -418,32 +415,6 @@ export default function EditItem() {
                 </div>
                 {errors.purchase_price && (
                   <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
-                )}
-              </div>
-
-              {/* Resale Price */}
-              <div>
-                <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
-                  Resale Price
-                </label>
-                <p className="text-xs text-gray-500 mt-1 mb-2">What the client is paying for the item</p>
-                <div className="mt-1 relative rounded-md shadow-sm">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span className="text-gray-500 sm:text-sm">$</span>
-                  </div>
-                  <input
-                    type="text"
-                    id="resale_price"
-                    value={formData.resale_price}
-                    onChange={(e) => handleInputChange('resale_price', e.target.value)}
-                    placeholder="0.00"
-                    className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                      errors.resale_price ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                  />
-                </div>
-                {errors.resale_price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.resale_price}</p>
                 )}
               </div>
 
