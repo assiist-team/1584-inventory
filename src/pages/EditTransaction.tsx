@@ -128,7 +128,7 @@ export default function EditTransaction() {
                 return {
                   id: itemId,
                   description: item?.description || '',
-                  purchase_price: item?.purchase_price?.toString() || '',
+                  price: item?.purchase_price?.toString() || '',
                   sku: item?.sku || '',
                   market_value: item?.market_value?.toString() || '',
                   notes: item?.notes || '',
@@ -205,7 +205,7 @@ export default function EditTransaction() {
         console.log('All items before processing:', items.map(item => ({
           id: item.id,
           description: item.description,
-          purchase_price: item.purchase_price,
+          price: item.purchase_price,
           sku: item.sku,
           isTempId: item.id.startsWith('temp-'),
           idFormat: item.id.startsWith('I-') ? 'database' : item.id.startsWith('temp-') ? 'temp' : 'unknown'

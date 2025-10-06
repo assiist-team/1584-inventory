@@ -28,6 +28,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       description: '',
       sku: '',
       purchase_price: '',
+      resale_price: '',
       market_value: '',
       space: '',
       notes: ''
@@ -51,7 +52,8 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
         id: item.id,
         description: item.description,
         sku: item.sku || '',
-        purchase_price: item.purchase_price,
+        purchase_price: item.purchase_price || '',
+        resale_price: item.resale_price || '',
         market_value: item.market_value || '',
         space: item.space || '',
         notes: item.notes || ''
@@ -135,7 +137,10 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
     }
 
     if (formData.purchase_price && (isNaN(Number(formData.purchase_price)) || Number(formData.purchase_price) <= 0)) {
-      newErrors.purchase_price = 'Price must be a positive number'
+      newErrors.purchase_price = 'Purchase price must be a positive number'
+    }
+    if (formData.resale_price && (isNaN(Number(formData.resale_price)) || Number(formData.resale_price) <= 0)) {
+      newErrors.resale_price = 'Resale price must be a positive number'
     }
 
     setErrors(newErrors)
@@ -161,11 +166,17 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
   }
 
   const handleInputChange = (field: keyof TransactionItemFormData, value: string) => {
+    // For price-related fields, ensure they are valid numbers or empty
+    if (field === 'purchase_price' || field === 'resale_price') {
+      if (value !== '' && (isNaN(Number(value)) || Number(value) < 0)) {
+        return // Don't update if invalid
+      }
+    }
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Clear error when user starts typing
     if (errors[field as keyof TransactionItemValidationErrors]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }))
+      setErrors(prev => ({ ...prev, [field]: undefined } as TransactionItemValidationErrors))
     }
   }
 
@@ -253,19 +264,20 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
           )}
         </div>
 
-        {/* Price */}
+        {/* Purchase Price */}
         <div>
           <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
-            Price
+            Purchase Price
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <span className="text-gray-500 sm:text-sm">$</span>
             </div>
             <input
-              type="text"
+              type="number"
+              step="0.01"
               id="purchase_price"
-              value={formData.purchase_price}
+              value={formData.purchase_price || ''}
               onChange={(e) => handleInputChange('purchase_price', e.target.value)}
               placeholder="0.00"
               className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
@@ -275,6 +287,32 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
           </div>
           {errors.purchase_price && (
             <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
+          )}
+        </div>
+
+        {/* Resale Price */}
+        <div>
+          <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
+            Resale Price (1584 Design Price)
+          </label>
+          <div className="mt-1 relative rounded-md shadow-sm">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <span className="text-gray-500 sm:text-sm">$</span>
+            </div>
+            <input
+              type="number"
+              step="0.01"
+              id="resale_price"
+              value={formData.resale_price || ''}
+              onChange={(e) => handleInputChange('resale_price', e.target.value)}
+              placeholder="0.00"
+              className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                errors.resale_price ? 'border-red-300' : 'border-gray-300'
+              }`}
+            />
+          </div>
+          {errors.resale_price && (
+            <p className="mt-1 text-sm text-red-600">{errors.resale_price}</p>
           )}
         </div>
 

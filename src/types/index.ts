@@ -61,6 +61,7 @@ export interface Item {
   description: string;
   source: string;
   sku: string;
+  price?: string;               // What we paid for the item (used in forms)
   purchase_price?: string;      // What we paid for the item
   resale_price?: string;        // What we sell it for (1584 design resale price)
   market_value?: string;        // Current market value - direct mapping
@@ -220,8 +221,9 @@ export interface TransactionItemFormData {
   id: string; // temporary id for form management
   description: string;
   sku?: string;
-  purchase_price?: string;
-  resale_price?: string;
+  price?: string; // What we paid for the item (used in forms)
+  purchase_price?: string; // What we paid for the item
+  resale_price?: string; // What we sell it for (1584 design resale price)
   market_value?: string;
   space?: string;
   notes?: string;
@@ -251,7 +253,9 @@ export interface TransactionValidationErrors {
 export interface TransactionItemValidationErrors {
   description?: string;
   sku?: string;
+  price?: string; // Used in form validation
   purchase_price?: string;
+  resale_price?: string;
   market_value?: string;
   space?: string;
   notes?: string;

@@ -92,7 +92,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                     Item {index + 1}
                   </span>
                   <span className="text-sm text-gray-500">
-                    {formatCurrency(item.purchase_price || '0')}
+                    {formatCurrency(item.purchase_price || '')}
                   </span>
                 </div>
 
