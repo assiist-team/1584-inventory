@@ -1,6 +1,6 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { useState, FormEvent, useEffect } from 'react'
+import { useState, FormEvent, useEffect, useRef } from 'react'
 import { itemService, transactionService } from '@/services/inventoryService'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { Transaction } from '@/types'
@@ -13,6 +13,13 @@ export default function EditItem() {
   const { id: projectId, itemId } = useParams<{ id: string; itemId: string }>()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+
+  // Get returnTo parameter for back navigation
+  const getBackDestination = () => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const returnTo = searchParams.get('returnTo')
+    return returnTo ? decodeURIComponent(returnTo) : `/project/${projectId}?tab=inventory`
+  }
 
   // Check if user has permission to edit items (DESIGNER role or higher)
   if (!hasRole(UserRole.DESIGNER)) {
@@ -27,7 +34,7 @@ export default function EditItem() {
             You don't have permission to edit items. Please contact an administrator if you need access.
           </p>
           <Link
-            to={`/project/${projectId}`}
+            to={getBackDestination()}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
@@ -42,6 +49,7 @@ export default function EditItem() {
     source: '',
     sku: '',
     purchase_price: '',
+    project_price: '',
     market_value: '',
     payment_method: '',
     space: '',
@@ -56,6 +64,9 @@ export default function EditItem() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
 
+  // Track if user has manually edited project_price
+  const projectPriceEditedRef = useRef(false)
+
   console.log('EditItem - URL params:', { projectId, itemId })
 
   // Initialize custom states based on form data
@@ -67,6 +78,13 @@ export default function EditItem() {
       setIsCustomSource(false)
     }
   }, [formData.source])
+
+  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
+  useEffect(() => {
+    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
+      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
+    }
+  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
 
 
   // Load item data
@@ -83,6 +101,7 @@ export default function EditItem() {
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
               purchase_price: String(fetchedItem.purchase_price || ''),
+              project_price: String(fetchedItem.project_price || ''),
               market_value: String(fetchedItem.market_value || ''),
               payment_method: String(fetchedItem.payment_method || ''),
               space: String(fetchedItem.space || ''),
@@ -156,7 +175,15 @@ export default function EditItem() {
       }
 
       await itemService.updateItem(projectId, itemId, itemData)
-      navigate(`/project/${projectId}?tab=inventory`)
+
+      // Use returnTo if available, otherwise go to inventory tab
+      const searchParams = new URLSearchParams(window.location.search)
+      const returnTo = searchParams.get('returnTo')
+      if (returnTo) {
+        navigate(returnTo)
+      } else {
+        navigate(`/project/${projectId}?tab=inventory`)
+      }
     } catch (error) {
       console.error('Error updating item:', error)
       setErrors({ submit: 'Failed to update item. Please try again.' })
@@ -172,6 +199,11 @@ export default function EditItem() {
       console.log('New form data:', newData)
       return newData
     })
+
+    // Mark project_price as manually edited if user is editing it
+    if (field === 'project_price') {
+      projectPriceEditedRef.current = true
+    }
 
     // Clear error when user starts typing
     if (errors[field]) {
@@ -196,7 +228,7 @@ export default function EditItem() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Link
-              to={`/project/${projectId}?tab=inventory`}
+              to={getBackDestination()}
               className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />
@@ -227,7 +259,7 @@ export default function EditItem() {
         {/* Back button row */}
         <div className="flex items-center justify-between">
           <Link
-            to={`/project/${projectId}?tab=inventory`}
+            to={getBackDestination()}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -418,6 +450,32 @@ export default function EditItem() {
                 )}
               </div>
 
+              {/* Project Price */}
+              <div>
+                <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+                  Project Price
+                </label>
+                <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-500 sm:text-sm">$</span>
+                  </div>
+                  <input
+                    type="text"
+                    id="project_price"
+                    value={formData.project_price}
+                    onChange={(e) => handleInputChange('project_price', e.target.value)}
+                    placeholder="0.00"
+                    className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                      errors.project_price ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                  />
+                </div>
+                {errors.project_price && (
+                  <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
+                )}
+              </div>
+
               {/* Market Value */}
               <div>
                 <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
@@ -486,7 +544,7 @@ export default function EditItem() {
               {/* Form Actions - Normal on desktop, hidden on mobile (replaced by sticky bar) */}
               <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
                 <Link
-                  to={`/project/${projectId}?tab=inventory`}
+                  to={getBackDestination()}
                   className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                 >
                   <X className="h-4 w-4 mr-2" />
@@ -509,7 +567,7 @@ export default function EditItem() {
         <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
           <div className="flex space-x-3">
             <Link
-              to={`/project/${projectId}?tab=inventory`}
+              to={getBackDestination()}
               className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <X className="h-4 w-4 mr-2" />

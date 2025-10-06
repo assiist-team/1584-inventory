@@ -55,7 +55,7 @@ export interface Item {
   // Note: This interface defines the FORM field names used in AddItem/EditItem forms
   // Field mapping to Firebase happens in the service layer:
   // - purchase_price (form) ↔ purchase_price (Firebase)
-  // - resale_price (form) ↔ resale_price (Firebase)
+  // - project_price (form) ↔ project_price (Firebase) - formerly resale_price
   // - market_value (form) ↔ market_value (Firebase) - direct mapping
   item_id: string;
   description: string;
@@ -63,7 +63,7 @@ export interface Item {
   sku: string;
   price?: string;               // What we paid for the item (used in forms)
   purchase_price?: string;      // What we paid for the item
-  resale_price?: string;        // What we sell it for (1584 design resale price)
+  project_price?: string;       // What we sell it for (1584 design project price) - formerly resale_price
   market_value?: string;        // Current market value - direct mapping
   payment_method: string;
   disposition?: string;
@@ -223,7 +223,7 @@ export interface TransactionItemFormData {
   sku?: string;
   price?: string; // What we paid for the item (used in forms)
   purchase_price?: string; // What we paid for the item
-  resale_price?: string; // What we sell it for (1584 design resale price)
+  project_price?: string; // What we sell it for (1584 design project price) - formerly resale_price
   market_value?: string;
   space?: string;
   notes?: string;
@@ -255,7 +255,7 @@ export interface TransactionItemValidationErrors {
   sku?: string;
   price?: string; // Used in form validation
   purchase_price?: string;
-  resale_price?: string;
+  project_price?: string; // What we sell it for (1584 design project price) - formerly resale_price
   market_value?: string;
   space?: string;
   notes?: string;
@@ -277,7 +277,7 @@ export interface BusinessInventoryItem {
   source: string;
   sku: string;
   purchase_price?: string;      // What we paid for the item
-  resale_price?: string;        // What we sell it for (1584 design resale price)
+  project_price?: string;       // What we sell it for (1584 design project price) - formerly resale_price
   market_value?: string;        // Current market value
   payment_method: string;
   disposition?: string;

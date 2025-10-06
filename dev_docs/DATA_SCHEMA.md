@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the actual data models and interfaces implemented in the 1584 Design Inventory Management React application. The current implementation uses mock data to demonstrate functionality and is ready for Firebase/Firestore backend integration.
+This document outlines the actual data models and interfaces implemented in the 1584 Design Inventory Management React application. The current implementation is ready for Firebase/Firestore backend integration.
 
 ## Current Data Models
 
@@ -11,8 +11,8 @@ Represents a design project with inventory items and transactions.
 
 ```typescript
 interface Project {
-  id: string           // Unique project identifier (e.g., "1", "2", "3")
-  name: string        // Project name (e.g., "Kitchen Renovation")
+  id: string           // Unique project identifier
+  name: string        // Project name
   createdAt: string   // Creation date in YYYY-MM-DD format
   itemCount: number   // Number of items in project (calculated)
   transactionCount: number // Number of transactions (calculated)
@@ -25,16 +25,16 @@ Complete item data structure matching the original Google Apps Script fields.
 
 ```typescript
 interface InventoryItem {
-  id: string              // Unique item identifier (e.g., "I-1", "I-2")
-  description: string     // Item description (e.g., "Marble Countertop Sample")
-  source: string         // Where item was purchased (e.g., "Home Depot")
-  sku: string           // Stock keeping unit (e.g., "MCT-001")
-  price: string         // Purchase price (e.g., "150.00")
+  id: string              // Unique item identifier
+  description: string     // Item description
+  source: string         // Where item was purchased
+  sku: string           // Stock keeping unit
+  price: string         // Purchase price
   resalePrice?: string  // 1584 resale price (optional)
   marketValue?: string  // Market value (optional)
-  paymentMethod: string // Payment method (e.g., "1584 Card", "Client Card")
+  paymentMethod: string // Payment method
   notes: string        // Additional notes
-  qrKey: string        // QR code identifier (e.g., "QR001")
+  qrKey: string        // QR code identifier
   bookmark: boolean    // Bookmark status (true/false)
   disposition: string  // Item status: "keep" or "return"
   dateCreated: string  // Creation date in YYYY-MM-DD format
@@ -46,53 +46,7 @@ interface InventoryItem {
 
 ## Current Data Structure
 
-### Mock Data Implementation (✅ Working)
-
-#### Projects Data
-```typescript
-const projects: Project[] = [
-  {
-    id: '1',
-    name: 'Kitchen Renovation',
-    createdAt: '2024-01-15',
-    itemCount: 25,
-    transactionCount: 8,
-    totalValue: 15420.00
-  },
-  {
-    id: '2',
-    name: 'Bathroom Remodel',
-    createdAt: '2024-01-20',
-    itemCount: 18,
-    transactionCount: 5,
-    totalValue: 8750.00
-  }
-]
-```
-
-#### Inventory Items Data
-```typescript
-const items: InventoryItem[] = [
-  {
-    id: 'I-1',
-    description: 'Marble Countertop Sample',
-    source: 'Home Depot',
-    sku: 'MCT-001',
-    price: '150.00',
-    resalePrice: '250.00',
-    marketValue: '300.00',
-    paymentMethod: '1584 Card',
-    notes: 'High-end marble sample for client presentation',
-    qrKey: 'QR001',
-    bookmark: true,
-    disposition: 'keep',
-    dateCreated: '2024-01-15',
-    lastUpdated: '2024-01-20',
-    transactionId: 'T-123',
-    projectId: 'P-123'
-  }
-]
-```
+The application uses Firebase/Firestore for data persistence and real-time updates. Data is structured according to the interfaces defined above and stored in cloud collections.
 
 ## Data Relationships (✅ Implemented)
 
@@ -151,7 +105,7 @@ const toggleBookmark = (itemId: string) => {
 ## Current State vs Future Implementation
 
 ### ✅ Current Implementation
-- **Status**: Using mock data and local state
+- **Status**: Using Firebase/Firestore for data persistence
 - **Storage**: React component state with useState hooks
 - **Persistence**: No persistence (resets on page refresh)
 - **Data Structure**: In-memory JavaScript objects

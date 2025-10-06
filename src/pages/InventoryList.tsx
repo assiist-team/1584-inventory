@@ -14,7 +14,7 @@ interface InventoryListItem {
   source: string
   sku: string
   purchase_price?: string
-  resale_price?: string
+  project_price?: string
   market_value?: string
   payment_method: string
   notes?: string
@@ -513,7 +513,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
                       <Link
-                        to={`/project/${projectId}/edit-item/${item.item_id}`}
+                        to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Edit item"
@@ -629,20 +629,20 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
                         {/* Bottom row: Content - now tappable */}
                         <div className="space-y-2">
-                          {/* Purchase Price, Source, SKU on same row */}
+                          {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                            {item.purchase_price && (
-                              <span className="font-medium text-gray-700">${item.purchase_price}</span>
+                            {(item.project_price || item.purchase_price) && (
+                              <span className="font-medium text-gray-700">${item.project_price || item.purchase_price}</span>
                             )}
                             {item.source && (
                               <>
-                                {(item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                                {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.source}</span>
                               </>
                             )}
                             {item.sku && (
                               <>
-                                {(item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                                {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.sku}</span>
                               </>
                             )}

@@ -652,20 +652,20 @@ export default function BusinessInventory() {
 
                               {/* Bottom row: Content - now tappable */}
                               <div className="space-y-2">
-                                {/* Price, Source, SKU on same row */}
+                                {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                                  {item.purchase_price && (
-                                    <span className="font-medium text-gray-700">${item.purchase_price}</span>
+                                  {(item.project_price || item.purchase_price) && (
+                                    <span className="font-medium text-gray-700">${item.project_price || item.purchase_price}</span>
                                   )}
                                   {item.source && (
                                     <>
-                                      {(item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                                      {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.source}</span>
                                     </>
                                   )}
                                   {item.sku && (
                                     <>
-                                      {(item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                                      {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.sku}</span>
                                     </>
                                   )}

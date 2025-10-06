@@ -92,7 +92,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                     Item {index + 1}
                   </span>
                   <span className="text-sm text-gray-500">
-                    {formatCurrency(item.purchase_price || '')}
+                    {formatCurrency(item.project_price || item.purchase_price || '')}
                   </span>
                 </div>
 
@@ -167,7 +167,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
             </div>
             <div className="text-lg font-semibold text-gray-900">
               Total: {formatCurrency(
-                items.reduce((sum, item) => sum + (parseFloat(item.purchase_price || '0') || 0), 0).toString()
+                items.reduce((sum, item) => sum + (parseFloat(item.project_price || item.purchase_price || '0') || 0), 0).toString()
               )}
             </div>
           </div>

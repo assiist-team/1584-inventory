@@ -422,11 +422,11 @@ export default function BusinessInventoryItemDetail() {
                 </div>
               )}
 
-              {item.resale_price && (
+              {item.project_price && (
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Resale Price</dt>
-                  <p className="text-xs text-gray-500 mt-1">What the client is paying for the item</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.resale_price}</dd>
+                  <dt className="text-sm font-medium text-gray-500">Project Price</dt>
+                  <p className="text-xs text-gray-500 mt-1">What the client is charged</p>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.project_price}</dd>
                 </div>
               )}
 

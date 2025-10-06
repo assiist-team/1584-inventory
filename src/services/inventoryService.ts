@@ -203,7 +203,7 @@ export const itemService = {
         source: data.source,
         sku: data.sku,
         purchase_price: data.purchase_price,
-        resale_price: data.resale_price,
+        project_price: data.project_price,
         market_value: data.market_value, // Direct mapping
         payment_method: data.payment_method,
         disposition: data.disposition,
@@ -239,7 +239,7 @@ export const itemService = {
       source: itemData.source,
       sku: itemData.sku,
       purchase_price: itemData.purchase_price,
-      resale_price: itemData.resale_price,
+      project_price: itemData.project_price,
       market_value: itemData.market_value, // Direct mapping
       payment_method: itemData.payment_method,
       disposition: itemData.disposition || 'keep', // Default to 'keep' if not provided
@@ -276,7 +276,7 @@ export const itemService = {
     }
 
     if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-    if (updates.resale_price !== undefined) firebaseUpdates.resale_price = updates.resale_price
+    if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
     if (updates.market_value !== undefined) {
       firebaseUpdates.market_value = updates.market_value // Direct mapping
     }
@@ -418,7 +418,7 @@ export const itemService = {
           source: data.source,
           sku: data.sku,
           purchase_price: data.purchase_price,
-          resale_price: data.resale_price,
+          project_price: data.project_price,
           market_value: data.market_value, // Direct mapping
           payment_method: data.payment_method,
           disposition: data.disposition,
@@ -474,7 +474,7 @@ export const itemService = {
         source: data.source,
         sku: data.sku,
         purchase_price: data.purchase_price,
-        resale_price: data.resale_price,
+        project_price: data.project_price,
         market_value: data.market_value, // Direct mapping
         payment_method: data.payment_method,
         disposition: data.disposition,
@@ -503,7 +503,7 @@ export const itemService = {
       }
 
       if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-      if (updates.resale_price !== undefined) firebaseUpdates.resale_price = updates.resale_price
+      if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
       if (updates.market_value !== undefined) {
         firebaseUpdates.market_value = updates.market_value // Direct mapping
       }
@@ -542,7 +542,7 @@ export const itemService = {
       source: originalItem.source,
       sku: originalItem.sku || '',
       purchase_price: originalItem.purchase_price || '',
-      resale_price: originalItem.resale_price || '',
+      project_price: originalItem.project_price || '',
       market_value: originalItem.market_value || '',
       payment_method: originalItem.payment_method,
       disposition: 'keep', // Default disposition for duplicates
@@ -605,7 +605,7 @@ export const itemService = {
         source: transactionSource, // Use transaction source for all items
         sku: itemData.sku || '',
         purchase_price: itemData.purchase_price,
-        resale_price: itemData.resale_price,
+        project_price: itemData.project_price,
         market_value: itemData.market_value || '',
         payment_method: 'Client Card', // Default payment method
         disposition: 'keep',
@@ -668,7 +668,7 @@ export const itemService = {
       source: transactionSource,
       sku: itemData.sku || '',
       purchase_price: itemData.purchase_price,
-      resale_price: itemData.resale_price,
+      project_price: itemData.project_price,
       market_value: itemData.market_value || '',
       payment_method: 'Client Card', // Default payment method
       disposition: 'keep',
@@ -1041,7 +1041,7 @@ export const businessInventoryService = {
       source: originalItem.source,
       sku: originalItem.sku || '',
       purchase_price: originalItem.purchase_price || '',
-      resale_price: originalItem.resale_price || '',
+      project_price: originalItem.project_price || '',
       market_value: originalItem.market_value || '',
       payment_method: originalItem.payment_method,
       disposition: 'keep', // Default disposition for duplicates
@@ -1102,7 +1102,7 @@ export const businessInventoryService = {
     if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
     if (updates.pending_transaction_id !== undefined) firebaseUpdates.pending_transaction_id = updates.pending_transaction_id
     if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-    if (updates.resale_price !== undefined) firebaseUpdates.resale_price = updates.resale_price
+    if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
     if (updates.description !== undefined) firebaseUpdates.description = updates.description
     if (updates.source !== undefined) firebaseUpdates.source = updates.source
     if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
@@ -1284,7 +1284,7 @@ export const businessInventoryService = {
         description: businessItemData.description,
         source: businessItemData.source,
         sku: businessItemData.sku,
-        resale_price: businessItemData.resale_price, // 1584 design resale price from business inventory
+        project_price: businessItemData.project_price, // 1584 design project price from business inventory
         market_value: businessItemData.market_value || '',
         payment_method: '1584', // Default payment method for allocated items
         disposition: 'keep', // Default disposition for allocated items

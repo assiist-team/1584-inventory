@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { BusinessInventoryItem } from '@/types'
@@ -10,12 +10,16 @@ export default function EditBusinessInventoryItem() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [item, setItem] = useState<BusinessInventoryItem | null>(null)
+
+  // Track if user has manually edited project_price
+  const projectPriceEditedRef = useRef(false)
+
   const [formData, setFormData] = useState({
     description: '',
     source: '',
     sku: '',
     purchase_price: '',
-    resale_price: '',
+    project_price: '',
     market_value: '',
     disposition: 'keep',
     notes: '',
@@ -42,6 +46,13 @@ export default function EditBusinessInventoryItem() {
     }
   }, [id])
 
+  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
+  useEffect(() => {
+    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
+      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
+    }
+  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+
   const loadItem = async () => {
     if (!id) return
 
@@ -54,7 +65,7 @@ export default function EditBusinessInventoryItem() {
           source: itemData.source,
           sku: itemData.sku,
           purchase_price: itemData.purchase_price || '',
-          resale_price: itemData.resale_price || '',
+          project_price: itemData.project_price || '',
           market_value: itemData.market_value || '',
           disposition: itemData.disposition || 'keep',
           notes: itemData.notes || '',
@@ -72,6 +83,12 @@ export default function EditBusinessInventoryItem() {
 
   const handleInputChange = (field: keyof typeof formData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+
+    // Mark project_price as manually edited if user is editing it
+    if (field === 'project_price') {
+      projectPriceEditedRef.current = true
+    }
+
     // Clear error when user starts typing
     if (formErrors[field]) {
       setFormErrors(prev => ({ ...prev, [field]: '' }))
@@ -242,32 +259,32 @@ export default function EditBusinessInventoryItem() {
               )}
             </div>
 
-            {/* Resale Price */}
-            <div>
-              <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
-                Resale Price
-              </label>
-              <p className="text-xs text-gray-500 mt-1 mb-2">What the client is paying for the item</p>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">$</span>
-                </div>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="resale_price"
-                  value={formData.resale_price}
-                  onChange={(e) => handleInputChange('resale_price', e.target.value)}
-                  placeholder="0.00"
-                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    formErrors.resale_price ? 'border-red-300' : 'border-gray-300'
-                  }`}
-                />
+          {/* Project Price */}
+          <div>
+            <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+              Project Price
+            </label>
+            <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-gray-500 sm:text-sm">$</span>
               </div>
-              {formErrors.resale_price && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.resale_price}</p>
-              )}
+              <input
+                type="number"
+                step="0.01"
+                id="project_price"
+                value={formData.project_price}
+                onChange={(e) => handleInputChange('project_price', e.target.value)}
+                placeholder="0.00"
+                className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
+                  formErrors.project_price ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
             </div>
+            {formErrors.project_price && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.project_price}</p>
+            )}
+          </div>
 
             {/* Market Value */}
             <div>

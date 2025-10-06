@@ -42,49 +42,30 @@ export default function ItemDetail() {
     projectId
   })
 
-  // Check if user came from transaction detail screen
-  const fromTransaction = searchParams.get('from') === 'transaction'
-
-  // Determine back navigation destination based on navigation source
+  // Determine back navigation destination - simple logic for direct item route
   const backDestination = useMemo(() => {
     // If item is not loaded yet (null), default to inventory
     if (!item) {
       return `/project/${projectId}?tab=inventory`
     }
 
-    // If item is the sample item (error/loading state), default to inventory
-    if (item.item_id === 'I-1' && item.description === 'Marble Countertop Sample') {
-      return `/project/${projectId}?tab=inventory`
-    }
-
-    // If user came from transaction detail, go back to transaction detail
+    // Check if user came from transaction detail screen
+    const fromTransaction = searchParams.get('from') === 'transaction'
     if (fromTransaction && item.transaction_id && projectId) {
       return `/project/${projectId}/transaction/${item.transaction_id}`
     }
 
-    // For all other cases (including direct URL navigation), go back to inventory
-    // This includes: coming from inventory list, or direct navigation to item URL
-    return `/project/${projectId}?tab=inventory`
-  }, [item, projectId, fromTransaction])
+    // For direct item route, use simple back navigation
+    // Check if we have a returnTo parameter (from navigation context)
+    const returnTo = searchParams.get('returnTo')
+    if (returnTo) {
+      return returnTo
+    }
 
-  // Initialize with sample data for demo
-  const sampleItem: Item = {
-    item_id: actualItemId || 'I-1',
-    description: 'Marble Countertop Sample',
-    source: 'Home Depot',
-    sku: 'MCT-001',
-    purchase_price: '150.00',
-    market_value: '300.00',
-    payment_method: '1584 Design',
-    notes: 'High-end marble sample for client presentation',
-    qr_key: 'QR001',
-    bookmark: true,
-    disposition: 'keep',
-    transaction_id: 'T-1',
-    project_id: 'P-1',
-    date_created: '2024-01-15',
-    last_updated: '2024-01-20'
-  }
+    // Default: go back to project inventory
+    return `/project/${projectId}?tab=inventory`
+  }, [item, projectId, searchParams])
+
 
   useEffect(() => {
     const fetchItem = async () => {
@@ -100,7 +81,7 @@ export default function ItemDetail() {
               setItem(fetchedItem)
             } else {
               console.error('Item not found in project:', projectId, 'with ID:', actualItemId)
-              setItem(sampleItem)
+              setItem(null)
             }
 
             if (project) {
@@ -108,14 +89,14 @@ export default function ItemDetail() {
             }
           } else {
             console.error('No project ID found in URL parameters')
-            setItem(sampleItem)
+            setItem(null)
           }
         } catch (error) {
           console.error('Failed to fetch item:', error)
-          setItem(sampleItem)
+          setItem(null)
         }
       } else {
-        setItem(sampleItem)
+        setItem(null)
       }
     }
 
@@ -444,7 +425,7 @@ export default function ItemDetail() {
             </button>
 
             <Link
-              to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}`}
+              to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
@@ -594,6 +575,14 @@ export default function ItemDetail() {
                 </div>
               )}
 
+              {item.project_price && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Project Price</dt>
+                  <p className="text-xs text-gray-500 mt-1">What the client is charged</p>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.project_price}</dd>
+                </div>
+              )}
+
               {item.market_value && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Market Value</dt>
@@ -661,5 +650,6 @@ export default function ItemDetail() {
     </div>
   )
 }
+
 
 

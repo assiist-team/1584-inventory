@@ -281,7 +281,7 @@ const selectedItems = new Set(selectedItems) // Using Set for O(1) lookup
 ```
 
 ### Component Memoization (Not needed yet)
-- Current data sets are small (mock data)
+- Current data sets are managed through Firebase/Firestore
 - Components are lightweight
 - Performance is excellent without optimization
 

@@ -95,7 +95,7 @@ const [searchQuery, setSearchQuery] = useState('')
 1. **User Interaction**: User interacts with React components
 2. **Local State**: Components manage state with React hooks
 3. **Component Updates**: State changes trigger component re-renders
-4. **Mock Data**: Currently using mock data for demonstration
+4. **Firebase Integration**: Using Firebase/Firestore for data persistence
 
 ## Key Features Implemented
 
@@ -195,7 +195,7 @@ interface Project {
 
 ### Backend Integration
 - **Status**: Not yet connected to Firebase
-- **Current State**: Using mock data for demonstration
+- **Current State**: Using Firebase/Firestore for data persistence
 - **Next Steps**: Implement Firebase services for real data persistence
 
 ### Advanced Features

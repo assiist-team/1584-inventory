@@ -28,7 +28,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       description: '',
       sku: '',
       purchase_price: '',
-      resale_price: '',
+      project_price: '',
       market_value: '',
       space: '',
       notes: ''
@@ -53,7 +53,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
         description: item.description,
         sku: item.sku || '',
         purchase_price: item.purchase_price || '',
-        resale_price: item.resale_price || '',
+        project_price: item.project_price || '',
         market_value: item.market_value || '',
         space: item.space || '',
         notes: item.notes || ''
@@ -139,8 +139,8 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
     if (formData.purchase_price && (isNaN(Number(formData.purchase_price)) || Number(formData.purchase_price) <= 0)) {
       newErrors.purchase_price = 'Purchase price must be a positive number'
     }
-    if (formData.resale_price && (isNaN(Number(formData.resale_price)) || Number(formData.resale_price) <= 0)) {
-      newErrors.resale_price = 'Resale price must be a positive number'
+    if (formData.project_price && (isNaN(Number(formData.project_price)) || Number(formData.project_price) <= 0)) {
+      newErrors.project_price = 'Project price must be a positive number'
     }
 
     setErrors(newErrors)
@@ -167,7 +167,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
 
   const handleInputChange = (field: keyof TransactionItemFormData, value: string) => {
     // For price-related fields, ensure they are valid numbers or empty
-    if (field === 'purchase_price' || field === 'resale_price') {
+    if (field === 'purchase_price' || field === 'project_price') {
       if (value !== '' && (isNaN(Number(value)) || Number(value) < 0)) {
         return // Don't update if invalid
       }
@@ -290,10 +290,10 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
           )}
         </div>
 
-        {/* Resale Price */}
+        {/* Project Price */}
         <div>
-          <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
-            Resale Price (1584 Design Price)
+          <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+            Project Price
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -302,17 +302,17 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
             <input
               type="number"
               step="0.01"
-              id="resale_price"
-              value={formData.resale_price || ''}
-              onChange={(e) => handleInputChange('resale_price', e.target.value)}
+              id="project_price"
+              value={formData.project_price || ''}
+              onChange={(e) => handleInputChange('project_price', e.target.value)}
               placeholder="0.00"
               className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.resale_price ? 'border-red-300' : 'border-gray-300'
+                errors.project_price ? 'border-red-300' : 'border-gray-300'
               }`}
             />
           </div>
-          {errors.resale_price && (
-            <p className="mt-1 text-sm text-red-600">{errors.resale_price}</p>
+          {errors.project_price && (
+            <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
           )}
         </div>
 

@@ -1,6 +1,6 @@
 import { ArrowLeft, Save, X, Shield } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { useState, FormEvent, useEffect, useMemo } from 'react'
+import { useState, FormEvent, useEffect, useMemo, useRef } from 'react'
 import { businessInventoryService, transactionService, projectService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
@@ -57,7 +57,7 @@ export default function AddBusinessInventoryItem() {
     source: string
     sku: string
     purchase_price: string
-    resale_price: string
+    project_price: string
     market_value: string
     notes: string
     business_inventory_location: string
@@ -67,7 +67,7 @@ export default function AddBusinessInventoryItem() {
     source: '',
     sku: '',
     purchase_price: '',
-    resale_price: '',
+    project_price: '',
     market_value: '',
     notes: '',
     business_inventory_location: '',
@@ -80,6 +80,9 @@ export default function AddBusinessInventoryItem() {
   const [images, setImages] = useState<ItemImage[]>([])
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
+
+  // Track if user has manually edited project_price
+  const projectPriceEditedRef = useRef(false)
 
   // Track if transaction is selected to hide source/payment method fields
   const isTransactionSelected = Boolean(formData.selectedTransactionId)
@@ -135,6 +138,13 @@ export default function AddBusinessInventoryItem() {
     }
   }, [formData.source])
 
+  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
+  useEffect(() => {
+    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
+      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
+    }
+  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -182,6 +192,11 @@ export default function AddBusinessInventoryItem() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+
+    // Mark project_price as manually edited if user is editing it
+    if (field === 'project_price') {
+      projectPriceEditedRef.current = true
+    }
 
     // Clear error when user starts typing
     if (errors[field]) {
@@ -532,29 +547,29 @@ export default function AddBusinessInventoryItem() {
             )}
           </div>
 
-          {/* Resale Price */}
+          {/* Project Price */}
           <div>
-            <label htmlFor="resale_price" className="block text-sm font-medium text-gray-700">
-              Resale Price
+            <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+              Project Price
             </label>
-            <p className="text-xs text-gray-500 mt-1 mb-2">What the client is paying for the item</p>
+            <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
             <div className="mt-1 relative rounded-md shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <span className="text-gray-500 sm:text-sm">$</span>
               </div>
               <input
                 type="text"
-                id="resale_price"
-                value={formData.resale_price}
-                onChange={(e) => handleInputChange('resale_price', e.target.value)}
+                id="project_price"
+                value={formData.project_price}
+                onChange={(e) => handleInputChange('project_price', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.resale_price ? 'border-red-300' : 'border-gray-300'
+                  errors.project_price ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.resale_price && (
-              <p className="mt-1 text-sm text-red-600">{errors.resale_price}</p>
+            {errors.project_price && (
+              <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
             )}
           </div>
 
