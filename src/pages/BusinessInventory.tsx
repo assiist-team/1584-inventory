@@ -287,6 +287,10 @@ export default function BusinessInventory() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">1584 Inventory</h1>
+      </div>
 
       {/* Tabs */}
       <div className="bg-white shadow rounded-lg">
