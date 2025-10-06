@@ -1,4 +1,4 @@
-import { Plus, Search, Package, Receipt, Eye, Filter, QrCode, Trash2, Camera, Edit, Bookmark } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
@@ -98,7 +98,7 @@ export default function BusinessInventory() {
   }, [transactions, transactionFilterMode, transactionSearchQuery])
 
   const tabs = [
-    { id: 'inventory' as const, name: 'Inventory', icon: Package },
+    { id: 'inventory' as const, name: 'Items', icon: Package },
     { id: 'transactions' as const, name: 'Transactions', icon: Receipt }
   ]
 
@@ -724,75 +724,60 @@ export default function BusinessInventory() {
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <ul className="divide-y divide-gray-200">
                     {filteredTransactions.map((transaction) => (
-                      <li key={transaction.transaction_id} className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-2">
-                              <h3 className="text-sm font-medium text-gray-900 truncate">
-                                {transaction.source}
-                              </h3>
-                              <div className="flex items-center gap-2">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      <li key={transaction.transaction_id} className="relative">
+                        <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
+                          <div className="px-4 py-4 sm:px-6">
+                            {/* Top row: Header with source and status */}
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center">
+                                <h3 className="text-base font-medium text-gray-900">
+                                  {transaction.source}
+                                </h3>
+                              </div>
+                              <div className="flex items-center flex-wrap gap-2">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
                                   transaction.status === 'completed'
                                     ? 'bg-green-100 text-green-800'
                                     : transaction.status === 'pending'
                                     ? 'bg-yellow-100 text-yellow-800'
                                     : 'bg-red-100 text-red-800'
                                 }`}>
-                                  {transaction.status}
+                                  {transaction.status === 'completed' ? 'Completed' :
+                                   transaction.status === 'pending' ? 'Pending' :
+                                   transaction.status === 'cancelled' ? 'Cancelled' :
+                                   transaction.status}
                                 </span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-x-4 gap-y-1 text-sm text-gray-500 flex-wrap">
-                              <span className="font-medium text-gray-700">
-                                {formatCurrency(transaction.amount)}
-                              </span>
-                              <span className="hidden sm:inline">•</span>
-                              <span className="font-medium text-gray-700 capitalize">
-                                {transaction.transaction_type}
-                              </span>
-                              {transaction.project_name && (
-                                <>
-                                  <span className="hidden sm:inline">•</span>
-                                  <span className="font-medium text-gray-700">
-                                    {transaction.project_name}
-                                  </span>
-                                </>
+                            {/* Bottom row: Details */}
+                            <div className="space-y-2">
+                              {/* Details row - Price, project, date */}
+                              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                                <span className="font-medium text-gray-700">{formatCurrency(transaction.amount)}</span>
+                                {transaction.project_name && (
+                                  <>
+                                    <span className="hidden sm:inline">•</span>
+                                    <span className="font-medium text-gray-700">
+                                      {transaction.project_name}
+                                    </span>
+                                  </>
+                                )}
+                                <span className="hidden sm:inline">•</span>
+                                <span className="font-medium text-gray-700">
+                                  {formatDate(transaction.transaction_date)}
+                                </span>
+                              </div>
+
+                              {/* Notes */}
+                              {transaction.notes && (
+                                <p className="text-sm text-gray-600 line-clamp-2">
+                                  {transaction.notes}
+                                </p>
                               )}
-                              <span className="hidden sm:inline">•</span>
-                              <span className="font-medium text-gray-700">
-                                {formatDate(transaction.transaction_date)}
-                              </span>
+
                             </div>
 
-                            {transaction.notes && (
-                              <p className="mt-1 text-sm text-gray-600 line-clamp-2">
-                                {transaction.notes}
-                              </p>
-                            )}
-
-                            {transaction.reimbursement_type && (transaction.reimbursement_type as string) !== '' && (
-                              <div className="mt-2">
-                                <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                                  transaction.reimbursement_type === 'Client Owes'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {transaction.reimbursement_type === 'Client Owes' ? 'Client Owes' : 'We Owe'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 ml-4">
-                            <Link
-                              to={`/transactions/${transaction.transaction_id}`}
-                              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-                              title="View transaction details"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Link>
                           </div>
                         </div>
                       </li>

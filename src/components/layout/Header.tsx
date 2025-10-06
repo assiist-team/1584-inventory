@@ -9,65 +9,75 @@ export default function Header() {
 
   const isProjectsActive = location.pathname.startsWith('/projects') || location.pathname.startsWith('/project') || location.pathname === '/'
   const isBusinessInventoryActive = location.pathname.startsWith('/business-inventory')
+  const isSettingsActive = location.pathname.startsWith('/settings')
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 justify-between items-center flex-wrap gap-2">
-          {/* Left side */}
-          <div className="flex items-center gap-6">
-            {/* Logo/Brand */}
+        <div className="flex h-16 justify-between items-center gap-2">
+          {/* Left side - Logo only */}
+          <div className="flex items-center">
             <Link to="/" className="text-xl font-bold text-gray-900">
               1584 Design
             </Link>
-
-            {/* Navigation Tabs */}
-            <nav className="flex space-x-1">
-              <Link
-                to="/"
-                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  isProjectsActive
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <FolderOpen className="h-4 w-4 mr-2" />
-                Projects
-              </Link>
-              <Link
-                to="/business-inventory"
-                className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  isBusinessInventoryActive
-                    ? 'bg-primary-600 text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <Package className="h-4 w-4 mr-2" />
-                Inventory
-              </Link>
-            </nav>
           </div>
 
-          {/* Right side */}
+          {/* Right side - All navigation and user controls */}
           <div className="flex items-center">
             {user && (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1">
+                {/* Navigation Tabs */}
+                <nav className="flex space-x-0 sm:space-x-1">
+                  <Link
+                    to="/"
+                    className={`inline-flex items-center px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium transition-all duration-200 border-b-2 ${
+                      isProjectsActive
+                        ? 'border-primary-500 text-gray-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                    title="Projects"
+                  >
+                    <FolderOpen className="h-5 w-5 sm:h-4 sm:w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Projects</span>
+                  </Link>
+                  <Link
+                    to="/business-inventory"
+                    className={`inline-flex items-center px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium transition-all duration-200 border-b-2 ${
+                      isBusinessInventoryActive
+                        ? 'border-primary-500 text-gray-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                    title="Inventory"
+                  >
+                    <Package className="h-5 w-5 sm:h-4 sm:w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Inventory</span>
+                  </Link>
+                </nav>
+
+                {/* Settings */}
                 <Link
                   to="/settings"
-                  className="flex items-center text-sm text-gray-700 hover:text-gray-900"
+                  className={`flex items-center px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium transition-all duration-200 border-b-2 ${
+                    isSettingsActive
+                      ? 'border-primary-500 text-gray-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
                   title="Settings"
                 >
-                  <Settings className="h-4 w-4" />
+                  <Settings className="h-5 w-5 sm:h-4 sm:w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Settings</span>
                 </Link>
+
+                {/* Sign Out */}
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={signOut}
                   disabled={loading}
-                  className="flex items-center"
+                  className="flex items-center px-2 sm:px-3 ml-2 sm:ml-3"
                   title="Sign Out"
                 >
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-3 w-3 sm:h-4 sm:w-4" />
                 </Button>
               </div>
             )}

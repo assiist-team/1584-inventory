@@ -177,8 +177,8 @@ export default function ProjectDetail() {
   }
 
   const tabs = [
-    { id: 'transactions', name: 'Transactions', icon: FileText },
-    { id: 'inventory', name: 'Inventory', icon: Package }
+    { id: 'inventory', name: 'Items', icon: Package },
+    { id: 'transactions', name: 'Transactions', icon: FileText }
   ]
 
   const budgetTabs = [
