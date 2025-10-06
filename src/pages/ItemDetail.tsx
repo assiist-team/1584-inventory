@@ -211,7 +211,7 @@ export default function ItemDetail() {
       case 'returned':
         return `${baseClasses} bg-red-800 text-red-100`
       case 'inventory':
-        return `${baseClasses} bg-blue-100 text-blue-800`
+        return `${baseClasses} bg-primary-100 text-primary-600`
       default:
         return `${baseClasses} bg-gray-100 text-gray-800`
     }

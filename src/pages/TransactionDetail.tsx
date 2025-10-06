@@ -812,7 +812,7 @@ export default function TransactionDetail() {
                               : item.disposition === 'returned'
                               ? 'bg-red-800 text-red-100'
                               : item.disposition === 'inventory'
-                              ? 'bg-blue-100 text-blue-800'
+                              ? 'bg-primary-100 text-primary-600'
                               : 'bg-gray-100 text-gray-800'
                           }`}>
                             {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
