@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Edit, Trash2, ArrowLeft, Package, Plus, ImagePlus, FileText } from 'lucide-react'
+import { Edit, Trash2, ArrowLeft, Package, Plus, ImagePlus, FileText, Copy } from 'lucide-react'
 import { BusinessInventoryItem, Project } from '@/types'
 import { businessInventoryService, projectService } from '@/services/inventoryService'
 import { formatDate } from '@/utils/dateUtils'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { ImageUploadService } from '@/services/imageService'
+import { useDuplication } from '@/hooks/useDuplication'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
@@ -28,6 +29,19 @@ export default function BusinessInventoryItemDetail() {
 
   // Navigation context logic for basic back navigation
   const backDestination = '/business-inventory' // Always go back to main inventory list
+
+  // Use duplication hook for business inventory items
+  const { duplicateItem } = useDuplication({
+    items: item ? [item] : [],
+    setItems: (items) => {
+      if (typeof items === 'function') {
+        setItem(prev => items([prev!])[0] || prev)
+      } else if (items.length > 0) {
+        setItem(items[0])
+      }
+    },
+    duplicationService: (itemId: string) => businessInventoryService.duplicateBusinessInventoryItem(itemId)
+  })
 
   // Helper functions
   const formatLinkedProjectText = (projectId: string): string => {
@@ -319,6 +333,13 @@ export default function BusinessInventoryItemDetail() {
             >
               <Edit className="h-4 w-4" />
             </Link>
+            <button
+              onClick={() => item && duplicateItem(item.item_id)}
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              title="Duplicate Item"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>

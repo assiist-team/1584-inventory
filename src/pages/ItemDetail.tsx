@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown, Copy } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
@@ -8,6 +8,7 @@ import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
+import { useDuplication } from '@/hooks/useDuplication'
 
 export default function ItemDetail() {
   const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
@@ -27,6 +28,19 @@ export default function ItemDetail() {
 
   // Get project ID from URL path (for /project/:id/item/:itemId) or search parameters (for /item/:id)
   const projectId = searchParams.get('project') || id
+
+  // Use duplication hook
+  const { duplicateItem } = useDuplication({
+    items: item ? [item] : [],
+    setItems: (items) => {
+      if (typeof items === 'function') {
+        setItem(prev => items([prev!])[0] || prev)
+      } else if (items.length > 0) {
+        setItem(items[0])
+      }
+    },
+    projectId
+  })
 
   // Check if user came from transaction detail screen
   const fromTransaction = searchParams.get('from') === 'transaction'
@@ -436,6 +450,14 @@ export default function ItemDetail() {
             >
               <Edit className="h-4 w-4" />
             </Link>
+
+            <button
+              onClick={() => duplicateItem(item.item_id)}
+              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              title="Duplicate Item"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
 
             <button
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"

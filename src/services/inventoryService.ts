@@ -522,6 +522,64 @@ export const itemService = {
     await batch.commit()
   },
 
+  // Duplicate an existing item
+  async duplicateItem(projectId: string, originalItemId: string): Promise<string> {
+    // Get the original item first
+    const originalItem = await this.getItem(projectId, originalItemId)
+    if (!originalItem) {
+      throw new Error('Original item not found')
+    }
+
+    const now = new Date()
+    const newItemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    const newQrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+    // Create duplicate item with new IDs and timestamps
+    // Filter out undefined values to avoid Firebase errors
+    const duplicatedItem: any = {
+      item_id: newItemId,
+      description: originalItem.description,
+      source: originalItem.source,
+      sku: originalItem.sku || '',
+      purchase_price: originalItem.purchase_price || '',
+      resale_price: originalItem.resale_price || '',
+      market_value: originalItem.market_value || '',
+      payment_method: originalItem.payment_method,
+      disposition: 'keep', // Default disposition for duplicates
+      notes: originalItem.notes || '',
+      space: originalItem.space || '',
+      qr_key: newQrKey,
+      bookmark: false, // Default bookmark to false for duplicates
+      transaction_id: originalItem.transaction_id,
+      project_id: projectId,
+      date_created: now.toISOString(),
+      last_updated: now.toISOString(),
+      images: originalItem.images || [] // Copy images from original item
+    }
+
+    // Remove any undefined values that might still exist
+    Object.keys(duplicatedItem).forEach(key => {
+      if (duplicatedItem[key] === undefined) {
+        delete duplicatedItem[key]
+      }
+    })
+
+    // Create the duplicated item
+    const itemRef = doc(db, 'projects', projectId, 'items', newItemId)
+    await setDoc(itemRef, duplicatedItem)
+
+    // Update project metadata
+    const itemCount = await this.getItemCount(projectId)
+    await projectService.updateProject(projectId, {
+      metadata: {
+        totalItems: itemCount,
+        lastActivity: now
+      }
+    } as Partial<Project>)
+
+    return newItemId
+  },
+
   // Create multiple items linked to a transaction
   async createTransactionItems(
     projectId: string,
@@ -567,7 +625,7 @@ export const itemService = {
     await batch.commit()
 
     // Update project metadata
-    const itemCount = await itemService.getItemCount(projectId)
+    const itemCount = await this.getItemCount(projectId)
     await projectService.updateProject(projectId, {
       metadata: {
         totalItems: itemCount,
@@ -961,6 +1019,58 @@ export const businessInventoryService = {
       } as BusinessInventoryItem
     }
     return null
+  },
+
+  // Duplicate a business inventory item
+  async duplicateBusinessInventoryItem(originalItemId: string): Promise<string> {
+    // Get the original item first
+    const originalItem = await this.getBusinessInventoryItem(originalItemId)
+    if (!originalItem) {
+      throw new Error('Original business inventory item not found')
+    }
+
+    const now = new Date()
+    const newItemId = `BI-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    const newQrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+    // Create duplicate item with new IDs and timestamps
+    // Filter out undefined values to avoid Firebase errors
+    const duplicatedItem: any = {
+      item_id: newItemId,
+      description: originalItem.description,
+      source: originalItem.source,
+      sku: originalItem.sku || '',
+      purchase_price: originalItem.purchase_price || '',
+      resale_price: originalItem.resale_price || '',
+      market_value: originalItem.market_value || '',
+      payment_method: originalItem.payment_method,
+      disposition: 'keep', // Default disposition for duplicates
+      notes: originalItem.notes || '',
+      space: originalItem.space || '',
+      qr_key: newQrKey,
+      bookmark: false, // Default bookmark to false for duplicates
+      inventory_status: 'available', // Default status for duplicates
+      current_project_id: undefined, // Clear project allocation for duplicates
+      business_inventory_location: originalItem.business_inventory_location || '',
+      pending_transaction_id: undefined, // Clear pending transaction for duplicates
+      transaction_id: originalItem.transaction_id,
+      date_created: now.toISOString(),
+      last_updated: now.toISOString(),
+      images: originalItem.images || [] // Copy images from original item
+    }
+
+    // Remove any undefined values that might still exist
+    Object.keys(duplicatedItem).forEach(key => {
+      if (duplicatedItem[key] === undefined) {
+        delete duplicatedItem[key]
+      }
+    })
+
+    // Create the duplicated item
+    const itemRef = doc(db, 'business_inventory', newItemId)
+    await setDoc(itemRef, duplicatedItem)
+
+    return newItemId
   },
 
   // Create new business inventory item

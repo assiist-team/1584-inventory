@@ -1,4 +1,4 @@
-import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
@@ -7,6 +7,7 @@ import { businessInventoryService, transactionService, projectService } from '@/
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
 import { useBookmark } from '@/hooks/useBookmark'
+import { useDuplication } from '@/hooks/useDuplication'
 
 interface FilterOptions {
   status?: string
@@ -214,6 +215,13 @@ export default function BusinessInventory() {
     items,
     setItems,
     updateItemService: businessInventoryService.updateBusinessInventoryItem
+  })
+
+  // Use duplication hook for business inventory items
+  const { duplicateItem } = useDuplication({
+    items,
+    setItems,
+    duplicationService: (itemId: string) => businessInventoryService.duplicateBusinessInventoryItem(itemId)
   })
 
   // Batch allocation functions
@@ -563,6 +571,17 @@ export default function BusinessInventory() {
                             >
                               <Edit className="h-4 w-4" />
                             </Link>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                duplicateItem(item.item_id)
+                              }}
+                              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                              title="Duplicate item"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
                             {/* Status badge moved to top-right corner */}
                             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                               item.inventory_status === 'available'

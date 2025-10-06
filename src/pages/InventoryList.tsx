@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter } from 'lucide-react'
+import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { itemService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
+import { useDuplication } from '@/hooks/useDuplication'
 
 interface InventoryListItem {
   item_id: string
@@ -127,6 +128,13 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     items,
     setItems,
     updateItemService: (itemId, updates) => itemService.updateItem(projectId, itemId, updates),
+    projectId
+  })
+
+  // Use centralized duplication hook
+  const { duplicateItem } = useDuplication({
+    items,
+    setItems,
     projectId
   })
 
@@ -512,6 +520,17 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                       >
                         <Edit className="h-4 w-4" />
                       </Link>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          duplicateItem(item.item_id)
+                        }}
+                        className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+                        title="Duplicate item"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
                         <div className="relative ml-1">
                           <span
                             onClick={(e) => {
