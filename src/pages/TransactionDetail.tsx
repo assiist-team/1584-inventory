@@ -239,13 +239,15 @@ export default function TransactionDetail() {
       const currentReceiptImages = transaction?.receipt_images || []
       const updatedReceiptImages = [...currentReceiptImages, ...newReceiptImages]
 
-      await transactionService.updateTransaction(projectId, transactionId, {
+      const updateProjectId = transaction?.project_id || projectId
+      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
         receipt_images: updatedReceiptImages,
         transaction_images: updatedReceiptImages // Also update legacy field for compatibility
       })
 
-      // Refresh transaction data
-      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      // Refresh transaction data (use actual project_id from transaction)
+      const refreshProjectId = transaction?.project_id || projectId
+      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Receipt images uploaded successfully')
@@ -277,12 +279,14 @@ export default function TransactionDetail() {
       const currentOtherImages = transaction?.other_images || []
       const updatedOtherImages = [...currentOtherImages, ...newOtherImages]
 
-      await transactionService.updateTransaction(projectId, transactionId, {
+      const updateProjectId = transaction?.project_id || projectId
+      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
         other_images: updatedOtherImages
       })
 
-      // Refresh transaction data
-      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      // Refresh transaction data (use actual project_id from transaction)
+      const refreshProjectId = transaction?.project_id || projectId
+      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Other images uploaded successfully')
@@ -302,13 +306,15 @@ export default function TransactionDetail() {
       const currentReceiptImages = transaction.receipt_images || []
       const updatedReceiptImages = currentReceiptImages.filter(img => img.url !== imageUrl)
 
-      await transactionService.updateTransaction(projectId, transactionId, {
+      const updateProjectId = transaction?.project_id || projectId
+      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
         receipt_images: updatedReceiptImages,
         transaction_images: updatedReceiptImages // Also update legacy field for compatibility
       })
 
-      // Refresh transaction data
-      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      // Refresh transaction data (use actual project_id from transaction)
+      const refreshProjectId = transaction?.project_id || projectId
+      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Receipt image deleted successfully')
@@ -326,12 +332,14 @@ export default function TransactionDetail() {
       const currentOtherImages = transaction.other_images || []
       const updatedOtherImages = currentOtherImages.filter(img => img.url !== imageUrl)
 
-      await transactionService.updateTransaction(projectId, transactionId, {
+      const updateProjectId = transaction?.project_id || projectId
+      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
         other_images: updatedOtherImages
       })
 
-      // Refresh transaction data
-      const updatedTransaction = await transactionService.getTransaction(projectId, transactionId)
+      // Refresh transaction data (use actual project_id from transaction)
+      const refreshProjectId = transaction?.project_id || projectId
+      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Other image deleted successfully')

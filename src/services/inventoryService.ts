@@ -110,10 +110,14 @@ export const projectService = {
 
 // Transaction Services
 export const transactionService = {
-  // Get transactions for a project
+  // Get transactions for a project (top-level collection)
   async getTransactions(projectId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
-    const q = query(transactionsRef, orderBy('created_at', 'desc'))
+    const transactionsRef = collection(db, 'transactions')
+    const q = query(
+      transactionsRef,
+      where('project_id', '==', projectId),
+      orderBy('created_at', 'desc')
+    )
 
     const querySnapshot = await getDocs(q)
     return querySnapshot.docs.map(doc => {
@@ -133,9 +137,9 @@ export const transactionService = {
     })
   },
 
-  // Get single transaction
-  async getTransaction(projectId: string, transactionId: string): Promise<Transaction | null> {
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+  // Get single transaction (top-level only - post-migration)
+  async getTransaction(_projectId: string, transactionId: string): Promise<Transaction | null> {
+    const transactionRef = doc(db, 'transactions', transactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (transactionSnap.exists()) {
@@ -159,41 +163,49 @@ export const transactionService = {
         ...transactionData
       } as Transaction
     }
+
     return null
   },
 
-  // Get transaction by ID across all projects (for business inventory)
+  // Get transaction by ID across all projects (for business inventory) - top-level only
   async getTransactionById(transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
-    // Get all projects first
-    const projects = await projectService.getProjects()
+    const transactionRef = doc(db, 'transactions', transactionId)
+    const transactionSnap = await getDoc(transactionRef)
 
-    // Search through each project's transactions
-    for (const project of projects) {
-      try {
-        const transaction = await this.getTransaction(project.id, transactionId)
-        if (transaction) {
-          return { transaction, projectId: project.id }
-        }
-      } catch (error) {
-        console.error(`Error searching for transaction ${transactionId} in project ${project.id}:`, error)
+    if (transactionSnap.exists()) {
+      const data = convertTimestamps(transactionSnap.data())
+      const transactionData = {
+        ...data,
+        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+        other_images: Array.isArray(data.other_images) ? data.other_images : []
+      }
+
+      return {
+        transaction: {
+          transaction_id: transactionSnap.id,
+          ...transactionData
+        } as Transaction,
+        projectId: data.project_id || null
       }
     }
 
     return { transaction: null, projectId: null }
   },
 
-  // Create new transaction
+  // Create new transaction (top-level collection)
   async createTransaction(
-    projectId: string,
+    projectId: string | null | undefined,
     transactionData: Omit<Transaction, 'transaction_id' | 'created_at'>,
     items?: TransactionItemFormData[]
   ): Promise<string> {
     try {
-      const transactionsRef = collection(db, 'projects', projectId, 'transactions')
+      const transactionsRef = collection(db, 'transactions')
       const now = new Date()
 
       const newTransaction = {
         ...transactionData,
+        project_id: projectId,
         created_at: now.toISOString(),
         // Set default values for new fields if not provided
         status: transactionData.status || 'completed',
@@ -212,7 +224,7 @@ export const transactionService = {
       if (items && items.length > 0) {
         console.log('Creating items for transaction:', transactionId)
         const createdItemIds = await unifiedItemsService.createTransactionItems(
-          projectId,
+          projectId || '',
           transactionId,
           transactionData.transaction_date,
           transactionData.source, // Pass transaction source to items
@@ -228,9 +240,9 @@ export const transactionService = {
     }
   },
 
-  // Update transaction
-  async updateTransaction(projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+  // Update transaction (top-level collection)
+  async updateTransaction(_projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
+    const transactionRef = doc(db, 'transactions', transactionId)
 
     // Apply business rules for reimbursement type and status
     const finalUpdates: any = { ...updates }
@@ -254,16 +266,20 @@ export const transactionService = {
     await updateDoc(transactionRef, finalUpdates)
   },
 
-  // Delete transaction
-  async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+  // Delete transaction (top-level collection)
+  async deleteTransaction(_projectId: string, transactionId: string): Promise<void> {
+    const transactionRef = doc(db, 'transactions', transactionId)
     await deleteDoc(transactionRef)
   },
 
-  // Subscribe to transactions
-  subscribeToTransactions(projectId: string, callback: (transactions: Transaction[]) => void) {
-    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
-    const q = query(transactionsRef, orderBy('created_at', 'desc'))
+  // Subscribe to transactions (top-level collection)
+  subscribeToTransactions(_projectId: string, callback: (transactions: Transaction[]) => void) {
+    const transactionsRef = collection(db, 'transactions')
+    const q = query(
+      transactionsRef,
+      where('project_id', '==', _projectId),
+      orderBy('created_at', 'desc')
+    )
 
     return onSnapshot(q, (snapshot) => {
       const transactions = snapshot.docs.map(doc => {
@@ -285,13 +301,13 @@ export const transactionService = {
     })
   },
 
-  // Subscribe to single transaction for real-time updates
+  // Subscribe to single transaction for real-time updates (top-level collection)
   subscribeToTransaction(
-    projectId: string,
+    _projectId: string,
     transactionId: string,
     callback: (transaction: Transaction | null) => void
   ) {
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+    const transactionRef = doc(db, 'transactions', transactionId)
 
     return onSnapshot(transactionRef, (doc) => {
       if (doc.exists()) {
@@ -367,6 +383,60 @@ export const transactionService = {
     }
 
     await updateDoc(transactionRef, updateData)
+  },
+
+  // Utility queries for Business Inventory and reporting (top-level collection)
+  async getInventoryRelatedTransactions(): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'transactions')
+    const q = query(
+      transactionsRef,
+      where('reimbursement_type', 'in', ['Client Owes', 'We Owe']),
+      orderBy('created_at', 'desc')
+    )
+
+    const querySnapshot = await getDocs(q)
+    return querySnapshot.docs.map(doc => {
+      const data = convertTimestamps(doc.data())
+
+      const transactionData = {
+        ...data,
+        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+        other_images: Array.isArray(data.other_images) ? data.other_images : []
+      }
+
+      return {
+        transaction_id: doc.id,
+        ...transactionData
+      } as Transaction
+    })
+  },
+
+  // Get business inventory transactions (project_id == null)
+  async getBusinessInventoryTransactions(): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'transactions')
+    const q = query(
+      transactionsRef,
+      where('project_id', '==', null),
+      orderBy('created_at', 'desc')
+    )
+
+    const querySnapshot = await getDocs(q)
+    return querySnapshot.docs.map(doc => {
+      const data = convertTimestamps(doc.data())
+
+      const transactionData = {
+        ...data,
+        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
+        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
+        other_images: Array.isArray(data.other_images) ? data.other_images : []
+      }
+
+      return {
+        transaction_id: doc.id,
+        ...transactionData
+      } as Transaction
+    })
   }
 }
 
@@ -666,10 +736,12 @@ export const unifiedItemsService = {
     // Use canonical transaction ID for inventory sales
     const canonicalTransactionId = `INV_SALE_${projectId}`
 
-    // Upsert the canonical transaction
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', canonicalTransactionId)
+    // Upsert the canonical transaction (top-level collection)
+    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
     const transactionData = {
+      transaction_id: canonicalTransactionId,
       project_id: projectId,
+      project_name: null, // Will be filled in later if needed
       transaction_date: new Date().toISOString(),
       source: 'Inventory Allocation',
       transaction_type: 'Reimbursement',
@@ -682,6 +754,7 @@ export const unifiedItemsService = {
       trigger_event: 'Inventory allocation' as const,
       item_ids: [itemId], // Initialize with this item
       created_by: 'system',
+      created_at: new Date().toISOString(),
       last_updated: new Date().toISOString()
     }
 
@@ -1516,12 +1589,14 @@ export const deallocationService = {
     const canonicalTransactionId = `INV_BUY_${projectId}`
     console.log('🔑 Canonical transaction ID:', canonicalTransactionId)
 
-    // Check if the canonical transaction already exists
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', canonicalTransactionId)
+    // Check if the canonical transaction already exists (top-level collection)
+    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     let transactionData: any = {
+      transaction_id: canonicalTransactionId,
       project_id: projectId,
+      project_name: null, // Will be filled in later if needed
       transaction_date: new Date().toISOString(),
       source: 'Inventory Return',
       transaction_type: 'Reimbursement',

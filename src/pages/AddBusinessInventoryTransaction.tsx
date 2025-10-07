@@ -63,7 +63,7 @@ export default function AddBusinessInventoryTransaction() {
   const validateForm = () => {
     const errors: Record<string, string> = {}
 
-    if (!formData.project_id.trim()) {
+    if (!formData.project_id) {
       errors.project_id = 'Project selection is required'
     }
 
@@ -93,13 +93,18 @@ export default function AddBusinessInventoryTransaction() {
     setIsSubmitting(true)
 
     try {
+      // Determine project_id and project_name based on selection
+      const projectId = formData.project_id === 'business-inventory' ? null : formData.project_id
+      const projectName = formData.project_id === 'business-inventory' ? null : projects.find(p => p.id === formData.project_id)?.name || ''
+
       const newTransaction: Omit<Transaction, 'transaction_id' | 'created_at'> = {
         ...formData,
-        project_name: projects.find(p => p.id === formData.project_id)?.name || '',
+        project_id: projectId,
+        project_name: projectName,
         created_by: 'system' // Add required created_by field
       }
 
-      await transactionService.createTransaction(formData.project_id, newTransaction)
+      await transactionService.createTransaction(projectId, newTransaction)
       navigate(`/business-inventory`)
     } catch (error) {
       console.error('Error creating transaction:', error)
@@ -151,6 +156,7 @@ export default function AddBusinessInventoryTransaction() {
                     }`}
                   >
                     <option value="">Select a project...</option>
+                    <option value="business-inventory">Business Inventory (No Project)</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name} - {project.clientName}

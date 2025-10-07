@@ -1,7 +1,7 @@
 import { ArrowLeft, Save, X, Shield } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useState, FormEvent, useEffect, useMemo, useRef } from 'react'
-import { businessInventoryService, transactionService, projectService } from '@/services/inventoryService'
+import { businessInventoryService, transactionService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
 import { Transaction, ItemImage } from '@/types'
@@ -92,28 +92,12 @@ export default function AddBusinessInventoryItem() {
     const fetchTransactions = async () => {
       setLoadingTransactions(true)
       try {
-        // Get all projects first
-        const projects = await projectService.getProjects()
-
-        // Collect all transactions from all projects that are inventory-related
+        // Get inventory-related transactions from top-level collection
         const allTransactions: Transaction[] = []
 
-        for (const project of projects) {
-          try {
-            const projectTransactions = await transactionService.getTransactions(project.id)
-            // Filter for inventory-related transactions (those with reimbursement_type or trigger_event related to inventory)
-            const inventoryTransactions = projectTransactions.filter(t =>
-              t.reimbursement_type ||
-              t.trigger_event === 'Inventory allocation' ||
-              t.trigger_event === 'Inventory return' ||
-              t.trigger_event === 'Purchase from client' ||
-              t.source?.toLowerCase().includes('inventory')
-            )
-            allTransactions.push(...inventoryTransactions)
-          } catch (error) {
-            console.error(`Error loading transactions for project ${project.id}:`, error)
-          }
-        }
+        // Get inventory-related transactions (reimbursement_type in ['Client Owes', 'We Owe'])
+        const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions()
+        allTransactions.push(...inventoryRelatedTransactions)
 
         // Sort by creation date, newest first
         allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())

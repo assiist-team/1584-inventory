@@ -45,7 +45,8 @@ export default function EditBusinessInventoryTransaction() {
       try {
         const [projectsData, transactionData] = await Promise.all([
           projectService.getProjects(),
-          projectId && transactionId ? transactionService.getTransaction(projectId, transactionId) : null
+          projectId && transactionId ? transactionService.getTransaction(projectId, transactionId) :
+            transactionId ? transactionService.getTransactionById(transactionId).then(result => result.transaction) : null
         ])
 
         setProjects(projectsData)
@@ -53,7 +54,7 @@ export default function EditBusinessInventoryTransaction() {
         if (transactionData) {
           setTransaction(transactionData)
           setFormData({
-            project_id: transactionData.project_id,
+            project_id: transactionData.project_id || '',
             transaction_date: transactionData.transaction_date,
             source: transactionData.source,
             transaction_type: transactionData.transaction_type,
@@ -88,7 +89,7 @@ export default function EditBusinessInventoryTransaction() {
   const validateForm = () => {
     const errors: Record<string, string> = {}
 
-    if (!formData.project_id.trim()) {
+    if (!formData.project_id) {
       errors.project_id = 'Project selection is required'
     }
 
@@ -118,7 +119,15 @@ export default function EditBusinessInventoryTransaction() {
     setIsSubmitting(true)
 
     try {
-      await transactionService.updateTransaction(projectId, transactionId, formData)
+      // Determine project_id based on selection
+      const actualProjectId = formData.project_id === 'business-inventory' ? null : formData.project_id
+
+      const updateData = {
+        ...formData,
+        project_id: actualProjectId
+      }
+
+      await transactionService.updateTransaction(actualProjectId || '', transactionId, updateData)
       navigate(`/business-inventory`)
     } catch (error) {
       console.error('Error updating transaction:', error)
@@ -198,6 +207,7 @@ export default function EditBusinessInventoryTransaction() {
                     }`}
                   >
                     <option value="">Select a project...</option>
+                    <option value="business-inventory">Business Inventory (No Project)</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name} - {project.clientName}

@@ -155,8 +155,8 @@ export interface ApiError {
 
 export interface Transaction {
   transaction_id: string;
-  project_id: string;
-  project_name: string;
+  project_id?: string | null;
+  project_name?: string | null;
   transaction_date: string;
   source: string;
   transaction_type: string;

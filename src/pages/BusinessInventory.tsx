@@ -28,7 +28,7 @@ export default function BusinessInventory() {
 
   // Filter state for transactions tab
   const [showTransactionFilterMenu, setShowTransactionFilterMenu] = useState(false)
-  const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all')
+  const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'cancelled' | 'inventory-only'>('all')
 
   // Image upload state
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
@@ -91,7 +91,13 @@ export default function BusinessInventory() {
 
     // Apply status filter based on filter mode
     if (transactionFilterMode !== 'all') {
-      filtered = filtered.filter(t => t.status === transactionFilterMode)
+      if (transactionFilterMode === 'inventory-only') {
+        // Show only business inventory transactions (project_id == null)
+        filtered = filtered.filter(t => t.project_id === null)
+      } else {
+        // Apply status filter for other modes
+        filtered = filtered.filter(t => t.status === transactionFilterMode)
+      }
     }
 
     // Apply search filter
@@ -165,32 +171,25 @@ export default function BusinessInventory() {
 
   const loadBusinessTransactions = async () => {
     try {
-      // Get all projects first
-      const projects = await projectService.getProjects()
-
-      // Collect all transactions from all projects that are inventory-related
+      // Get inventory-related transactions from top-level collection
       const allTransactions: Transaction[] = []
 
-      for (const project of projects) {
-        try {
-          const projectTransactions = await transactionService.getTransactions(project.id)
-          // Filter for inventory-related transactions (those with reimbursement_type or trigger_event related to inventory)
-          const inventoryTransactions = projectTransactions.filter(t =>
-            t.reimbursement_type ||
-            t.trigger_event === 'Inventory allocation' ||
-            t.trigger_event === 'Inventory return' ||
-            t.trigger_event === 'Purchase from client' ||
-            t.source?.toLowerCase().includes('inventory')
-          )
-          allTransactions.push(...inventoryTransactions)
-        } catch (error) {
-          console.error(`Error loading transactions for project ${project.id}:`, error)
-        }
-      }
+      // Get business inventory transactions (project_id == null)
+      const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions()
+      allTransactions.push(...businessInventoryTransactions)
+
+      // Get inventory-related transactions (reimbursement_type in ['Client Owes', 'We Owe'])
+      const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions()
+      allTransactions.push(...inventoryRelatedTransactions)
+
+      // Remove duplicates (same transaction might appear in both queries)
+      const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
+        index === self.findIndex(t => t.transaction_id === transaction.transaction_id)
+      )
 
       // Sort by creation date, newest first
-      allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      setTransactions(allTransactions)
+      uniqueTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      setTransactions(uniqueTransactions)
     } catch (error) {
       console.error('Error loading business transactions:', error)
       setTransactions([])
@@ -795,6 +794,17 @@ export default function BusinessInventory() {
                               }`}
                             >
                               Cancelled
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTransactionFilterMode('inventory-only')
+                                setShowTransactionFilterMenu(false)
+                              }}
+                              className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                transactionFilterMode === 'inventory-only' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                              }`}
+                            >
+                              Inventory Only
                             </button>
                           </div>
                         </div>

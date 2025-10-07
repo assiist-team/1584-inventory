@@ -59,7 +59,20 @@ service cloud.firestore {
       allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
     }
 
-    // Transactions - authenticated users can access
+    // Transactions - authenticated users can access (top-level collection)
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
+
+      // Allow inventory allocation maintenance without full overwrite
+      allow update: if isAuthenticatedUser() && (isDesigner() || !hasRole()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'item_ids','last_updated','amount','status','payment_method','transaction_date','notes'
+        ]);
+    }
+
+    // Legacy Transactions - authenticated users can access (for backward compatibility)
     match /projects/{projectId}/transactions/{transactionId} {
       allow read: if isAuthenticatedUser();
       allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
