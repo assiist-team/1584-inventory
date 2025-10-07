@@ -273,7 +273,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     const matchesSearch = item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.payment_method.toLowerCase().includes(searchQuery.toLowerCase())
+      item.payment_method.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.space && item.space.toLowerCase().includes(searchQuery.toLowerCase()))
 
     // Apply filter based on filterMode
     let matchesFilter = false
