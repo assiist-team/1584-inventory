@@ -604,6 +604,7 @@ export const unifiedItemsService = {
     if (updates.project_id !== undefined) firebaseUpdates.project_id = updates.project_id
     if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
     if (updates.pending_transaction_id !== undefined) firebaseUpdates.pending_transaction_id = updates.pending_transaction_id
+    if (updates.transaction_id !== undefined) firebaseUpdates.transaction_id = updates.transaction_id
     if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
     if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
     if (updates.description !== undefined) firebaseUpdates.description = updates.description

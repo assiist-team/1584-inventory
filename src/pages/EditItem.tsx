@@ -186,7 +186,25 @@ export default function EditItem() {
       }
     } catch (error) {
       console.error('Error updating item:', error)
-      setErrors({ submit: 'Failed to update item. Please try again.' })
+      console.error('Form data being submitted:', itemData)
+      console.error('Item ID:', itemId)
+      console.error('Project ID:', projectId)
+
+      // Provide more specific error messages based on error type
+      let errorMessage = 'Failed to update item. Please try again.'
+      if (error instanceof Error) {
+        if (error.message.includes('permission-denied')) {
+          errorMessage = 'Permission denied. Please check your access rights.'
+        } else if (error.message.includes('not-found')) {
+          errorMessage = 'Item not found. It may have been deleted.'
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your connection and try again.'
+        } else {
+          errorMessage = `Update failed: ${error.message}`
+        }
+      }
+
+      setErrors({ submit: errorMessage })
     } finally {
       setSaving(false)
     }
