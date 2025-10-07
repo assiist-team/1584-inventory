@@ -2,17 +2,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
     function isNotAnonymous() {
       return request.auth != null && request.auth.uid != null;
     }
 
     function getUserRole() {
-      return request.auth != null && request.auth.uid != null ?
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+      return request.auth != null && request.auth.uid != null &&
+        exists(/databases/{database}/documents/users/$(request.auth.uid)) ?
+        get(/databases/{database}/documents/users/$(request.auth.uid)).data.role : null;
     }
 
     function hasRole() {
@@ -31,13 +28,10 @@ service cloud.firestore {
       return getUserRole() == 'designer' || isAdmin();
     }
 
-    function isViewer() {
-      return getUserRole() == 'viewer' || isDesigner();
-    }
 
-    // Allow access for authenticated users (including new users without roles)
-    function canAccessForSetup() {
-      return request.auth != null && request.auth.uid != null;
+    // Check if user is authenticated (simplified - no role checking for new users)
+    function isAuthenticatedUser() {
+      return isNotAnonymous();
     }
 
     // Users can read and write their own user document (requires proper authentication, not anonymous)
@@ -51,36 +45,41 @@ service cloud.firestore {
       allow read, write: if isNotAnonymous() && isAdmin();
     }
 
-    // Projects - role-based access (no anonymous access allowed)
+    // Projects - authenticated users can access (role-based for existing users)
     match /projects/{projectId} {
-      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
-      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
-      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
     }
 
-    // Items - role-based access (no anonymous access allowed)
-    // Items are stored in top-level items collection
+    // Items - authenticated users can access (unified collection)
     match /items/{itemId} {
-      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
-      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
-      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
     }
 
-    // Transactions - role-based access (no anonymous access allowed)
-    // Transactions are stored as subcollections under projects
-    // Special rules for inventory allocation transactions (canonical IDs)
+    // Transactions - authenticated users can access
     match /projects/{projectId}/transactions/{transactionId} {
-      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
-      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
-      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
 
       // Allow arrayUnion/arrayRemove operations for item_ids management
       // This is needed for inventory allocation flows
-      allow update: if canAccessForSetup() && (isDesigner() || !hasRole()) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['item_ids', 'last_updated']);
+      allow update: if isAuthenticatedUser() && (isDesigner() || !hasRole()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['item_ids', 'last_updated', 'amount', 'status', 'payment_method', 'transaction_date']);
     }
 
-    // Business Inventory items are now handled by the unified /items collection above
+    // Legacy business_inventory collection (for backwards compatibility)
+    match /business_inventory/{itemId} {
+      allow read, write, delete: if isAuthenticatedUser();
+    }
+
+    // Legacy project items subcollections (for backwards compatibility)
+    match /projects/{projectId}/items/{itemId} {
+      allow read, write, delete: if isAuthenticatedUser();
+    }
 
     // No anonymous access allowed for any other documents
     // All access requires proper user authentication
