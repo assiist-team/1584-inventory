@@ -3,7 +3,7 @@ import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, Chevron
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
-import { itemService, projectService } from '@/services/inventoryService'
+import { itemService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
@@ -180,13 +180,41 @@ export default function ItemDetail() {
     if (!item) return
 
     try {
+      // Update the disposition in the database first
       await itemService.updateItem(item.project_id, item.item_id, {
         disposition: newDisposition
       })
+
+      // Update local state
       setItem({ ...item, disposition: newDisposition })
       setOpenDispositionMenu(false)
+
+      // If disposition is set to 'inventory', trigger deallocation process
+      if (newDisposition === 'inventory') {
+        try {
+          await integrationService.handleItemDeallocation(
+            item.item_id,
+            item.project_id,
+            newDisposition
+          )
+          // Refresh the item data after deallocation
+          const updatedItem = await itemService.getItem(item.project_id, item.item_id)
+          if (updatedItem) {
+            setItem(updatedItem)
+          }
+        } catch (deallocationError) {
+          console.error('Failed to handle deallocation:', deallocationError)
+          // Revert the disposition change if deallocation fails
+          await itemService.updateItem(item.project_id, item.item_id, {
+            disposition: item.disposition // Revert to previous disposition
+          })
+          setItem({ ...item, disposition: item.disposition })
+          showError('Failed to move item to inventory. Please try again.')
+        }
+      }
     } catch (error) {
       console.error('Failed to update disposition:', error)
+      showError('Failed to update disposition. Please try again.')
     }
   }
 
