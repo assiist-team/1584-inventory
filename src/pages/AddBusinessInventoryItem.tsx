@@ -177,7 +177,7 @@ export default function AddBusinessInventoryItem() {
         payment_method: 'Cash', // Default payment method for business inventory
         date_created: new Date().toISOString(),
         last_updated: new Date().toISOString(),
-        images: images.length > 0 ? images : undefined
+        ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
       const itemId = await businessInventoryService.createBusinessInventoryItem(itemData)

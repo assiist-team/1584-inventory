@@ -168,7 +168,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const hasRole = (role: UserRole): boolean => {
-    return user?.role === role || user?.role === UserRole.OWNER || user?.role === UserRole.ADMIN
+    console.log('Checking role:', role, 'for user:', user?.email, 'with role:', user?.role)
+    const result = user?.role === role || user?.role === UserRole.OWNER || user?.role === UserRole.ADMIN
+    console.log('hasRole result:', result)
+    return result
   }
 
   const value: AuthContextType = {

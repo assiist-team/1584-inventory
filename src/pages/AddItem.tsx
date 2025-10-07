@@ -156,7 +156,7 @@ export default function AddItem() {
         transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
         date_created: new Date().toISOString(),
         last_updated: new Date().toISOString(),
-        images: images.length > 0 ? images : undefined
+        ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
       await unifiedItemsService.createItem(itemData)

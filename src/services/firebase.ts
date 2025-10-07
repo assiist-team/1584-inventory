@@ -448,7 +448,11 @@ export const getUserData = async (uid: string): Promise<AppUser | null> => {
   try {
     const userDoc = await getDoc(doc(db, 'users', uid))
     if (userDoc.exists()) {
-      return userDoc.data() as AppUser
+      const userData = userDoc.data() as AppUser
+      console.log('User data for UID', uid, ':', userData)
+      return userData
+    } else {
+      console.log('No user document found for UID:', uid)
     }
     return null
   } catch (error) {
@@ -471,10 +475,16 @@ export const isAuthenticated = (): boolean => {
 export const getCurrentUserWithData = async (): Promise<{ firebaseUser: User | null; appUser: AppUser | null }> => {
   const firebaseUser = auth.currentUser
   if (!firebaseUser) {
+    console.log('No Firebase user found')
     return { firebaseUser: null, appUser: null }
   }
 
+  console.log('Firebase user UID:', firebaseUser.uid)
+  console.log('Firebase user email:', firebaseUser.email)
+
   const appUser = await getUserData(firebaseUser.uid)
+  console.log('App user data:', appUser)
+
   return { firebaseUser, appUser }
 }
 

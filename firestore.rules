@@ -8,8 +8,8 @@ service cloud.firestore {
 
     function getUserRole() {
       return request.auth != null && request.auth.uid != null &&
-        exists(/databases/{database}/documents/users/$(request.auth.uid)) ?
-        get(/databases/{database}/documents/users/$(request.auth.uid)).data.role : null;
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ?
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
     }
 
     function hasRole() {
