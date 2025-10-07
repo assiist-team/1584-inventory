@@ -105,600 +105,8 @@ export const projectService = {
   }
 }
 
-// Item Services (DEPRECATED - use unifiedItemsService instead)
-// This service is kept for backwards compatibility during migration
-export const itemService = {
-  // Get items for a project with filtering and pagination
-  async getItems(
-    projectId: string,
-    filters?: FilterOptions,
-    pagination?: PaginationOptions
-  ): Promise<Item[]> {
-    const itemsRef = collection(db, 'projects', projectId, 'items')
-    let q = query(itemsRef)
-
-    // Apply filters
-    if (filters?.status) {
-      q = query(q, where('disposition', '==', filters.status))
-    }
-
-    if (filters?.category) {
-      q = query(q, where('source', '==', filters.category))
-    }
-
-    if (filters?.tags && filters.tags.length > 0) {
-      q = query(q, where('tags', 'array-contains-any', filters.tags))
-    }
-
-    if (filters?.priceRange) {
-      q = query(
-        q,
-        where('price', '>=', filters.priceRange.min),
-        where('price', '<=', filters.priceRange.max)
-      )
-    }
-
-    // Apply search
-    if (filters?.searchQuery) {
-      const searchTerm = filters.searchQuery.toLowerCase()
-      q = query(
-        q,
-        where('description', '>=', searchTerm),
-        where('description', '<=', searchTerm + '\uf8ff')
-      )
-    }
-
-    // Apply sorting and pagination
-    q = query(q, orderBy('last_updated', 'desc'))
-
-    if (pagination) {
-      q = query(q, limit(pagination.limit))
-      if (pagination.page > 0) {
-        // This is a simplified pagination - in production you'd use cursor-based pagination
-        q = query(q, limit(pagination.page * pagination.limit))
-      }
-    }
-
-    const querySnapshot = await getDocs(q)
-
-    // Apply client-side filtering for complex queries
-    let items = querySnapshot.docs.map(doc => ({
-      item_id: doc.id,
-      ...doc.data()
-    } as Item))
-
-      // Apply client-side search if needed
-      if (filters?.searchQuery && items.length > 0) {
-        const searchTerm = filters.searchQuery.toLowerCase()
-        items = items.filter(item =>
-          item.description.toLowerCase().includes(searchTerm) ||
-          item.source.toLowerCase().includes(searchTerm) ||
-          item.sku.toLowerCase().includes(searchTerm) ||
-          item.payment_method.toLowerCase().includes(searchTerm)
-        )
-      }
-
-    return items
-  },
-
-
-  // Get single item
-  async getItem(projectId: string, itemId: string): Promise<Item | null> {
-    console.log('getItem called with:', { projectId, itemId })
-
-    // Ensure authentication before Firestore operations
-    await ensureAuthenticatedForStorage()
-
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    console.log('Document path:', itemRef.path)
-    const itemSnap = await getDoc(itemRef)
-
-    if (itemSnap.exists()) {
-      const data = itemSnap.data()
-      console.log('Raw Firebase data:', data)
-      console.log('Images in Firebase:', data.images?.length || 0, 'images')
-
-      const mappedItem = {
-        item_id: itemSnap.id,
-        description: data.description,
-        source: data.source,
-        sku: data.sku,
-        purchase_price: data.purchase_price,
-        project_price: data.project_price,
-        market_value: data.market_value, // Direct mapping
-        payment_method: data.payment_method,
-        disposition: data.disposition,
-        notes: data.notes,
-        space: data.space, // Add space field
-        qr_key: data.qr_key,
-        bookmark: data.bookmark,
-        transaction_id: data.transaction_id,
-        project_id: data.project_id,
-        date_created: data.date_created,
-        last_updated: data.last_updated,
-        images: data.images || [] // Include images from Firebase
-      } as Item
-
-      console.log('Mapped item data:', mappedItem)
-      console.log('Mapped images:', mappedItem.images?.length || 0, 'images')
-      return mappedItem
-    }
-    console.log('Document does not exist at path:', itemRef.path)
-    console.log('itemSnap.exists():', itemSnap.exists())
-    console.log('Item not found')
-    return null
-  },
-
-  // Create new item
-  async createItem(projectId: string, itemData: Omit<Item, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
-    const itemsRef = collection(db, 'projects', projectId, 'items')
-    const now = new Date()
-
-    // Map form fields to Firebase fields
-    const newItem = {
-      description: itemData.description,
-      source: itemData.source,
-      sku: itemData.sku,
-      purchase_price: itemData.purchase_price,
-      project_price: itemData.project_price,
-      market_value: itemData.market_value, // Direct mapping
-      payment_method: itemData.payment_method,
-      disposition: itemData.disposition || 'keep', // Default to 'keep' if not provided
-      notes: itemData.notes,
-      space: itemData.space, // Add space field
-      qr_key: itemData.qr_key || `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      bookmark: itemData.bookmark,
-      transaction_id: itemData.transaction_id,
-      project_id: itemData.project_id,
-      date_created: now.toISOString(),
-      last_updated: now.toISOString()
-    }
-
-    const docRef = await addDoc(itemsRef, newItem)
-
-    // Update project metadata
-    await projectService.updateProject(projectId, {
-      metadata: {
-        totalItems: await itemService.getItemCount(projectId) + 1,
-        lastActivity: now
-      }
-    } as Partial<Project>)
-
-    return docRef.id
-  },
-
-  // Update item
-  async updateItem(projectId: string, itemId: string, updates: Partial<Item>): Promise<void> {
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-
-    // Map form fields to Firebase fields for updates
-    const firebaseUpdates: any = {
-      last_updated: new Date().toISOString()
-    }
-
-    if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-    if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
-    if (updates.market_value !== undefined) {
-      firebaseUpdates.market_value = updates.market_value // Direct mapping
-    }
-    if (updates.description !== undefined) firebaseUpdates.description = updates.description
-    if (updates.source !== undefined) firebaseUpdates.source = updates.source
-    if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-    if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
-    if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
-    if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
-    if (updates.space !== undefined) firebaseUpdates.space = updates.space // Add space field
-    if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
-    if (updates.images !== undefined) {
-      console.log('Updating item images:', updates.images?.length, 'images')
-      firebaseUpdates.images = updates.images
-    }
-
-    console.log('Updating item in database:', itemId, 'with updates:', Object.keys(firebaseUpdates))
-    await updateDoc(itemRef, firebaseUpdates)
-    console.log('Item updated successfully in database')
-  },
-
-  // Add image to item
-  async addItemImage(projectId: string, itemId: string, image: ItemImage): Promise<void> {
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    const itemSnap = await getDoc(itemRef)
-
-    if (!itemSnap.exists()) {
-      throw new Error('Item not found')
-    }
-
-    const itemData = itemSnap.data()
-    const currentImages = itemData.images || []
-    const updatedImages = [...currentImages, image]
-
-    await updateDoc(itemRef, {
-      images: updatedImages,
-      last_updated: new Date().toISOString()
-    })
-  },
-
-  // Update item images
-  async updateItemImages(projectId: string, itemId: string, images: ItemImage[]): Promise<void> {
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    await updateDoc(itemRef, {
-      images: images,
-      last_updated: new Date().toISOString()
-    })
-  },
-
-  // Remove image from item
-  async removeItemImage(projectId: string, itemId: string, imageUrl: string): Promise<void> {
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    const itemSnap = await getDoc(itemRef)
-
-    if (!itemSnap.exists()) {
-      throw new Error('Item not found')
-    }
-
-    const itemData = itemSnap.data()
-    const currentImages = itemData.images || []
-    const updatedImages = currentImages.filter((img: ItemImage) => img.url !== imageUrl)
-
-    await updateDoc(itemRef, {
-      images: updatedImages,
-      last_updated: new Date().toISOString()
-    })
-  },
-
-  // Set primary image
-  async setPrimaryImage(projectId: string, itemId: string, imageUrl: string): Promise<void> {
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    const itemSnap = await getDoc(itemRef)
-
-    if (!itemSnap.exists()) {
-      throw new Error('Item not found')
-    }
-
-    const itemData = itemSnap.data()
-    const currentImages = itemData.images || []
-
-    const updatedImages = currentImages.map((img: ItemImage) => ({
-      ...img,
-      isPrimary: img.url === imageUrl
-    }))
-
-    await updateDoc(itemRef, {
-      images: updatedImages,
-      last_updated: new Date().toISOString()
-    })
-  },
-
-  // Delete item
-  async deleteItem(projectId: string, itemId: string): Promise<void> {
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    await deleteDoc(itemRef)
-
-    // Update project metadata
-    const now = new Date()
-    await projectService.updateProject(projectId, {
-      metadata: {
-        totalItems: Math.max(0, await itemService.getItemCount(projectId) - 1),
-        lastActivity: now
-      }
-    } as Partial<Project>)
-  },
-
-  // Get item count for a project
-  async getItemCount(projectId: string): Promise<number> {
-    const itemsRef = collection(db, 'projects', projectId, 'items')
-    const snapshot = await getCountFromServer(itemsRef)
-    return snapshot.data().count
-  },
-
-  // Subscribe to items
-  subscribeToItems(
-    projectId: string,
-    callback: (items: Item[]) => void,
-    filters?: FilterOptions
-  ) {
-    const itemsRef = collection(db, 'projects', projectId, 'items')
-    let q = query(itemsRef, orderBy('last_updated', 'desc'))
-
-    // Apply server-side filters
-    if (filters?.status) {
-      q = query(q, where('disposition', '==', filters.status))
-    }
-
-    if (filters?.category) {
-      q = query(q, where('source', '==', filters.category))
-    }
-
-    return onSnapshot(q, (snapshot) => {
-      console.log('Real-time items snapshot received:', snapshot.docs.length, 'documents')
-      let items = snapshot.docs.map(doc => {
-        const data = doc.data()
-        const item = {
-          item_id: doc.id,
-          description: data.description,
-          source: data.source,
-          sku: data.sku,
-          purchase_price: data.purchase_price,
-          project_price: data.project_price,
-          market_value: data.market_value, // Direct mapping
-          payment_method: data.payment_method,
-          disposition: data.disposition,
-          notes: data.notes,
-          space: data.space, // Add space field
-          qr_key: data.qr_key,
-          bookmark: data.bookmark,
-          transaction_id: data.transaction_id,
-          project_id: data.project_id,
-          date_created: data.date_created,
-          last_updated: data.last_updated,
-          images: data.images || [] // Include images from Firebase
-        } as Item
-        return item
-      })
-
-      // Apply client-side filters
-      if (filters?.searchQuery) {
-        const searchTerm = filters.searchQuery.toLowerCase()
-        items = items.filter(item =>
-          item.description.toLowerCase().includes(searchTerm) ||
-          item.source.toLowerCase().includes(searchTerm) ||
-          item.sku.toLowerCase().includes(searchTerm) ||
-          item.payment_method.toLowerCase().includes(searchTerm)
-        )
-      }
-
-      console.log('Real-time items callback with', items.length, 'items')
-      callback(items)
-    })
-  },
-
-  // Search items
-  async searchItems(projectId: string, searchQuery: string): Promise<Item[]> {
-    if (searchQuery.length < 2) return []
-
-    const itemsRef = collection(db, 'projects', projectId, 'items')
-    const q = query(
-      itemsRef,
-      where('description', '>=', searchQuery.toLowerCase()),
-      where('description', '<=', searchQuery.toLowerCase() + '\uf8ff'),
-      orderBy('description'),
-      limit(20)
-    )
-
-    const querySnapshot = await getDocs(q)
-
-    return querySnapshot.docs.map(doc => {
-      const data = doc.data()
-      return {
-        item_id: doc.id,
-        description: data.description,
-        source: data.source,
-        sku: data.sku,
-        purchase_price: data.purchase_price,
-        project_price: data.project_price,
-        market_value: data.market_value, // Direct mapping
-        payment_method: data.payment_method,
-        disposition: data.disposition,
-        notes: data.notes,
-        space: data.space, // Add space field
-        qr_key: data.qr_key,
-        bookmark: data.bookmark,
-        transaction_id: data.transaction_id,
-        project_id: data.project_id,
-        date_created: data.date_created,
-        last_updated: data.last_updated
-      } as Item
-    })
-  },
-
-  // Batch operations
-  async batchUpdateItems(projectId: string, itemUpdates: Array<{ id: string; updates: Partial<Item> }>): Promise<void> {
-    const batch = writeBatch(db)
-
-    itemUpdates.forEach(({ id, updates }) => {
-      const itemRef = doc(db, 'projects', projectId, 'items', id)
-
-      // Map form fields to Firebase fields for batch updates
-      const firebaseUpdates: any = {
-        last_updated: new Date().toISOString()
-      }
-
-      if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-      if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
-      if (updates.market_value !== undefined) {
-        firebaseUpdates.market_value = updates.market_value // Direct mapping
-      }
-      if (updates.description !== undefined) firebaseUpdates.description = updates.description
-      if (updates.source !== undefined) firebaseUpdates.source = updates.source
-      if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-      if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
-      if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
-      if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
-      if (updates.space !== undefined) firebaseUpdates.space = updates.space // Add space field
-      if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
-
-      batch.update(itemRef, firebaseUpdates)
-    })
-
-    await batch.commit()
-  },
-
-  // Duplicate an existing item
-  async duplicateItem(projectId: string, originalItemId: string): Promise<string> {
-    // Get the original item first
-    const originalItem = await this.getItem(projectId, originalItemId)
-    if (!originalItem) {
-      throw new Error('Original item not found')
-    }
-
-    const now = new Date()
-    const newItemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-    const newQrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-
-    // Create duplicate item with new IDs and timestamps
-    // Filter out undefined values to avoid Firebase errors
-    const duplicatedItem: any = {
-      item_id: newItemId,
-      description: originalItem.description,
-      source: originalItem.source,
-      sku: originalItem.sku || '',
-      purchase_price: originalItem.purchase_price || '',
-      project_price: originalItem.project_price || '',
-      market_value: originalItem.market_value || '',
-      payment_method: originalItem.payment_method,
-      disposition: 'keep', // Default disposition for duplicates
-      notes: originalItem.notes || '',
-      space: originalItem.space || '',
-      qr_key: newQrKey,
-      bookmark: false, // Default bookmark to false for duplicates
-      transaction_id: originalItem.transaction_id,
-      project_id: projectId,
-      date_created: now.toISOString(),
-      last_updated: now.toISOString(),
-      images: originalItem.images || [] // Copy images from original item
-    }
-
-    // Remove any undefined values that might still exist
-    Object.keys(duplicatedItem).forEach(key => {
-      if (duplicatedItem[key] === undefined) {
-        delete duplicatedItem[key]
-      }
-    })
-
-    // Create the duplicated item
-    const itemRef = doc(db, 'projects', projectId, 'items', newItemId)
-    await setDoc(itemRef, duplicatedItem)
-
-    // Update project metadata
-    const itemCount = await this.getItemCount(projectId)
-    await projectService.updateProject(projectId, {
-      metadata: {
-        totalItems: itemCount,
-        lastActivity: now
-      }
-    } as Partial<Project>)
-
-    return newItemId
-  },
-
-  // Create multiple items linked to a transaction
-  async createTransactionItems(
-    projectId: string,
-    transactionId: string,
-    transactionDate: string,
-    transactionSource: string,
-    items: TransactionItemFormData[]
-  ): Promise<string[]> {
-    const batch = writeBatch(db)
-    const createdItemIds: string[] = []
-    const now = new Date()
-
-    items.forEach((itemData) => {
-      const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-      createdItemIds.push(itemId)
-
-      const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-      const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-
-      const item = {
-        item_id: itemId,
-        description: itemData.description,
-        source: transactionSource, // Use transaction source for all items
-        sku: itemData.sku || '',
-        purchase_price: itemData.purchase_price,
-        project_price: itemData.project_price,
-        market_value: itemData.market_value || '',
-        payment_method: 'Client Card', // Default payment method
-        disposition: 'keep',
-        notes: itemData.notes || '',
-        qr_key: qrKey,
-        bookmark: false,
-        transaction_id: transactionId,
-        project_id: projectId,
-        date_created: transactionDate,
-        last_updated: now.toISOString(),
-        images: [] // Start with empty images array, will be populated after upload
-      } as Item
-
-      batch.set(itemRef, item)
-    })
-
-    await batch.commit()
-
-    // Update project metadata
-    const itemCount = await this.getItemCount(projectId)
-    await projectService.updateProject(projectId, {
-      metadata: {
-        totalItems: itemCount,
-        lastActivity: now
-      }
-    } as Partial<Project>)
-
-    return createdItemIds
-  },
-
-  // Get items for a transaction
-  async getTransactionItems(projectId: string, transactionId: string): Promise<string[]> {
-    const itemsRef = collection(db, 'projects', projectId, 'items')
-    const q = query(
-      itemsRef,
-      where('transaction_id', '==', transactionId),
-      orderBy('date_created', 'asc')
-    )
-
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => doc.id)
-  },
-
-  // Add single item to existing transaction
-  async addItemToTransaction(
-    projectId: string,
-    transactionId: string,
-    transactionDate: string,
-    transactionSource: string,
-    itemData: TransactionItemFormData
-  ): Promise<string> {
-    const now = new Date()
-
-    const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-    const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-
-    const item = {
-      item_id: itemId,
-      description: itemData.description,
-      source: transactionSource,
-      sku: itemData.sku || '',
-      purchase_price: itemData.purchase_price,
-      project_price: itemData.project_price,
-      market_value: itemData.market_value || '',
-      payment_method: 'Client Card', // Default payment method
-      disposition: 'keep',
-      notes: itemData.notes || '',
-      space: '', // Add space field
-      qr_key: qrKey,
-      bookmark: false,
-      transaction_id: transactionId,
-      project_id: projectId,
-      date_created: transactionDate,
-      last_updated: now.toISOString(),
-      images: [] // Start with empty images array, will be populated after upload
-    } as Item
-
-    // Create the document with the itemId as the document ID
-    const itemRef = doc(db, 'projects', projectId, 'items', itemId)
-    await setDoc(itemRef, item)
-
-    // Update project metadata
-    await projectService.updateProject(projectId, {
-      metadata: {
-        totalItems: await itemService.getItemCount(projectId) + 1,
-        lastActivity: now
-      }
-    } as Partial<Project>)
-
-    return itemId
-  }
-}
+// Item Services (REMOVED - migrated to unifiedItemsService)
+// This service was completely removed after successful migration to unified collection
 
 // Transaction Services
 export const transactionService = {
@@ -803,7 +211,7 @@ export const transactionService = {
       // Create items linked to this transaction if provided
       if (items && items.length > 0) {
         console.log('Creating items for transaction:', transactionId)
-        const createdItemIds = await itemService.createTransactionItems(
+        const createdItemIds = await unifiedItemsService.createTransactionItems(
           projectId,
           transactionId,
           transactionData.transaction_date,
@@ -1529,6 +937,52 @@ export const unifiedItemsService = {
     await setDoc(itemRef, duplicatedItem)
 
     return newItemId
+  },
+
+  // Create multiple items linked to a transaction (unified collection version)
+  async createTransactionItems(
+    projectId: string,
+    transactionId: string,
+    transactionDate: string,
+    transactionSource: string,
+    items: TransactionItemFormData[]
+  ): Promise<string[]> {
+    const batch = writeBatch(db)
+    const createdItemIds: string[] = []
+    const now = new Date()
+
+    items.forEach((itemData) => {
+      const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+      createdItemIds.push(itemId)
+
+      const itemRef = doc(db, 'items', itemId)
+      const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+      const item = {
+        item_id: itemId,
+        description: itemData.description,
+        source: transactionSource, // Use transaction source for all items
+        sku: itemData.sku || '',
+        purchase_price: itemData.purchase_price,
+        project_price: itemData.project_price,
+        market_value: itemData.market_value || '',
+        payment_method: 'Client Card', // Default payment method
+        disposition: 'keep',
+        notes: itemData.notes || '',
+        qr_key: qrKey,
+        bookmark: false,
+        transaction_id: transactionId,
+        project_id: projectId,
+        date_created: transactionDate,
+        last_updated: now.toISOString(),
+        images: [] // Start with empty images array, will be populated after upload
+      } as Item
+
+      batch.set(itemRef, item)
+    })
+
+    await batch.commit()
+    return createdItemIds
   }
 }
 
@@ -1890,7 +1344,8 @@ export const businessInventoryService = {
     await batch.commit()
 
     // Update project metadata
-    const currentItemCount = await itemService.getItemCount(projectId)
+    const currentItems = await unifiedItemsService.getItemsByProject(projectId)
+    const currentItemCount = currentItems.length
     await projectService.updateProject(projectId, {
       metadata: {
         totalItems: currentItemCount,
@@ -2017,7 +1472,7 @@ export const deallocationService = {
 
     try {
       // Get the item details
-      const item = await itemService.getItem(projectId, itemId)
+      const item = await unifiedItemsService.getItemById(itemId)
       if (!item) {
         throw new Error('Item not found')
       }
@@ -2040,10 +1495,7 @@ export const deallocationService = {
     const transactionId = item.transaction_id
 
     // Get all items sharing the same transaction_id
-    const transactionItemIds = await itemService.getTransactionItems(projectId, transactionId)
-    const allTransactionItems = await Promise.all(
-      transactionItemIds.map(id => itemService.getItem(projectId, id))
-    )
+    const allTransactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
 
     // Check if there's a business inventory item linked to this transaction
     const businessInventoryItem = await this.findBusinessInventoryItemByTransaction(transactionId)
@@ -2102,7 +1554,7 @@ export const deallocationService = {
               await businessInventoryService.returnItemFromProject(businessItem.item_id, transactionId, projectId)
             }
             // Remove from project
-            await itemService.deleteItem(projectId, returnItem.item_id)
+            await unifiedItemsService.deleteItem(returnItem.item_id)
           }
         },
         [
@@ -2133,7 +1585,7 @@ export const deallocationService = {
               await businessInventoryService.returnItemFromProject(businessItem.item_id, transactionId, projectId)
             }
             // Remove from project
-            await itemService.deleteItem(projectId, returnItem.item_id)
+            await unifiedItemsService.deleteItem(returnItem.item_id)
           }
         },
         [
@@ -2160,7 +1612,7 @@ export const deallocationService = {
     if (itemsBeingReturned.length === 1) {
       // Single item - create We Owe transaction
       await this.createWeOweTransaction(item, projectId)
-      await itemService.deleteItem(projectId, item.item_id)
+      await unifiedItemsService.deleteItem(item.item_id)
     } else {
       // Multiple items - bundle into single transaction
       const totalAmount = this.calculateTotalAmount(itemsBeingReturned)
@@ -2168,7 +1620,7 @@ export const deallocationService = {
 
       // Remove all returned items from project
       for (const returnItem of itemsBeingReturned) {
-        await itemService.deleteItem(projectId, returnItem.item_id)
+        await unifiedItemsService.deleteItem(returnItem.item_id)
       }
     }
   },
