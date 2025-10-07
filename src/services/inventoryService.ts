@@ -17,7 +17,7 @@ import {
   deleteField
 } from 'firebase/firestore'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
-import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, ItemImage, BusinessInventoryStats } from '@/types'
+import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, BusinessInventoryStats } from '@/types'
 
 // Project Services
 export const projectService = {
@@ -1458,354 +1458,158 @@ export const businessInventoryService = {
 
 // Deallocation Service - Handles inventory designation automation
 export const deallocationService = {
-  // Main entry point for handling inventory designation
+  // Main entry point for handling inventory designation - simplified unified approach
   async handleInventoryDesignation(
     itemId: string,
     projectId: string,
     disposition: string
   ): Promise<void> {
+    console.log('🔄 handleInventoryDesignation called:', { itemId, projectId, disposition })
+
     if (disposition !== 'inventory') {
+      console.log('⏭️ Skipping - disposition is not inventory:', disposition)
       return // Only handle 'inventory' disposition
     }
 
     try {
+      console.log('🔍 Getting item details for:', itemId)
       // Get the item details
       const item = await unifiedItemsService.getItemById(itemId)
       if (!item) {
         throw new Error('Item not found')
       }
+      console.log('✅ Item found:', item.item_id, 'disposition:', item.disposition, 'project_id:', item.project_id)
 
-      // If item has a transaction_id, check if it's an existing allocation scenario
-      if (item.transaction_id) {
-        await this.handleExistingTransactionCase(item, projectId)
-      } else {
-        // Handle direct inventory designation scenario
-        await this.handleDirectInventoryDesignation(item, projectId)
-      }
+      // Unified approach: Always create/update a "We Owe" transaction for inventory designation
+      console.log('🏦 Creating/updating We Owe transaction for inventory designation')
+      const transactionId = await this.ensurePurchaseTransaction(
+        item,
+        projectId,
+        `Item designated for inventory: ${item.description}`
+      )
+
+      console.log('📦 Moving item to business inventory...')
+      // Update item to move to business inventory and link to transaction
+      await unifiedItemsService.updateItem(item.item_id, {
+        project_id: null,
+        inventory_status: 'available',
+        transaction_id: transactionId,
+        last_updated: new Date().toISOString()
+      })
+      console.log('✅ Item moved to business inventory successfully')
+
+      console.log('✅ Deallocation completed successfully')
     } catch (error) {
-      console.error('Error handling inventory designation:', error)
+      console.error('❌ Error handling inventory designation:', error)
       throw error
     }
   },
 
-  // Scenario 1: Existing Transaction Case
-  async handleExistingTransactionCase(item: Item, projectId: string): Promise<void> {
-    const transactionId = item.transaction_id
-
-    // Get all items sharing the same transaction_id
-    const allTransactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
-
-    // Check if there's a business inventory item linked to this transaction
-    const businessInventoryItem = await this.findBusinessInventoryItemByTransaction(transactionId)
-
-    if (businessInventoryItem) {
-      // This is a return of an allocated business item
-      await this.handleBusinessInventoryReturn(item as any, transactionId, projectId, allTransactionItems as any)
-    } else {
-      // This is a direct movement to business inventory
-      await this.handleDirectInventoryMovement(item, projectId, allTransactionItems as any)
-    }
-  },
-
-  // Scenario 2: Direct Inventory Designation
-  async handleDirectInventoryDesignation(item: Item, projectId: string): Promise<void> {
-    // Check if this is a client-purchased item (payment_method = 'Client Card')
-    if (item.payment_method === 'Client Card') {
-      // Create a purchase transaction (business buying from client)
-      await this.createPurchaseTransaction(item, projectId)
-    } else {
-      // For business-purchased items, just move to inventory without transaction
-      await this.moveToBusinessInventoryDirectly(item, projectId)
-    }
-  },
-
-  // Find business inventory item linked to a transaction
-  async findBusinessInventoryItemByTransaction(transactionId: string): Promise<Item | null> {
-    const businessItems = await businessInventoryService.getBusinessInventoryItems({})
-
-    return businessItems.find(item =>
-      item.transaction_id === transactionId
-    ) || null
-  },
-
-  // Handle return of allocated business inventory item
-  async handleBusinessInventoryReturn(
-    _item: Item,
-    transactionId: string,
-    projectId: string,
-    allTransactionItems: Item[]
-  ): Promise<void> {
-    const itemsBeingReturned = allTransactionItems.filter(i => i.disposition === 'inventory')
-    const itemsNotBeingReturned = allTransactionItems.filter(i => i.disposition !== 'inventory')
-
-    if (this.areAllTransactionItemsBeingDeallocated(allTransactionItems)) {
-      // Complete deallocation - cancel the entire transaction
-      await this.executeAtomicOperation(
-        async () => {
-          await this.cancelTransactionCompletely(transactionId, projectId)
-
-          // Return all items to business inventory
-          for (const returnItem of itemsBeingReturned) {
-            const businessItem = await this.findBusinessInventoryItemByTransaction(transactionId)
-            if (businessItem) {
-              await businessInventoryService.returnItemFromProject(businessItem.item_id, transactionId, projectId)
-            }
-            // Remove from project
-            await unifiedItemsService.deleteItem(returnItem.item_id)
-          }
-        },
-        [
-          // Rollback: Restore transaction status and amount
-          async () => {
-            const originalAmount = this.calculateTotalAmount(allTransactionItems)
-            await transactionService.updateTransaction(projectId, transactionId, {
-              status: 'pending',
-              amount: originalAmount
-            })
-          }
-        ]
-      )
-    } else {
-      // Partial deallocation - update transaction amount and return specific items
-      await this.executeAtomicOperation(
-        async () => {
-          const newAmount = this.calculateRemainingAmount(itemsNotBeingReturned)
-          await transactionService.updateTransaction(projectId, transactionId, {
-            amount: newAmount,
-            status: 'pending' // Keep as pending since some items remain
-          })
-
-          // Return only the specified items
-          for (const returnItem of itemsBeingReturned) {
-            const businessItem = await this.findBusinessInventoryItemByTransaction(transactionId)
-            if (businessItem) {
-              await businessInventoryService.returnItemFromProject(businessItem.item_id, transactionId, projectId)
-            }
-            // Remove from project
-            await unifiedItemsService.deleteItem(returnItem.item_id)
-          }
-        },
-        [
-          // Rollback: Restore original transaction amount
-          async () => {
-            const originalAmount = this.calculateTotalAmount(allTransactionItems)
-            await transactionService.updateTransaction(projectId, transactionId, {
-              amount: originalAmount
-            })
-          }
-        ]
-      )
-    }
-  },
-
-  // Handle direct movement to business inventory (no prior allocation transaction)
-  async handleDirectInventoryMovement(
+  // Unified function to ensure a purchase transaction exists for inventory designation
+  async ensurePurchaseTransaction(
     item: Item,
     projectId: string,
-    allTransactionItems: Item[]
-  ): Promise<void> {
-    const itemsBeingReturned = allTransactionItems.filter(i => i.disposition === 'inventory')
+    additionalNotes?: string
+  ): Promise<string> {
+    console.log('🏦 Creating/updating purchase transaction for item:', item.item_id)
 
-    if (itemsBeingReturned.length === 1) {
-      // Single item - create We Owe transaction
-      await this.createWeOweTransaction(item, projectId)
-      await unifiedItemsService.deleteItem(item.item_id)
-    } else {
-      // Multiple items - bundle into single transaction
-      const totalAmount = this.calculateTotalAmount(itemsBeingReturned)
-      await this.createBundledWeOweTransaction(itemsBeingReturned, projectId, totalAmount)
+    const canonicalTransactionId = `INV_BUY_${projectId}`
+    console.log('🔑 Canonical transaction ID:', canonicalTransactionId)
 
-      // Remove all returned items from project
-      for (const returnItem of itemsBeingReturned) {
-        await unifiedItemsService.deleteItem(returnItem.item_id)
-      }
-    }
-  },
+    // Check if the canonical transaction already exists
+    const transactionRef = doc(db, 'projects', projectId, 'transactions', canonicalTransactionId)
+    const transactionSnap = await getDoc(transactionRef)
 
-  // Create purchase transaction for client-purchased items
-  async createPurchaseTransaction(item: Item, projectId: string): Promise<void> {
-    // Use the existing moveItemToBusinessInventory method for client-purchased items
-    await businessInventoryService.moveItemToBusinessInventory(
-      item.item_id,
-      projectId,
-      item.project_price || '0.00',
-      'Business purchase from client - item moved to inventory'
-    )
-  },
-
-  // Move item directly to business inventory (no transaction needed)
-  async moveToBusinessInventoryDirectly(item: Item, _projectId: string): Promise<void> {
-    const businessItemData = {
-      description: item.description,
-      source: item.source,
-      sku: item.sku,
-      purchase_price: item.purchase_price,
-      project_price: item.project_price,
-      market_value: item.market_value,
-      payment_method: item.payment_method,
-      disposition: 'keep',
-      notes: item.notes,
-      space: item.space,
-      qr_key: item.qr_key,
-      bookmark: item.bookmark,
-      inventory_status: 'available' as const,
-      business_inventory_location: 'Warehouse - Business Purchase',
-      date_created: item.date_created,
-      last_updated: new Date().toISOString(),
-      images: item.images || []
-    }
-
-    await unifiedItemsService.createItem({
-      ...businessItemData,
-      project_id: null,
-      inventory_status: 'available',
-      transaction_id: item.transaction_id || ''
-    })
-    // Note: We don't need to delete the old item since we're creating a new one in the unified collection
-  },
-
-  // Create We Owe transaction for single item
-  async createWeOweTransaction(item: Item, projectId: string): Promise<void> {
-    const transactionData = {
+    let transactionData: any = {
       project_id: projectId,
-      project_name: '', // Will be filled by transactionService
       transaction_date: new Date().toISOString(),
       source: 'Inventory Return',
       transaction_type: 'Reimbursement',
       payment_method: 'Pending',
-      amount: item.project_price || '0.00',
       budget_category: 'Furnishings',
-      notes: 'Item returned to business inventory',
-      receipt_emailed: false,
-      created_by: 'system',
+      notes: additionalNotes || 'Item returned to business inventory',
       status: 'pending' as const,
       reimbursement_type: 'We Owe' as const,
-      trigger_event: 'Inventory return' as const
-    }
-
-    await transactionService.createTransaction(projectId, transactionData)
-  },
-
-  // Create bundled We Owe transaction for multiple items
-  async createBundledWeOweTransaction(items: Item[], projectId: string, totalAmount: string): Promise<void> {
-    const transactionData = {
-      project_id: projectId,
-      project_name: '', // Will be filled by transactionService
-      transaction_date: new Date().toISOString(),
-      source: 'Bulk Inventory Return',
-      transaction_type: 'Reimbursement',
-      payment_method: 'Pending',
-      amount: totalAmount,
-      budget_category: 'Furnishings',
-      notes: `Bulk return of ${items.length} items to business inventory`,
-      receipt_emailed: false,
+      trigger_event: 'Inventory return' as const,
+      item_ids: [item.item_id], // Start with current item
       created_by: 'system',
-      status: 'pending' as const,
-      reimbursement_type: 'We Owe' as const,
-      trigger_event: 'Inventory return' as const
+      created_at: new Date().toISOString(),
+      last_updated: new Date().toISOString()
     }
 
-    await transactionService.createTransaction(projectId, transactionData)
-  },
+    if (transactionSnap.exists()) {
+      // Transaction exists - merge the new item and recalculate amount
+      console.log('📋 Existing transaction found, updating with new item')
+      const existingData = transactionSnap.data()
+      const existingItemIds = existingData.item_ids || []
+      const updatedItemIds = [...new Set([...existingItemIds, item.item_id])] // Avoid duplicates
 
-  // Cancel transaction completely
-  async cancelTransactionCompletely(transactionId: string, projectId: string): Promise<void> {
-    await transactionService.updateTransaction(projectId, transactionId, {
-      status: 'cancelled',
-      amount: '0.00'
-    })
-  },
+      // Get all items to recalculate amount
+      const itemsRef = collection(db, 'items')
+      const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
+      const itemsSnapshot = await getDocs(itemsQuery)
 
-  // Calculate remaining amount for partial deallocation
-  calculateRemainingAmount(remainingItems: Item[]): string {
-    const total = remainingItems.reduce((sum, item) => {
-      const price = this.safeParseCurrency(item.project_price)
-      return sum + price
-    }, 0)
-    return this.formatCurrency(total)
-  },
+      const totalAmount = itemsSnapshot.docs
+        .map(doc => doc.data().purchase_price || doc.data().market_value || '0.00')
+        .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
+        .toFixed(2)
 
-  // Calculate total amount for multiple items
-  calculateTotalAmount(items: Item[]): string {
-    const total = items.reduce((sum, item) => {
-      const price = this.safeParseCurrency(item.project_price)
-      return sum + price
-    }, 0)
-    return this.formatCurrency(total)
-  },
-
-  // Helper method for atomic operations with rollback capability
-  async executeAtomicOperation<T>(
-    operation: () => Promise<T>,
-    rollbackOperations: Array<() => Promise<void>> = []
-  ): Promise<T> {
-    try {
-      return await operation()
-    } catch (error) {
-      // Execute rollback operations in reverse order
-      for (const rollback of rollbackOperations.reverse()) {
-        try {
-          await rollback()
-        } catch (rollbackError) {
-          console.error('Rollback operation failed:', rollbackError)
-        }
+      transactionData = {
+        ...existingData,
+        item_ids: updatedItemIds,
+        amount: totalAmount,
+        notes: existingData.notes || 'Multiple items returned to business inventory',
+        last_updated: new Date().toISOString()
       }
-      throw error
+
+      console.log('🔄 Updated transaction with', updatedItemIds.length, 'items, amount:', totalAmount)
+    } else {
+      // New transaction - calculate amount from current item
+      const itemAmount = item.purchase_price || item.market_value || '0.00'
+      transactionData.amount = parseFloat(itemAmount || '0').toFixed(2)
+
+      console.log('🆕 Creating new transaction with amount:', transactionData.amount)
     }
-  },
 
-  // Helper method to safely parse and format currency amounts
-  safeParseCurrency(amount: string | undefined | null): number {
-    if (!amount) return 0
-    const parsed = parseFloat(amount.toString())
-    return isNaN(parsed) ? 0 : parsed
-  },
+    console.log('💾 Creating/updating transaction document...')
+    await setDoc(transactionRef, transactionData, { merge: true })
+    console.log('✅ Transaction created/updated successfully')
 
-  // Helper method to format currency for storage
-  formatCurrency(amount: number): string {
-    return amount.toFixed(2)
-  },
-
-  // Helper method to check if all items in a transaction are being deallocated
-  areAllTransactionItemsBeingDeallocated(items: Item[]): boolean {
-    return items.every(item => item.disposition === 'inventory')
-  },
-
-  // Helper method to check if any items in a transaction are being deallocated
-  areAnyTransactionItemsBeingDeallocated(items: Item[]): boolean {
-    return items.some(item => item.disposition === 'inventory')
+    return canonicalTransactionId
   }
 }
 
 // Integration Service for Business Inventory and Transactions
 export const integrationService = {
-  // Allocate business inventory item to project
+  // Allocate business inventory item to project (unified collection)
   async allocateBusinessInventoryToProject(
     itemId: string,
     projectId: string,
     amount?: string,
     notes?: string
   ): Promise<string> {
-    return await businessInventoryService.allocateItemToProject(itemId, projectId, amount, notes)
+    return await unifiedItemsService.allocateItemToProject(itemId, projectId, amount, notes)
   },
 
-  // Return item from project to business inventory
+  // Return item from project to business inventory (unified collection)
   async returnItemToBusinessInventory(
     itemId: string,
-    transactionId: string,
+    _transactionId: string,
     projectId: string
   ): Promise<void> {
-    return await businessInventoryService.returnItemFromProject(itemId, transactionId, projectId)
+    // Use the canonical return method which creates/updates INV_BUY_<projectId> transaction
+    await unifiedItemsService.returnItemFromProject(itemId, projectId)
   },
 
-  // Complete pending transaction and mark item as sold
+  // Complete pending transaction and mark item as sold (unified collection)
   async completePendingTransaction(
-    itemId: string,
-    transactionId: string,
+    _itemId: string,
+    _transactionId: string,
     projectId: string,
     paymentMethod: string
   ): Promise<void> {
-    return await businessInventoryService.markItemAsSold(itemId, transactionId, projectId, paymentMethod)
+    // For sales, we need to complete the INV_SALE transaction
+    return await unifiedItemsService.completePendingTransaction('sale', projectId, paymentMethod)
   },
 
   // Handle item deallocation (new method)

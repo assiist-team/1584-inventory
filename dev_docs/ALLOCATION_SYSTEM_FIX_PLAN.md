@@ -220,3 +220,82 @@ const businessItemsRef = collection(db, 'business_inventory')
 - If you no longer need `item.transaction_id` on the item document, replace it with `last_transaction_id` (optional) and rely on `Transaction.item_ids` for linkage.
 - Ensure QR key generation (`qr_key`) is consistent in allocation and creation flows.
 - Remove any references to per‑project item images handling that assume subcollections; images should live on the top‑level item document.
+
+## Fix-It Section: Inventory Disposition Transaction Creation Issue
+
+### Problem Identified
+When changing a project item's disposition to "Inventory", the item is successfully moved from project inventory to business inventory, but no "We Owe" transaction is created.
+
+### Root Cause
+The deallocation logic has two different code paths:
+1. `handleExistingTransactionCase` - for items that already have a `transaction_id`
+2. `handleDirectInventoryDesignation` - for items without a `transaction_id`
+
+The issue occurs in the first path. When an item has an existing `transaction_id`, the system tries to handle it as an "existing allocation scenario" but the transaction creation logic is not working properly.
+
+### Symptoms
+- Item disposition changes to "inventory" ✅
+- Item is removed from project inventory ✅
+- Item appears in business inventory ✅
+- No "We Owe" transaction is created ❌
+- No transaction creation logs appear in console ❌
+
+### Current Behavior vs Expected Behavior
+
+**Current (Broken):**
+```
+🔗 Item has existing transaction_id: FqjicC4ujbjJtGja3S9E
+[NO TRANSACTION CREATION LOGS]
+✅ Deallocation completed successfully
+```
+
+**Expected (Working):**
+```
+🔗 Item has existing transaction_id: FqjicC4ujbjJtGja3S9E
+🏦 Creating purchase transaction for item: I-1759785782780-puce
+🔑 Canonical transaction ID: INV_BUY_T9uGIa7QkgnhKcBOclRd
+💾 Creating transaction document...
+✅ Transaction created successfully
+📦 Updating item to move to business inventory...
+✅ Item updated successfully
+✅ Deallocation completed successfully
+```
+
+### Recommended Fix
+The deallocation logic should be simplified to always create/update a "We Owe" transaction when disposition is set to "inventory", regardless of existing transaction state. The complex logic for handling existing transactions is causing the transaction creation to fail silently.
+
+**Key Issue: Canonical Transaction Already Exists**
+When the canonical `INV_BUY_<projectId>` transaction already exists (from previous deallocations), the current logic may not properly:
+1. Add the new item to the existing transaction's `item_ids` array
+2. Update the transaction amount to include the new item's value
+3. Maintain the existing transaction data while adding the new item
+
+**Suggested Code Changes:**
+1. Remove the `handleExistingTransactionCase` vs `handleDirectInventoryDesignation` branching logic
+2. Always call a unified `ensurePurchaseTransaction` function when disposition is "inventory"
+3. This function should:
+   - Check if `INV_BUY_<projectId>` transaction exists
+   - If it exists: add the item to `item_ids` array and recalculate amount
+   - If it doesn't exist: create new transaction with the item
+   - Use `setDoc` with `merge: true` to handle both cases
+4. Add proper error handling and logging throughout the transaction creation process
+
+**Implementation Details:**
+- Use `arrayUnion(itemId)` to add items to the `item_ids` array without duplicates
+- For amount calculation: sum `purchase_price` for all items in `item_ids` (fallback to `market_value` if `purchase_price` is missing), rounded to 2 decimal places
+- Perform amount recompute atomically after `arrayUnion` to avoid race conditions
+- Use `pending_transaction_id` field on items during the allocation/deallocation process (as referenced in line 59 of this document)
+- For historical linkage, consider adding an optional `last_transaction_id` field to items after transaction completion
+
+### Testing Steps
+1. Change a project item's disposition to "Inventory"
+2. Verify console shows transaction creation logs
+3. Check that a new transaction with ID `INV_BUY_<projectId>` is created in the database
+4. Verify the transaction has `reimbursement_type: 'We Owe'` and `item_ids` array
+5. Confirm the item is properly linked to the new transaction
+
+**Additional Test Cases:**
+6. **Existing Transaction Scenario**: Change multiple items' disposition to "Inventory" over time
+7. **Verify Existing Transaction Updates**: Check that subsequent items are added to the same `INV_BUY_<projectId>` transaction's `item_ids` array
+8. **Amount Recalculation**: Confirm the transaction `amount` increases correctly when new items are added
+9. **Legacy Transaction Handling**: Verify items with non-canonical `transaction_id` values still create/update the canonical `INV_BUY_<projectId>` transaction

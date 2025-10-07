@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, getFirestore } from 'firebase/firestore'
+import { useState } from 'react'
+import { collection, getDocs, doc, writeBatch, getFirestore } from 'firebase/firestore'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -165,7 +165,7 @@ export default function MigrationRunner() {
         <Button
           onClick={validateMigration}
           disabled={isRunning}
-          variant="outline"
+          variant="secondary"
         >
           Validate Migration
         </Button>
@@ -173,7 +173,7 @@ export default function MigrationRunner() {
         <Button
           onClick={runMigration}
           disabled={isRunning}
-          variant="default"
+          variant="primary"
         >
           {isRunning ? 'Running Migration...' : 'Run Migration'}
         </Button>

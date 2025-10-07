@@ -167,13 +167,13 @@ export default function EditItem() {
 
     setSaving(true)
 
-    try {
-      const itemData = {
-        ...formData,
-        transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
-        last_updated: new Date().toISOString()
-      }
+    const itemData = {
+      ...formData,
+      transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
+      last_updated: new Date().toISOString()
+    }
 
+    try {
       await unifiedItemsService.updateItem(itemId, itemData)
 
       // Use returnTo if available, otherwise go to inventory tab

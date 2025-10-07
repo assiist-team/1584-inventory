@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { unifiedItemsService } from '@/services/inventoryService'
+import { unifiedItemsService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
@@ -143,24 +143,55 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const { buildContextUrl } = useNavigationContext()
 
   const updateDisposition = async (itemId: string, newDisposition: string) => {
+    console.log('🎯 InventoryList updateDisposition called:', itemId, newDisposition)
+
     try {
       const item = items.find((item: InventoryListItem) => item.item_id === itemId)
-      if (!item) return
+      if (!item) {
+        console.error('❌ Item not found for disposition update:', itemId)
+        return
+      }
+
+      console.log('📝 Updating disposition from', item.disposition, 'to', newDisposition)
 
       // Update in Firestore
       await unifiedItemsService.updateItem(itemId, { disposition: newDisposition })
+      console.log('💾 Database updated successfully')
 
-      // Update local state optimistically
-      setItems(items.map(item =>
-        item.item_id === itemId
-          ? { ...item, disposition: newDisposition }
-          : item
-      ))
+      // If disposition is set to 'inventory', trigger deallocation process
+      if (newDisposition === 'inventory') {
+        console.log('🚀 Starting deallocation process for item:', itemId)
+        try {
+          await integrationService.handleItemDeallocation(
+            itemId,
+            item.project_id || '',
+            newDisposition
+          )
+          console.log('✅ Deallocation completed successfully')
+          // Close the disposition menu - real-time subscription will handle state update
+          setOpenDispositionMenu(null)
+        } catch (deallocationError) {
+          console.error('❌ Failed to handle deallocation:', deallocationError)
+          // Revert the disposition change if deallocation fails
+          await unifiedItemsService.updateItem(itemId, {
+            disposition: item.disposition // Revert to previous disposition
+          })
+          setError('Failed to move item to inventory. Please try again.')
+          return
+        }
+      } else {
+        // For non-inventory dispositions, update local state optimistically
+        setItems(items.map(item =>
+          item.item_id === itemId
+            ? { ...item, disposition: newDisposition }
+            : item
+        ))
 
-      // Close the disposition menu
-      setOpenDispositionMenu(null)
+        // Close the disposition menu
+        setOpenDispositionMenu(null)
+      }
     } catch (error) {
-      console.error('Failed to update disposition:', error)
+      console.error('❌ Failed to update disposition:', error)
       setError('Failed to update item disposition. Please try again.')
     }
   }

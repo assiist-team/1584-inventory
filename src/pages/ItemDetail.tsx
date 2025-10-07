@@ -58,33 +58,39 @@ export default function ItemDetail() {
 
   useEffect(() => {
     const fetchItem = async () => {
+      console.log('🔄 ItemDetail useEffect triggered. itemId:', actualItemId, 'id:', id, 'projectId:', projectId)
+
       if (actualItemId) {
         try {
           if (projectId) {
+            console.log('📡 Fetching item and project data...')
             const [fetchedItem, project] = await Promise.all([
               unifiedItemsService.getItemById(actualItemId),
               projectService.getProject(projectId)
             ])
 
             if (fetchedItem) {
+              console.log('✅ Item loaded successfully:', fetchedItem.item_id)
               setItem(fetchedItem)
             } else {
-              console.error('Item not found in project:', projectId, 'with ID:', actualItemId)
+              console.error('❌ Item not found in project:', projectId, 'with ID:', actualItemId)
               setItem(null)
             }
 
             if (project) {
+              console.log('✅ Project loaded:', project.name)
               setProjectName(project.name)
             }
           } else {
-            console.error('No project ID found in URL parameters')
+            console.error('❌ No project ID found in URL parameters')
             setItem(null)
           }
         } catch (error) {
-          console.error('Failed to fetch item:', error)
+          console.error('❌ Failed to fetch item:', error)
           setItem(null)
         }
       } else {
+        console.log('⚠️ No itemId or id in URL parameters')
         setItem(null)
       }
     }
@@ -166,13 +172,21 @@ export default function ItemDetail() {
   }
 
   const updateDisposition = async (newDisposition: string) => {
-    if (!item) return
+    console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.item_id)
+
+    if (!item) {
+      console.error('❌ No item available for disposition update')
+      return
+    }
+
+    console.log('📝 Updating disposition from', item.disposition, 'to', newDisposition)
 
     try {
       // Update the disposition in the database first
       await unifiedItemsService.updateItem(item.item_id, {
         disposition: newDisposition
       })
+      console.log('💾 Database updated successfully')
 
       // Update local state
       setItem({ ...item, disposition: newDisposition })
@@ -180,19 +194,21 @@ export default function ItemDetail() {
 
       // If disposition is set to 'inventory', trigger deallocation process
       if (newDisposition === 'inventory') {
+        console.log('🚀 Starting deallocation process for item:', item.item_id)
         try {
           await integrationService.handleItemDeallocation(
             item.item_id,
             item.project_id || '',
             newDisposition
           )
+          console.log('✅ Deallocation completed successfully')
           // Refresh the item data after deallocation
           const updatedItem = await unifiedItemsService.getItemById(item.item_id)
           if (updatedItem) {
             setItem(updatedItem)
           }
         } catch (deallocationError) {
-          console.error('Failed to handle deallocation:', deallocationError)
+          console.error('❌ Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
           await unifiedItemsService.updateItem(item.item_id, {
             disposition: item.disposition // Revert to previous disposition
@@ -208,6 +224,7 @@ export default function ItemDetail() {
   }
 
   const toggleDispositionMenu = () => {
+    console.log('🖱️ toggleDispositionMenu called, current state:', openDispositionMenu, 'item:', item?.item_id)
     setOpenDispositionMenu(!openDispositionMenu)
   }
 

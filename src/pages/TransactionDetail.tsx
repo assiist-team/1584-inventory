@@ -3,7 +3,7 @@ import { useState } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
 import { useMemo } from 'react'
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Transaction, Project, Item, TransactionItemFormData } from '@/types'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
@@ -33,7 +33,6 @@ const removeUnwantedIcons = () => {
 export default function TransactionDetail() {
   const { id: projectId, transactionId } = useParams<{ id?: string; transactionId: string }>()
   const navigate = useNavigate()
-  const location = useLocation()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [transactionItems, setTransactionItems] = useState<Item[]>([])
@@ -49,8 +48,6 @@ export default function TransactionDetail() {
   const { buildContextUrl, getBackDestination } = useNavigationContext()
 
   // Navigation context logic
-  const currentSearchParams = new URLSearchParams(location.search)
-  const fromBusinessInventoryItem = currentSearchParams.get('from') === 'business-inventory-item'
 
   const backDestination = useMemo(() => {
     // Use navigation context's getBackDestination function
