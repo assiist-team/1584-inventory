@@ -29,7 +29,11 @@ export default function ItemDetail() {
   const actualItemId = itemId || id
 
   // Get project ID from URL path (for /project/:id/item/:itemId) or search parameters (for /item/:id)
+  // For business inventory items, the URL structure is /business-inventory/:id
   const projectId = searchParams.get('project') || id
+
+  // Check if this is a business inventory item (no project context)
+  const isBusinessInventoryItem = !projectId && location.pathname.startsWith('/business-inventory/')
 
   // Use duplication hook
   const { duplicateItem } = useDuplication({
@@ -46,14 +50,15 @@ export default function ItemDetail() {
 
   // Determine back navigation destination using navigation context
   const backDestination = useMemo(() => {
-    // If item is not loaded yet (null), use default
+    // If item is not loaded yet (null), use appropriate default
     if (!item) {
-      return `/project/${projectId}?tab=inventory`
+      return isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`
     }
 
     // Use navigation context's getBackDestination function
-    return getBackDestination(`/project/${projectId}?tab=inventory`)
-  }, [item, projectId, getBackDestination])
+    const defaultPath = isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`
+    return getBackDestination(defaultPath)
+  }, [item, projectId, getBackDestination, isBusinessInventoryItem])
 
 
   useEffect(() => {
@@ -62,7 +67,19 @@ export default function ItemDetail() {
 
       if (actualItemId) {
         try {
-          if (projectId) {
+          if (isBusinessInventoryItem) {
+            console.log('📦 Fetching business inventory item (no project context)...')
+            const fetchedItem = await unifiedItemsService.getItemById(actualItemId)
+
+            if (fetchedItem) {
+              console.log('✅ Business inventory item loaded successfully:', fetchedItem.item_id)
+              setItem(fetchedItem)
+              setProjectName('Business Inventory') // Set a default project name for UI display
+            } else {
+              console.error('❌ Business inventory item not found with ID:', actualItemId)
+              setItem(null)
+            }
+          } else if (projectId) {
             console.log('📡 Fetching item and project data...')
             const [fetchedItem, project] = await Promise.all([
               unifiedItemsService.getItemById(actualItemId),
@@ -247,7 +264,7 @@ export default function ItemDetail() {
   }
 
   const handleDeleteItem = async () => {
-    if (!item || !projectId) return
+    if (!item) return
 
     if (!confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
       return
@@ -255,7 +272,7 @@ export default function ItemDetail() {
 
     try {
       await unifiedItemsService.deleteItem(item.item_id)
-      navigate(`/project/${projectId}?tab=inventory`)
+      navigate(isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Failed to delete item:', error)
       showError('Failed to delete item. Please try again.')
@@ -263,7 +280,7 @@ export default function ItemDetail() {
   }
 
   const handleMultipleImageUpload = async (files: File[]) => {
-    if (!item || !projectName) return
+    if (!item) return
 
     try {
       setIsUploadingImage(true)
@@ -276,7 +293,7 @@ export default function ItemDetail() {
 
       const uploadResults = await ImageUploadService.uploadMultipleItemImages(
         files,
-        projectName,
+        projectName || 'Business Inventory',
         item.item_id,
         (fileIndex, progress) => {
           // Show progress for current file being uploaded
@@ -330,7 +347,7 @@ export default function ItemDetail() {
   }
 
   const handleSelectFromGallery = async () => {
-    if (!item || !projectName) return
+    if (!item) return
 
     try {
       setIsUploadingImage(true)
@@ -363,15 +380,13 @@ export default function ItemDetail() {
 
 
   const handleRemoveImage = async (imageUrl: string) => {
-    if (!item || !projectId) return
+    if (!item) return
 
     try {
       // Remove from database
-      if (projectId) {
-        await unifiedItemsService.updateItem(item.item_id, {
-          images: item.images?.filter(img => img.url !== imageUrl) || []
-        })
-      }
+      await unifiedItemsService.updateItem(item.item_id, {
+        images: item.images?.filter(img => img.url !== imageUrl) || []
+      })
 
       // Update local state
       const updatedImages = item.images?.filter(img => img.url !== imageUrl) || []
@@ -385,18 +400,16 @@ export default function ItemDetail() {
   }
 
   const handleSetPrimaryImage = async (imageUrl: string) => {
-    if (!item || !projectId) return
+    if (!item) return
 
     try {
       // Update in database
-      if (projectId) {
-        await unifiedItemsService.updateItem(item.item_id, {
-          images: item.images?.map(img => ({
-            ...img,
-            isPrimary: img.url === imageUrl
-          })) || []
-        })
-      }
+      await unifiedItemsService.updateItem(item.item_id, {
+        images: item.images?.map(img => ({
+          ...img,
+          isPrimary: img.url === imageUrl
+        })) || []
+      })
 
       // Update local state
       const updatedImages = item.images?.map(img => ({
@@ -466,7 +479,10 @@ export default function ItemDetail() {
             </button>
 
             <Link
-              to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+              to={isBusinessInventoryItem
+                ? `/business-inventory/${item.item_id}/edit?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+                : `/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+              }
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
@@ -647,7 +663,10 @@ export default function ItemDetail() {
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
                     <Link
-                      to={buildContextUrl(`/project/${projectId}/transaction/${item.transaction_id}`)}
+                      to={isBusinessInventoryItem
+                        ? buildContextUrl(`/business-inventory/transaction/${item.transaction_id}`)
+                        : buildContextUrl(`/project/${projectId}/transaction/${item.transaction_id}`)
+                      }
                       className="text-primary-600 hover:text-primary-800 underline"
                     >
                       {item.transaction_id}

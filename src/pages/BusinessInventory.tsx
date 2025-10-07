@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Item, Transaction, ItemImage, Project } from '@/types'
+import type { Transaction as TransactionType } from '@/types'
 import { unifiedItemsService, transactionService, projectService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
@@ -113,6 +114,13 @@ export default function BusinessInventory() {
 
     return filtered
   }, [transactions, transactionFilterMode, transactionSearchQuery])
+
+  // Canonical transaction title for display only
+  const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
+    if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
+    if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+    return transaction.source
+  }
 
   const tabs = [
     { id: 'inventory' as const, name: 'Items', icon: Package },
@@ -840,7 +848,7 @@ export default function BusinessInventory() {
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center">
                                 <h3 className="text-base font-medium text-gray-900">
-                                  {transaction.source}
+                                  {getCanonicalTransactionTitle(transaction)}
                                 </h3>
                               </div>
                               <div className="flex items-center flex-wrap gap-2">

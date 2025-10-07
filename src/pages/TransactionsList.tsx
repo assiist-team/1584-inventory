@@ -3,6 +3,14 @@ import { Link, useParams } from 'react-router-dom'
 import { useState, useEffect, useMemo } from 'react'
 import { Transaction } from '@/types'
 import { transactionService } from '@/services/inventoryService'
+import type { Transaction as TransactionType } from '@/types'
+
+// Canonical transaction title for display only
+const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
+  if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
+  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+  return transaction.source
+}
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 
 // Remove any unwanted icons from transaction type badges
@@ -245,11 +253,11 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                   className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
                   <div className="px-4 py-4 sm:px-6">
-                    {/* Top row: Header with source and type */}
+                    {/* Top row: Header with canonical title and type */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center">
                         <h3 className="text-base font-medium text-gray-900">
-                          {transaction.source}
+                          {getCanonicalTransactionTitle(transaction)}
                         </h3>
                       </div>
                       <div className="flex items-center flex-wrap gap-2">

@@ -717,7 +717,7 @@ export const unifiedItemsService = {
     } as Item))
   },
 
-  // Allocate single item to project (creates/updates INV_SALE_<projectId> transaction)
+  // Allocate single item to project (creates/updates INV_PURCHASE_<projectId> transaction)
   async allocateItemToProject(
     itemId: string,
     projectId: string,
@@ -733,44 +733,82 @@ export const unifiedItemsService = {
     }
     const finalAmount = amount || item.project_price || item.market_value || '0.00'
 
-    // Use canonical transaction ID for inventory sales
-    const canonicalTransactionId = `INV_SALE_${projectId}`
+    // Use canonical transaction ID for inventory purchases
+    const canonicalTransactionId = `INV_PURCHASE_${projectId}`
 
-    // Upsert the canonical transaction (top-level collection)
+    // Check if the canonical transaction already exists and update it
     const transactionRef = doc(db, 'transactions', canonicalTransactionId)
-    const transactionData = {
-      transaction_id: canonicalTransactionId,
-      project_id: projectId,
-      project_name: null, // Will be filled in later if needed
-      transaction_date: new Date().toISOString(),
-      source: 'Inventory Allocation',
-      transaction_type: 'Reimbursement',
-      payment_method: 'Pending',
-      amount: finalAmount,
-      budget_category: 'Furnishings',
-      notes: notes || 'Item allocated from business inventory',
-      status: 'pending' as const,
-      reimbursement_type: 'Client Owes' as const,
-      trigger_event: 'Inventory allocation' as const,
-      item_ids: [itemId], // Initialize with this item
-      created_by: 'system',
-      created_at: new Date().toISOString(),
-      last_updated: new Date().toISOString()
-    }
+    const transactionSnap = await getDoc(transactionRef)
 
-    await setDoc(transactionRef, transactionData, { merge: true })
+    let itemIds: string[]
+
+    if (transactionSnap.exists()) {
+      // Transaction exists - merge the new item and recalculate amount
+      console.log('📋 Existing INV_PURCHASE transaction found, updating with new item')
+      const existingData = transactionSnap.data()
+      const existingItemIds = existingData.item_ids || []
+      itemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
+
+      // Get all items to recalculate amount
+      const itemsRef = collection(db, 'items')
+      const itemsQuery = query(itemsRef, where('__name__', 'in', itemIds))
+      const itemsSnapshot = await getDocs(itemsQuery)
+
+      const totalAmount = itemsSnapshot.docs
+        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+        .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
+        .toFixed(2)
+
+      const updatedTransactionData = {
+        ...existingData,
+        item_ids: itemIds,
+        amount: totalAmount,
+        notes: notes || existingData.notes || 'Items purchased from business inventory',  // Preserve existing notes or use canonical
+        last_updated: new Date().toISOString()
+      }
+
+      await setDoc(transactionRef, updatedTransactionData, { merge: true })
+
+      console.log('🔄 Updated INV_PURCHASE transaction with', itemIds.length, 'items, amount:', totalAmount)
+    } else {
+      // New transaction - calculate amount from current item
+      itemIds = [itemId]
+      const transactionData = {
+        project_id: projectId,
+        project_name: null, // Will be filled in later if needed
+        transaction_date: new Date().toISOString(),
+        source: 'Inventory',  // Project purchasing inventory from 1584
+        transaction_type: 'Purchase',  // Project purchasing inventory from 1584
+        payment_method: 'Pending',
+        amount: finalAmount,
+        budget_category: 'Furnishings',
+        notes: notes || '',  // Clear, canonical notes
+        status: 'pending' as const,
+        reimbursement_type: 'Client Owes' as const,
+        trigger_event: 'Inventory allocation' as const,
+        item_ids: itemIds,
+        created_by: 'system',
+        created_at: new Date().toISOString(),
+        last_updated: new Date().toISOString()
+      }
+
+      await setDoc(transactionRef, transactionData, { merge: true })
+
+      console.log('🆕 Creating new INV_PURCHASE transaction with amount:', finalAmount)
+    }
 
     // Update the item in the unified collection
     await this.updateItem(itemId, {
       project_id: projectId,
       inventory_status: 'pending',
-      transaction_id: canonicalTransactionId
+      transaction_id: canonicalTransactionId,
+      disposition: 'keep'
     })
 
     return canonicalTransactionId
   },
 
-  // Batch allocate multiple items to project (updates INV_SALE_<projectId> transaction)
+  // Batch allocate multiple items to project (updates INV_PURCHASE_<projectId> transaction)
   async batchAllocateItemsToProject(
     itemIds: string[],
     projectId: string,
@@ -791,35 +829,70 @@ export const unifiedItemsService = {
       throw new Error('No business inventory items found')
     }
 
-    // Use canonical transaction ID for inventory sales
-    const canonicalTransactionId = `INV_SALE_${projectId}`
+    // Use canonical transaction ID for inventory purchases
+    const canonicalTransactionId = `INV_PURCHASE_${projectId}`
 
-    // Calculate total amount from items
-    const totalAmount = allocationData.amount || itemsSnapshot.docs
-      .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
-      .reduce((sum, price) => sum + parseFloat(price || '0'), 0)
-      .toFixed(2)
+    // Check if the canonical transaction already exists and get all items that should be in it
+    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
+    const transactionSnap = await getDoc(transactionRef)
 
-    // Upsert the canonical transaction
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', canonicalTransactionId)
-    const transactionData = {
-      project_id: projectId,
-      transaction_date: new Date().toISOString(),
-      source: 'Batch Inventory Allocation',
-      transaction_type: 'Reimbursement',
-      payment_method: 'Pending',
-      amount: totalAmount,
-      budget_category: 'Furnishings',
-      notes: allocationData.notes || `Batch allocation of ${itemIds.length} items from business inventory`,
-      status: 'pending' as const,
-      reimbursement_type: 'Client Owes' as const,
-      trigger_event: 'Inventory allocation' as const,
-      item_ids: itemIds,
-      created_by: 'system',
-      last_updated: new Date().toISOString()
+    let allItemIds: string[]
+    if (transactionSnap.exists()) {
+      // Transaction exists - merge the new items with existing ones
+      console.log('📋 Existing INV_PURCHASE transaction found, updating with new items')
+      const existingData = transactionSnap.data()
+      const existingItemIds = existingData.item_ids || []
+      allItemIds = [...new Set([...existingItemIds, ...itemIds])] // Combine and deduplicate
+
+      // Get all items to recalculate amount
+      const allItemsQuery = query(itemsRef, where('__name__', 'in', allItemIds))
+      const allItemsSnapshot = await getDocs(allItemsQuery)
+
+      const totalAmount = allocationData.amount || allItemsSnapshot.docs
+        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+        .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
+        .toFixed(2)
+
+      const updatedTransactionData = {
+        ...existingData,
+        item_ids: allItemIds,
+        amount: totalAmount,
+        notes: allocationData.notes || existingData.notes || '',
+        last_updated: new Date().toISOString()
+      }
+
+      await setDoc(transactionRef, updatedTransactionData, { merge: true })
+
+      console.log('🔄 Updated INV_PURCHASE transaction with', allItemIds.length, 'items, amount:', totalAmount)
+    } else {
+      // New transaction - use provided items
+      allItemIds = itemIds
+      const totalAmount = allocationData.amount || itemsSnapshot.docs
+        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+        .reduce((sum, price) => sum + parseFloat(price || '0'), 0)
+        .toFixed(2)
+
+      const transactionData = {
+        project_id: projectId,
+        transaction_date: new Date().toISOString(),
+        source: 'Inventory',  // Project purchasing inventory from 1584
+        transaction_type: 'Purchase',  // Project purchasing inventory from 1584
+        payment_method: 'Pending',
+        amount: totalAmount,
+        budget_category: 'Furnishings',
+        notes: allocationData.notes || '',  // Clear, canonical notes
+        status: 'pending' as const,
+        reimbursement_type: 'Client Owes' as const,
+        trigger_event: 'Inventory allocation' as const,
+        item_ids: allItemIds,
+        created_by: 'system',
+        last_updated: new Date().toISOString()
+      }
+
+      console.log('🆕 Creating new INV_PURCHASE transaction with amount:', totalAmount)
+
+      await setDoc(transactionRef, transactionData, { merge: true })
     }
-
-    await setDoc(transactionRef, transactionData, { merge: true })
 
     // Update all items in the unified collection
     const batch = writeBatch(db)
@@ -829,6 +902,7 @@ export const unifiedItemsService = {
         project_id: projectId,
         inventory_status: 'pending',
         transaction_id: canonicalTransactionId,
+        disposition: 'keep',
         last_updated: new Date().toISOString()
       })
     })
@@ -838,7 +912,7 @@ export const unifiedItemsService = {
     return canonicalTransactionId
   },
 
-  // Return item from project (creates/updates INV_BUY_<projectId> transaction)
+  // Return item from project (creates/updates INV_SALE_<projectId> transaction)
   async returnItemFromProject(
     itemId: string,
     projectId: string,
@@ -853,28 +927,39 @@ export const unifiedItemsService = {
       throw new Error('Item not found')
     }
 
-    // Use canonical transaction ID for inventory purchases
-    const canonicalTransactionId = `INV_BUY_${projectId}`
+    // Get project name for source field
+    let projectName = 'Other'
+    try {
+      const project = await projectService.getProject(projectId)
+      projectName = project?.name || 'Other'
+    } catch (error) {
+      console.warn('Could not fetch project name for transaction source:', error)
+    }
 
-    // Calculate amount (use purchase_price for buy transactions)
-    const finalAmount = amount || item.purchase_price || item.market_value || '0.00'
+    // Use canonical transaction ID for inventory sales
+    const canonicalTransactionId = `INV_SALE_${projectId}`
+
+    // Calculate amount (use project_price for sale transactions)
+    const finalAmount = amount || item.project_price || item.market_value || '0.00'
 
     // Upsert the canonical transaction
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', canonicalTransactionId)
+    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
     const transactionData = {
       project_id: projectId,
+      project_name: null, // Will be filled in later if needed
       transaction_date: new Date().toISOString(),
-      source: 'Inventory Return',
-      transaction_type: 'Reimbursement',
+      source: projectName,  // Use project name as source when "other" is selected
+      transaction_type: 'To Inventory',  // Correct transaction type for inventory operations
       payment_method: 'Pending',
       amount: finalAmount,
       budget_category: 'Furnishings',
-      notes: notes || 'Item returned to business inventory',
+      notes: notes || 'Transaction for items purchased from project and moved to business inventory',  // Generic notes for multiple items
       status: 'pending' as const,
       reimbursement_type: 'We Owe' as const,
       trigger_event: 'Inventory return' as const,
       item_ids: [itemId],
       created_by: 'system',
+      created_at: new Date().toISOString(),
       last_updated: new Date().toISOString()
     }
 
@@ -901,10 +986,10 @@ export const unifiedItemsService = {
     // Determine canonical transaction ID
     const canonicalTransactionId = transactionType === 'sale'
       ? `INV_SALE_${projectId}`
-      : `INV_BUY_${projectId}`
+      : `INV_PURCHASE_${projectId}`
 
     // Get the transaction
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', canonicalTransactionId)
+    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (!transactionSnap.exists()) {
@@ -1299,16 +1384,25 @@ export const businessInventoryService = {
     }
     const finalAmount = amount || item.project_price || item.market_value || '0.00'
 
+    // Get project name for the notes
+    let projectName = 'Project'
+    try {
+      const project = await projectService.getProject(projectId)
+      projectName = project?.name || 'Project'
+    } catch (error) {
+      console.warn('Could not fetch project name for transaction notes:', error)
+    }
+
     // Create pending transaction first
     const transactionData = {
       project_id: projectId,
       transaction_date: new Date().toISOString(),
-      source: 'Inventory Allocation',
-      transaction_type: 'Reimbursement',
+      source: 'Inventory',  // Project purchasing inventory from 1584
+      transaction_type: 'Purchase',  // Project purchasing inventory from 1584
       payment_method: 'Pending',
       amount: finalAmount,
       budget_category: 'Furnishings',
-      notes: notes || 'Item allocated from business inventory',
+      notes: notes || `${projectName} inventory purchase`,  // Include project name in notes
       created_by: 'system',
       status: 'pending' as const,
       reimbursement_type: 'Client Owes' as const,
@@ -1350,16 +1444,25 @@ export const businessInventoryService = {
       throw new Error('No business inventory items found')
     }
 
+    // Get project name for the notes
+    let projectName = 'Project'
+    try {
+      const project = await projectService.getProject(projectId)
+      projectName = project?.name || 'Project'
+    } catch (error) {
+      console.warn('Could not fetch project name for transaction notes:', error)
+    }
+
     // Create a single transaction for the batch allocation
     const transactionData = {
       project_id: projectId,
       transaction_date: now.toISOString(),
-      source: 'Batch Inventory Allocation',
-      transaction_type: 'Reimbursement',
+      source: 'Inventory',  // Project purchasing inventory from 1584
+      transaction_type: 'Purchase',  // Project purchasing inventory from 1584
       payment_method: 'Pending',
       amount: allocationData.amount || '0.00',
       budget_category: 'Furnishings',
-      notes: allocationData.notes || `Batch allocation of ${itemIds.length} items from business inventory`,
+      notes: allocationData.notes || `${projectName} inventory purchase`,  // Include project name in notes
       created_by: 'system',
       status: 'pending' as const,
       reimbursement_type: 'Client Owes' as const,
@@ -1487,7 +1590,7 @@ export const businessInventoryService = {
       project_id: projectId,
       transaction_date: new Date().toISOString(),
       source: 'Client Purchase',
-      transaction_type: 'Reimbursement',
+      transaction_type: 'Purchase',
       payment_method: 'Pending',
       amount: amount,
       budget_category: 'Furnishings',
@@ -1557,8 +1660,8 @@ export const deallocationService = {
       console.log('🏦 Creating/updating We Owe transaction for inventory designation')
       const transactionId = await this.ensurePurchaseTransaction(
         item,
-        projectId,
-        `Item designated for inventory: ${item.description}`
+        projectId
+        // Remove the problematic additionalNotes parameter that creates inflexible text fields
       )
 
       console.log('📦 Moving item to business inventory...')
@@ -1578,31 +1681,39 @@ export const deallocationService = {
     }
   },
 
-  // Unified function to ensure a purchase transaction exists for inventory designation
+  // Unified function to ensure a sale transaction exists for inventory designation
   async ensurePurchaseTransaction(
     item: Item,
     projectId: string,
     additionalNotes?: string
   ): Promise<string> {
-    console.log('🏦 Creating/updating purchase transaction for item:', item.item_id)
+    console.log('🏦 Creating/updating sale transaction for item:', item.item_id)
 
-    const canonicalTransactionId = `INV_BUY_${projectId}`
+    // Get project name for source field
+    let projectName = 'Other'
+    try {
+      const project = await projectService.getProject(projectId)
+      projectName = project?.name || 'Other'
+    } catch (error) {
+      console.warn('Could not fetch project name for transaction source:', error)
+    }
+
+    const canonicalTransactionId = `INV_SALE_${projectId}`
     console.log('🔑 Canonical transaction ID:', canonicalTransactionId)
 
     // Check if the canonical transaction already exists (top-level collection)
     const transactionRef = doc(db, 'transactions', canonicalTransactionId)
     const transactionSnap = await getDoc(transactionRef)
 
-    let transactionData: any = {
-      transaction_id: canonicalTransactionId,
+    const transactionData = {
       project_id: projectId,
       project_name: null, // Will be filled in later if needed
       transaction_date: new Date().toISOString(),
-      source: 'Inventory Return',
-      transaction_type: 'Reimbursement',
+      source: projectName,  // Use project name as source when "other" is selected
+      transaction_type: 'To Inventory',  // Correct transaction type for inventory operations
       payment_method: 'Pending',
       budget_category: 'Furnishings',
-      notes: additionalNotes || 'Item returned to business inventory',
+      notes: additionalNotes || 'Transaction for items purchased from project and moved to business inventory',  // Generic notes for multiple items
       status: 'pending' as const,
       reimbursement_type: 'We Owe' as const,
       trigger_event: 'Inventory return' as const,
@@ -1614,7 +1725,7 @@ export const deallocationService = {
 
     if (transactionSnap.exists()) {
       // Transaction exists - merge the new item and recalculate amount
-      console.log('📋 Existing transaction found, updating with new item')
+      console.log('📋 Existing INV_SALE transaction found, updating with new item')
       const existingData = transactionSnap.data()
       const existingItemIds = existingData.item_ids || []
       const updatedItemIds = [...new Set([...existingItemIds, item.item_id])] // Avoid duplicates
@@ -1625,29 +1736,34 @@ export const deallocationService = {
       const itemsSnapshot = await getDocs(itemsQuery)
 
       const totalAmount = itemsSnapshot.docs
-        .map(doc => doc.data().purchase_price || doc.data().market_value || '0.00')
+        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
         .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
         .toFixed(2)
 
-      transactionData = {
+      const updatedTransactionData = {
         ...existingData,
         item_ids: updatedItemIds,
         amount: totalAmount,
-        notes: existingData.notes || 'Multiple items returned to business inventory',
+        notes: 'Transaction for items purchased from project and moved to business inventory',  // Generic notes for multiple items
         last_updated: new Date().toISOString()
       }
 
-      console.log('🔄 Updated transaction with', updatedItemIds.length, 'items, amount:', totalAmount)
+      await setDoc(transactionRef, updatedTransactionData, { merge: true })
+
+      console.log('🔄 Updated INV_SALE transaction with', updatedItemIds.length, 'items, amount:', totalAmount)
     } else {
       // New transaction - calculate amount from current item
-      const itemAmount = item.purchase_price || item.market_value || '0.00'
-      transactionData.amount = parseFloat(itemAmount || '0').toFixed(2)
+      const itemAmount = item.project_price || item.market_value || '0.00'
+      const newTransactionData = {
+        ...transactionData,
+        amount: parseFloat(itemAmount || '0').toFixed(2)
+      }
 
-      console.log('🆕 Creating new transaction with amount:', transactionData.amount)
+      console.log('🆕 Creating new INV_SALE transaction with amount:', newTransactionData.amount)
+
+      await setDoc(transactionRef, newTransactionData, { merge: true })
     }
 
-    console.log('💾 Creating/updating transaction document...')
-    await setDoc(transactionRef, transactionData, { merge: true })
     console.log('✅ Transaction created/updated successfully')
 
     return canonicalTransactionId

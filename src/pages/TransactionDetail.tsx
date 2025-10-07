@@ -29,6 +29,19 @@ const removeUnwantedIcons = () => {
   })
 }
 
+// Get canonical transaction title for display
+const getCanonicalTransactionTitle = (transaction: Transaction): string => {
+  // Check if this is a canonical inventory transaction
+  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
+    return '1584 Inventory Sale'
+  }
+  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
+    return '1584 Inventory Purchase'
+  }
+  // Return the original source for non-canonical transactions
+  return transaction.source
+}
+
 
 export default function TransactionDetail() {
   const { id: projectId, transactionId } = useParams<{ id?: string; transactionId: string }>()
@@ -536,7 +549,7 @@ export default function TransactionDetail() {
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="px-6 py-6 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-            {transaction.source} - {formatCurrency(transaction.amount)}
+            {getCanonicalTransactionTitle(transaction)} - {formatCurrency(transaction.amount)}
           </h1>
         </div>
 
@@ -797,12 +810,19 @@ export default function TransactionDetail() {
               {/* Existing Items Display */}
               {transactionItems.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {transactionItems.map((item) => (
-                    <Link
-                      key={item.item_id}
-                      to={buildContextUrl(`/project/${projectId}/item/${item.item_id}`, { from: 'transaction' })}
-                      className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
-                    >
+                  {transactionItems.map((item) => {
+                    // Check if item has been deallocated to inventory (project_id is null)
+                    const isDeallocated = item.project_id === null
+                    const itemLink = isDeallocated
+                      ? buildContextUrl(`/business-inventory/${item.item_id}`, { from: 'business-inventory-item' })
+                      : buildContextUrl(`/project/${projectId}/item/${item.item_id}`, { from: 'transaction' })
+
+                    return (
+                      <Link
+                        key={item.item_id}
+                        to={itemLink}
+                        className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
+                      >
                       {/* Disposition badge in upper right corner */}
                       {item.disposition && (
                         <div className="absolute top-1 right-1 z-10">
@@ -883,8 +903,9 @@ export default function TransactionDetail() {
                           </>
                         )}
                       </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    )
+                  })}
                 </div>
               )}
 

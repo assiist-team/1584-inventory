@@ -9,6 +9,19 @@ import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 
+// Get canonical transaction title for display
+const getCanonicalTransactionTitle = (transaction: Transaction): string => {
+  // Check if this is a canonical inventory transaction
+  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
+    return '1584 Inventory Sale'
+  }
+  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
+    return '1584 Inventory Purchase'
+  }
+  // Return the original source for non-canonical transactions
+  return transaction.source
+}
+
 export default function EditItem() {
   const { id: projectId, itemId } = useParams<{ id: string; itemId: string }>()
   const navigate = useNavigate()
@@ -328,7 +341,7 @@ export default function EditItem() {
                 ) : (
                   transactions.map((transaction) => (
                     <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                      {new Date(transaction.transaction_date).toLocaleDateString()} - {transaction.source} - ${transaction.amount}
+                      {new Date(transaction.transaction_date).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
                     </option>
                   ))
                 )}
