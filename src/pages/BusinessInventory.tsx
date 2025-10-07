@@ -231,7 +231,8 @@ export default function BusinessInventory() {
       return await unifiedItemsService.createItem({
         ...itemData,
         inventory_status: 'available',
-        project_id: null
+        project_id: null,
+        disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
       })
     }
   })

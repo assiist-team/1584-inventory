@@ -603,7 +603,6 @@ export const unifiedItemsService = {
     if (updates.inventory_status !== undefined) firebaseUpdates.inventory_status = updates.inventory_status
     if (updates.project_id !== undefined) firebaseUpdates.project_id = updates.project_id
     if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
-    if (updates.pending_transaction_id !== undefined) firebaseUpdates.pending_transaction_id = updates.pending_transaction_id
     if (updates.transaction_id !== undefined) firebaseUpdates.transaction_id = updates.transaction_id
     if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
     if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
@@ -629,14 +628,14 @@ export const unifiedItemsService = {
     await deleteDoc(itemRef)
   },
 
-  // Get items for a transaction (by pending_transaction_id or item_ids)
+  // Get items for a transaction (by transaction_id)
   async getItemsForTransaction(_projectId: string, transactionId: string): Promise<Item[]> {
     await ensureAuthenticatedForStorage()
 
     const itemsRef = collection(db, 'items')
-    let q = query(
+    const q = query(
       itemsRef,
-      where('pending_transaction_id', '==', transactionId),
+      where('transaction_id', '==', transactionId),
       orderBy('date_created', 'asc')
     )
 
@@ -692,7 +691,7 @@ export const unifiedItemsService = {
     await this.updateItem(itemId, {
       project_id: projectId,
       inventory_status: 'pending',
-      pending_transaction_id: canonicalTransactionId
+      transaction_id: canonicalTransactionId
     })
 
     return canonicalTransactionId
@@ -756,7 +755,7 @@ export const unifiedItemsService = {
       batch.update(doc(db, 'items', itemId), {
         project_id: projectId,
         inventory_status: 'pending',
-        pending_transaction_id: canonicalTransactionId,
+        transaction_id: canonicalTransactionId,
         last_updated: new Date().toISOString()
       })
     })
@@ -812,13 +811,13 @@ export const unifiedItemsService = {
     await this.updateItem(itemId, {
       project_id: null,
       inventory_status: 'available',
-      pending_transaction_id: canonicalTransactionId
+      transaction_id: canonicalTransactionId
     })
 
     return canonicalTransactionId
   },
 
-  // Complete pending transaction (marks as completed and clears pending_transaction_id)
+  // Complete pending transaction (marks as completed and clears transaction_id)
   async completePendingTransaction(
     transactionType: 'sale' | 'buy',
     projectId: string,
@@ -850,22 +849,22 @@ export const unifiedItemsService = {
       last_updated: new Date().toISOString()
     })
 
-    // Clear pending_transaction_id from all linked items
+    // Clear transaction_id from all linked items
     const batch = writeBatch(db)
     for (const itemId of itemIds) {
       const itemRef = doc(db, 'items', itemId)
       if (transactionType === 'sale') {
-        // For sales, keep project_id but clear pending status
+        // For sales, keep project_id but clear transaction_id and set status to sold
         batch.update(itemRef, {
-          pending_transaction_id: null,
+          transaction_id: null,
           inventory_status: 'sold',
           last_updated: new Date().toISOString()
         })
       } else {
-        // For buys, clear project_id and pending status
+        // For buys, clear project_id and transaction_id and set status to available
         batch.update(itemRef, {
           project_id: null,
-          pending_transaction_id: null,
+          transaction_id: null,
           inventory_status: 'available',
           last_updated: new Date().toISOString()
         })
@@ -1077,7 +1076,6 @@ export const businessInventoryService = {
       bookmark: false, // Default bookmark to false for duplicates
       inventory_status: 'available', // Default status for duplicates
       business_inventory_location: originalItem.business_inventory_location || '',
-      pending_transaction_id: undefined, // Clear pending transaction for duplicates
       transaction_id: originalItem.transaction_id,
       date_created: now.toISOString(),
       last_updated: now.toISOString(),
@@ -1124,7 +1122,6 @@ export const businessInventoryService = {
 
     if (updates.inventory_status !== undefined) firebaseUpdates.inventory_status = updates.inventory_status
     if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
-    if (updates.pending_transaction_id !== undefined) firebaseUpdates.pending_transaction_id = updates.pending_transaction_id
     if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
     if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
     if (updates.description !== undefined) firebaseUpdates.description = updates.description
@@ -1251,7 +1248,7 @@ export const businessInventoryService = {
     // Update item status to pending and link to transaction
     await this.updateBusinessInventoryItem(itemId, {
       inventory_status: 'pending',
-      pending_transaction_id: transactionRef.id
+      transaction_id: transactionRef.id
     })
 
     return transactionRef.id
@@ -1337,7 +1334,7 @@ export const businessInventoryService = {
       const itemRef = doc(db, 'business_inventory', itemId)
       batch.update(itemRef, {
         inventory_status: 'sold',
-        pending_transaction_id: transactionRef.id,
+        transaction_id: transactionRef.id,
         last_updated: now.toISOString()
       })
     })
@@ -1368,7 +1365,7 @@ export const businessInventoryService = {
     // Update item status back to available and clear project links
     await this.updateBusinessInventoryItem(itemId, {
       inventory_status: 'available',
-      pending_transaction_id: undefined
+      transaction_id: undefined
     })
   },
 
@@ -1390,7 +1387,7 @@ export const businessInventoryService = {
     // Update item status to sold and clear project links
     await this.updateBusinessInventoryItem(itemId, {
       inventory_status: 'sold',
-      pending_transaction_id: undefined
+      transaction_id: undefined
     })
   },
 
@@ -1527,7 +1524,6 @@ export const deallocationService = {
     const businessItems = await businessInventoryService.getBusinessInventoryItems({})
 
     return businessItems.find(item =>
-      item.pending_transaction_id === transactionId ||
       item.transaction_id === transactionId
     ) || null
   },

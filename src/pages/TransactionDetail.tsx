@@ -372,7 +372,8 @@ export default function TransactionDetail() {
         project_price: item.project_price || '',
         market_value: item.market_value || '',
         notes: item.notes || '',
-        space: item.space || ''
+        space: item.space || '',
+        disposition: 'keep'
       }
       const itemId = await unifiedItemsService.createItem(itemData)
 

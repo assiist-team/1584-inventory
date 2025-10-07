@@ -48,7 +48,8 @@ export default function BusinessInventoryItemDetail() {
       return await unifiedItemsService.createItem({
         ...itemData,
         inventory_status: 'available',
-        project_id: null
+        project_id: null,
+        disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
       })
     }
   })
@@ -504,15 +505,15 @@ export default function BusinessInventoryItemDetail() {
                   </div>
                 )}
 
-                {item.pending_transaction_id && (
+                {item.transaction_id && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.project_id}/transaction/${item.pending_transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={`/project/${item.project_id}/transaction/${item.transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
-                        {item.pending_transaction_id}
+                        {item.transaction_id}
                       </Link>
                     </dd>
                   </div>

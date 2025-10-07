@@ -54,6 +54,7 @@ export default function AddItem() {
     payment_method: string
     space: string
     notes: string
+    disposition: string
     selectedTransactionId: string
   }>({
     description: '',
@@ -65,6 +66,7 @@ export default function AddItem() {
     payment_method: '',
     space: '',
     notes: '',
+    disposition: 'keep',
     selectedTransactionId: ''
   })
 
@@ -156,6 +158,7 @@ export default function AddItem() {
         transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
         date_created: new Date().toISOString(),
         last_updated: new Date().toISOString(),
+        disposition: formData.disposition || 'keep', // Default to 'keep' if not set
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
@@ -418,12 +421,12 @@ export default function AddItem() {
 
           {/* Show transaction info when selected */}
           {isTransactionSelected && (
-            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-sm text-blue-800">
+            <div className="mt-2 p-3 bg-primary-50 border border-primary-100 rounded-md">
+              <p className="text-sm text-primary-700">
                 <strong>Source:</strong> {formData.source} |
                 <strong> Payment Method:</strong> {formData.payment_method}
               </p>
-              <p className="text-xs text-blue-600 mt-1">
+              <p className="text-xs text-primary-600 mt-1">
                 These values are automatically filled from the selected transaction
               </p>
             </div>
@@ -631,6 +634,28 @@ export default function AddItem() {
               placeholder="e.g., Living Room, Master Bedroom, Kitchen"
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             />
+          </div>
+
+          {/* Disposition */}
+          <div>
+            <label htmlFor="disposition" className="block text-sm font-medium text-gray-700">
+              Disposition
+            </label>
+            <p className="text-xs text-gray-500 mt-1 mb-2">What happens to this item after the project</p>
+            <div className="mt-1">
+              <select
+                id="disposition"
+                value={formData.disposition}
+                onChange={(e) => handleInputChange('disposition', e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="keep">Keep</option>
+                <option value="return">Return to Client</option>
+                <option value="donate">Donate</option>
+                <option value="sell">Sell</option>
+                <option value="dispose">Dispose</option>
+              </select>
+            </div>
           </div>
 
           {/* Notes */}

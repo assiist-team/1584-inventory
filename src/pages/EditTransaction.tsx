@@ -271,7 +271,8 @@ export default function EditTransaction() {
                 project_price: item.project_price || '',
                 market_value: item.market_value || '',
                 notes: item.notes || '',
-                space: item.space || ''
+                space: item.space || '',
+                disposition: 'keep'
               }
               return await unifiedItemsService.createItem(itemData)
             })

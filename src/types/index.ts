@@ -83,7 +83,6 @@ export interface Item {
   // Business Inventory fields (unified with Item)
   inventory_status?: 'available' | 'pending' | 'sold';
   business_inventory_location?: string; // Warehouse location details
-  pending_transaction_id?: string; // Links to pending transaction when allocated
 }
 
 // Note: ItemCategory and ItemStatus enums have been removed as they don't align
