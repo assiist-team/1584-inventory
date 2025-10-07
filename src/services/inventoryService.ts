@@ -106,6 +106,7 @@ export const projectService = {
 }
 
 // Item Services (DEPRECATED - use unifiedItemsService instead)
+// This service is kept for backwards compatibility during migration
 export const itemService = {
   // Get items for a project with filtering and pagination
   async getItems(
@@ -1479,6 +1480,55 @@ export const unifiedItemsService = {
       } as Item
     }
     return null
+  },
+
+  // Duplicate an existing item (unified collection version)
+  async duplicateItem(projectId: string, originalItemId: string): Promise<string> {
+    // Get the original item first
+    const originalItem = await this.getItemById(originalItemId)
+    if (!originalItem) {
+      throw new Error('Original item not found')
+    }
+
+    const now = new Date()
+    const newItemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    const newQrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+    // Create duplicate item with new IDs and timestamps
+    // Filter out undefined values to avoid Firebase errors
+    const duplicatedItem: any = {
+      item_id: newItemId,
+      description: originalItem.description,
+      source: originalItem.source,
+      sku: originalItem.sku || '',
+      purchase_price: originalItem.purchase_price || '',
+      project_price: originalItem.project_price || '',
+      market_value: originalItem.market_value || '',
+      payment_method: originalItem.payment_method,
+      disposition: 'keep', // Default disposition for duplicates
+      notes: originalItem.notes || '',
+      space: originalItem.space || '',
+      qr_key: newQrKey,
+      bookmark: false, // Default bookmark to false for duplicates
+      transaction_id: originalItem.transaction_id,
+      project_id: projectId,
+      date_created: now.toISOString(),
+      last_updated: now.toISOString(),
+      images: originalItem.images || [] // Copy images from original item
+    }
+
+    // Remove any undefined values that might still exist
+    Object.keys(duplicatedItem).forEach(key => {
+      if (duplicatedItem[key] === undefined) {
+        delete duplicatedItem[key]
+      }
+    })
+
+    // Create the duplicated item
+    const itemRef = doc(db, 'items', newItemId)
+    await setDoc(itemRef, duplicatedItem)
+
+    return newItemId
   }
 }
 

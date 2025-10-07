@@ -30,9 +30,9 @@ export function useDuplication<T extends { item_id: string }>({
         // Use custom duplication service (e.g., for business inventory)
         newItemId = await duplicationService(itemId)
       } else if (projectId) {
-        // Use default project item duplication service
-        const { itemService } = await import('@/services/inventoryService')
-        newItemId = await itemService.duplicateItem(projectId, itemId)
+        // Use default project item duplication service (unified collection)
+        const { unifiedItemsService } = await import('@/services/inventoryService')
+        newItemId = await unifiedItemsService.duplicateItem(projectId, itemId)
       } else {
         showError('No duplication service available')
         return
