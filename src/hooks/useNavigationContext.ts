@@ -53,9 +53,8 @@ export function useNavigationContext(): NavigationContext {
       if (from) url.searchParams.set('from', from)
 
       // Add current path as returnTo for back navigation
-      if (!currentParams.get('returnTo')) {
-        url.searchParams.set('returnTo', location.pathname)
-      }
+      // Always set returnTo to current path to maintain navigation stack
+      url.searchParams.set('returnTo', location.pathname + location.search)
 
       // Add any additional parameters
       if (additionalParams) {

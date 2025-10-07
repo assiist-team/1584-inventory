@@ -9,6 +9,7 @@ import ImagePreview from '@/components/ui/ImagePreview'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useDuplication } from '@/hooks/useDuplication'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 export default function ItemDetail() {
   const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
@@ -21,6 +22,7 @@ export default function ItemDetail() {
   const [openDispositionMenu, setOpenDispositionMenu] = useState(false)
   const [isSticky, setIsSticky] = useState(false)
   const { showError } = useToast()
+  const { buildContextUrl, getBackDestination } = useNavigationContext()
   const stickyRef = useRef<HTMLDivElement>(null)
 
   // Use itemId if available (from /project/:id/item/:itemId), otherwise use id (from /item/:id)
@@ -42,29 +44,16 @@ export default function ItemDetail() {
     projectId
   })
 
-  // Determine back navigation destination - simple logic for direct item route
+  // Determine back navigation destination using navigation context
   const backDestination = useMemo(() => {
-    // If item is not loaded yet (null), default to inventory
+    // If item is not loaded yet (null), use default
     if (!item) {
       return `/project/${projectId}?tab=inventory`
     }
 
-    // Check if user came from transaction detail screen
-    const fromTransaction = searchParams.get('from') === 'transaction'
-    if (fromTransaction && item.transaction_id && projectId) {
-      return `/project/${projectId}/transaction/${item.transaction_id}`
-    }
-
-    // For direct item route, use simple back navigation
-    // Check if we have a returnTo parameter (from navigation context)
-    const returnTo = searchParams.get('returnTo')
-    if (returnTo) {
-      return returnTo
-    }
-
-    // Default: go back to project inventory
-    return `/project/${projectId}?tab=inventory`
-  }, [item, projectId, searchParams])
+    // Use navigation context's getBackDestination function
+    return getBackDestination(`/project/${projectId}?tab=inventory`)
+  }, [item, projectId, getBackDestination])
 
 
   useEffect(() => {
@@ -574,20 +563,6 @@ export default function ItemDetail() {
               Item Details
             </h3>
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-              {item.transaction_id && (
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Transaction</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    <Link
-                      to={`/project/${projectId}/transaction/${item.transaction_id}`}
-                      className="text-primary-600 hover:text-primary-800 underline"
-                    >
-                      {item.transaction_id}
-                    </Link>
-                  </dd>
-                </div>
-              )}
-
               {item.source && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Source</dt>
@@ -655,7 +630,7 @@ export default function ItemDetail() {
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
                     <Link
-                      to={`/project/${projectId}/transaction/${item.transaction_id}`}
+                      to={buildContextUrl(`/project/${projectId}/transaction/${item.transaction_id}`)}
                       className="text-primary-600 hover:text-primary-800 underline"
                     >
                       {item.transaction_id}

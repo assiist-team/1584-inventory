@@ -7,6 +7,7 @@ import { ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 interface InventoryListItem {
   item_id: string
@@ -137,6 +138,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     setItems,
     projectId
   })
+
+  // Use navigation context for proper back navigation
+  const { buildContextUrl } = useNavigationContext()
 
   const updateDisposition = async (itemId: string, newDisposition: string) => {
     try {
@@ -575,7 +579,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                   </div>
 
                   {/* Main tappable content - wrapped in Link */}
-                  <Link to={`/item/${item.item_id}?project=${projectId}`}>
+                  <Link to={buildContextUrl(`/item/${item.item_id}`, { project: projectId })}>
                     <div className="block bg-transparent">
                       <div className="px-4 pb-3 sm:px-6">
                         {/* Middle row: Thumbnail and Description - now tappable */}

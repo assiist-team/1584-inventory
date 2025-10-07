@@ -11,6 +11,7 @@ import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import TransactionItemForm from '@/components/TransactionItemForm'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -45,33 +46,16 @@ export default function TransactionDetail() {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
   const { showError, showSuccess } = useToast()
+  const { buildContextUrl, getBackDestination } = useNavigationContext()
 
   // Navigation context logic
   const currentSearchParams = new URLSearchParams(location.search)
   const fromBusinessInventoryItem = currentSearchParams.get('from') === 'business-inventory-item'
 
   const backDestination = useMemo(() => {
-    // Check if we have a returnTo parameter (highest priority)
-    const returnTo = currentSearchParams.get('returnTo')
-    if (returnTo) return returnTo
-
-    // If we came from business inventory item, go back there
-    if (fromBusinessInventoryItem) {
-      // Extract the item ID from the returnTo URL if available, otherwise go to main inventory
-      const returnToUrl = currentSearchParams.get('returnTo')
-      if (returnToUrl && returnToUrl.includes('/business-inventory/')) {
-        return returnToUrl
-      }
-      return '/business-inventory' // Fallback to main inventory
-    }
-
-    // If we're viewing a business inventory transaction (no projectId in URL), go back to business inventory
-    if (!projectId && transaction) {
-      return '/business-inventory?tab=transactions'
-    }
-
-    return `/project/${projectId}?tab=transactions` // Default to project transactions tab
-  }, [fromBusinessInventoryItem, currentSearchParams, projectId, transaction])
+    // Use navigation context's getBackDestination function
+    return getBackDestination(`/project/${projectId}?tab=transactions`)
+  }, [getBackDestination, projectId])
 
 
   useEffect(() => {
@@ -810,7 +794,7 @@ export default function TransactionDetail() {
                   {transactionItems.map((item) => (
                     <Link
                       key={item.item_id}
-                      to={`/project/${projectId}/item/${item.item_id}?from=transaction`}
+                      to={buildContextUrl(`/project/${projectId}/item/${item.item_id}`, { from: 'transaction' })}
                       className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
                     >
                       {/* Disposition badge in upper right corner */}
