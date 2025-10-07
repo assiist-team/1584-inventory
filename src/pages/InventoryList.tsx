@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { itemService } from '@/services/inventoryService'
+import { unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
@@ -25,7 +25,7 @@ interface InventoryListItem {
   date_created: string
   last_updated: string
   transaction_id: string
-  project_id: string
+  project_id?: string | null
   images?: ItemImage[]
 }
 
@@ -53,7 +53,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         setLoading(true)
         setError(null)
         console.log('Fetching items for project:', projectId)
-        const realItems = await itemService.getItems(projectId)
+        const realItems = await unifiedItemsService.getItemsByProject(projectId)
         console.log('Fetched items:', realItems.length, realItems)
         setItems(realItems)
       } catch (error) {
@@ -67,7 +67,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     fetchItems()
 
     // Subscribe to real-time updates
-    const unsubscribe = itemService.subscribeToItems(projectId, (updatedItems) => {
+    const unsubscribe = unifiedItemsService.subscribeToItemsByProject(projectId, (updatedItems) => {
       console.log('Real-time items update:', updatedItems.length, updatedItems)
       setItems(updatedItems)
     })
@@ -127,7 +127,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const { toggleBookmark } = useBookmark<InventoryListItem>({
     items,
     setItems,
-    updateItemService: (itemId, updates) => itemService.updateItem(projectId, itemId, updates),
+    updateItemService: (itemId, updates) => unifiedItemsService.updateItem(itemId, updates),
     projectId
   })
 
@@ -144,7 +144,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       if (!item) return
 
       // Update in Firestore
-      await itemService.updateItem(projectId, itemId, { disposition: newDisposition })
+      await unifiedItemsService.updateItem(itemId, { disposition: newDisposition })
 
       // Update local state optimistically
       setItems(items.map(item =>
@@ -235,7 +235,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
 
     // Update the item with the new image
-    await itemService.addItemImage(projectId, itemId, newImage)
+    await unifiedItemsService.updateItem(itemId, { images: [newImage] })
     // The real-time listener will handle the UI update
 
     // Show success notification on the last file
@@ -256,7 +256,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
     try {
       const deletePromises = Array.from(selectedItems).map(itemId =>
-        itemService.deleteItem(projectId, itemId)
+        unifiedItemsService.deleteItem(itemId)
       )
 
       await Promise.all(deletePromises)

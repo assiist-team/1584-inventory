@@ -1,7 +1,7 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect, useRef } from 'react'
-import { itemService, transactionService } from '@/services/inventoryService'
+import { transactionService, unifiedItemsService } from '@/services/inventoryService'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { Transaction } from '@/types'
 import { Select } from '@/components/ui/Select'
@@ -93,7 +93,7 @@ export default function EditItem() {
       console.log('fetchItem called with:', { projectId, itemId })
       if (itemId && projectId) {
         try {
-          const fetchedItem = await itemService.getItem(projectId, itemId)
+          const fetchedItem = await unifiedItemsService.getItemById(itemId)
           console.log('Fetched item data:', fetchedItem)
           if (fetchedItem) {
             setFormData({
@@ -174,7 +174,7 @@ export default function EditItem() {
         last_updated: new Date().toISOString()
       }
 
-      await itemService.updateItem(projectId, itemId, itemData)
+      await unifiedItemsService.updateItem(itemId, itemData)
 
       // Use returnTo if available, otherwise go to inventory tab
       const searchParams = new URLSearchParams(window.location.search)

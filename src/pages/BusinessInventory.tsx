@@ -2,8 +2,8 @@ import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, B
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { BusinessInventoryItem, Transaction, ItemImage, Project } from '@/types'
-import { businessInventoryService, transactionService, projectService } from '@/services/inventoryService'
+import { Item, Transaction, ItemImage, Project } from '@/types'
+import { unifiedItemsService, transactionService, projectService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
 import { useBookmark } from '@/hooks/useBookmark'
@@ -16,7 +16,7 @@ interface FilterOptions {
 
 export default function BusinessInventory() {
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
-  const [items, setItems] = useState<BusinessInventoryItem[]>([])
+  const [items, setItems] = useState<Item[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filters] = useState<FilterOptions>({
@@ -121,7 +121,7 @@ export default function BusinessInventory() {
 
   // Subscribe to real-time updates for inventory
   useEffect(() => {
-    const unsubscribe = businessInventoryService.subscribeToBusinessInventory(
+    const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
       (updatedItems) => {
         setItems(updatedItems)
         setIsLoading(false)
@@ -152,7 +152,7 @@ export default function BusinessInventory() {
 
   const loadBusinessInventory = async () => {
     try {
-      const data = await businessInventoryService.getBusinessInventoryItems(filters)
+      const data = await unifiedItemsService.getBusinessInventoryItems(filters)
       setItems(data)
     } catch (error) {
       console.error('Error loading business inventory:', error)
@@ -211,17 +211,29 @@ export default function BusinessInventory() {
   }
 
   // Use centralized bookmark hook
-  const { toggleBookmark } = useBookmark<BusinessInventoryItem>({
+  const { toggleBookmark } = useBookmark<Item>({
     items,
     setItems,
-    updateItemService: businessInventoryService.updateBusinessInventoryItem
+    updateItemService: unifiedItemsService.updateItem
   })
 
   // Use duplication hook for business inventory items
   const { duplicateItem } = useDuplication({
     items,
     setItems,
-    duplicationService: (itemId: string) => businessInventoryService.duplicateBusinessInventoryItem(itemId)
+    duplicationService: async (itemId: string) => {
+      // Since we're using the unified service, we need to create a duplicate item
+      const originalItem = await unifiedItemsService.getItemById(itemId)
+      if (!originalItem) throw new Error('Item not found')
+
+      // Create a new item with similar data but new ID
+      const { item_id, date_created, last_updated, ...itemData } = originalItem
+      return await unifiedItemsService.createItem({
+        ...itemData,
+        inventory_status: 'available',
+        project_id: null
+      })
+    }
   })
 
   // Batch allocation functions
@@ -249,7 +261,7 @@ export default function BusinessInventory() {
     setIsAllocating(true)
     try {
       const itemIds = Array.from(selectedItems)
-      await businessInventoryService.batchAllocateItemsToProject(
+      await unifiedItemsService.batchAllocateItemsToProject(
         itemIds,
         batchAllocationForm.projectId,
         {
@@ -325,7 +337,7 @@ export default function BusinessInventory() {
     }
 
     // Update the item with the new image
-    await businessInventoryService.updateBusinessInventoryItem(itemId, { images: [newImage] })
+    await unifiedItemsService.updateItem(itemId, { images: [newImage] })
 
     // Show success notification on the last file
     if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {

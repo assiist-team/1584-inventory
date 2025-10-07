@@ -3,7 +3,7 @@ import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, Chevron
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
-import { itemService, projectService, integrationService } from '@/services/inventoryService'
+import { unifiedItemsService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
@@ -73,7 +73,7 @@ export default function ItemDetail() {
         try {
           if (projectId) {
             const [fetchedItem, project] = await Promise.all([
-              itemService.getItem(projectId, actualItemId),
+              unifiedItemsService.getItemById(actualItemId),
               projectService.getProject(projectId)
             ])
 
@@ -110,7 +110,7 @@ export default function ItemDetail() {
 
     console.log('Setting up real-time listener for item:', actualItemId)
 
-    const unsubscribe = itemService.subscribeToItems(
+    const unsubscribe = unifiedItemsService.subscribeToItemsByProject(
       currentProjectId,
       (items) => {
         console.log('Real-time items update:', items.length, 'items')
@@ -167,7 +167,7 @@ export default function ItemDetail() {
     if (!item) return
 
     try {
-      await itemService.updateItem(item.project_id, item.item_id, {
+      await unifiedItemsService.updateItem(item.item_id, {
         bookmark: !item.bookmark
       })
       setItem({ ...item, bookmark: !item.bookmark })
@@ -181,7 +181,7 @@ export default function ItemDetail() {
 
     try {
       // Update the disposition in the database first
-      await itemService.updateItem(item.project_id, item.item_id, {
+      await unifiedItemsService.updateItem(item.item_id, {
         disposition: newDisposition
       })
 
@@ -194,18 +194,18 @@ export default function ItemDetail() {
         try {
           await integrationService.handleItemDeallocation(
             item.item_id,
-            item.project_id,
+            item.project_id || '',
             newDisposition
           )
           // Refresh the item data after deallocation
-          const updatedItem = await itemService.getItem(item.project_id, item.item_id)
+          const updatedItem = await unifiedItemsService.getItemById(item.item_id)
           if (updatedItem) {
             setItem(updatedItem)
           }
         } catch (deallocationError) {
           console.error('Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
-          await itemService.updateItem(item.project_id, item.item_id, {
+          await unifiedItemsService.updateItem(item.item_id, {
             disposition: item.disposition // Revert to previous disposition
           })
           setItem({ ...item, disposition: item.disposition })
@@ -248,7 +248,7 @@ export default function ItemDetail() {
     }
 
     try {
-      await itemService.deleteItem(projectId, item.item_id)
+      await unifiedItemsService.deleteItem(item.item_id)
       navigate(`/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Failed to delete item:', error)
@@ -304,7 +304,7 @@ export default function ItemDetail() {
 
       if (projectId) {
         console.log('Updating item in database with multiple new images')
-        await itemService.updateItem(projectId, item.item_id, { images: updatedImages })
+        await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
       }
 
       // Update local state
@@ -362,7 +362,9 @@ export default function ItemDetail() {
     try {
       // Remove from database
       if (projectId) {
-        await itemService.removeItemImage(projectId, item.item_id, imageUrl)
+        await unifiedItemsService.updateItem(item.item_id, {
+          images: item.images?.filter(img => img.url !== imageUrl) || []
+        })
       }
 
       // Update local state
@@ -382,7 +384,12 @@ export default function ItemDetail() {
     try {
       // Update in database
       if (projectId) {
-        await itemService.setPrimaryImage(projectId, item.item_id, imageUrl)
+        await unifiedItemsService.updateItem(item.item_id, {
+          images: item.images?.map(img => ({
+            ...img,
+            isPrimary: img.url === imageUrl
+          })) || []
+        })
       }
 
       // Update local state

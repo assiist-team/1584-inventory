@@ -3,7 +3,8 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionItemFormData, ItemImage } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
-import { transactionService, projectService, itemService } from '@/services/inventoryService'
+import { transactionService, projectService } from '@/services/inventoryService'
+import { unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
 import TransactionItemsList from '@/components/TransactionItemsList'
@@ -282,8 +283,9 @@ export default function AddTransaction() {
       if (imageFilesMap.size > 0) {
         try {
           console.log('Starting image upload process...')
-          // Get the created item IDs
-          const createdItemIds = await itemService.getTransactionItems(projectId, transactionId)
+          // Get the created items and extract their IDs
+          const createdItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+          const createdItemIds = createdItems.map(item => item.item_id)
           console.log('Created item IDs:', createdItemIds)
 
           // Upload images for each item
@@ -342,7 +344,7 @@ export default function AddTransaction() {
 
               if (validImages.length > 0) {
                 // Update the item with the uploaded images
-                await itemService.updateItemImages(projectId, itemId, validImages)
+                await unifiedItemsService.updateItem(itemId, { images: validImages })
                 console.log(`Successfully updated item ${itemId} with ${validImages.length} images`)
               }
             }

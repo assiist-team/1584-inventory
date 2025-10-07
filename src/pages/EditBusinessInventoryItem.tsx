@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { BusinessInventoryItem } from '@/types'
-import { businessInventoryService } from '@/services/inventoryService'
+import { Item } from '@/types'
+import { unifiedItemsService } from '@/services/inventoryService'
 
 export default function EditBusinessInventoryItem() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [item, setItem] = useState<BusinessInventoryItem | null>(null)
+  const [item, setItem] = useState<Item | null>(null)
 
   // Track if user has manually edited project_price
   const projectPriceEditedRef = useRef(false)
@@ -25,7 +25,7 @@ export default function EditBusinessInventoryItem() {
     notes: '',
     bookmark: false,
     business_inventory_location: '',
-    inventory_status: 'available' as 'available' | 'pending' | 'sold'
+    inventory_status: 'available' as 'available' | 'pending' | 'sold' | undefined
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -57,7 +57,7 @@ export default function EditBusinessInventoryItem() {
     if (!id) return
 
     try {
-      const itemData = await businessInventoryService.getBusinessInventoryItem(id)
+      const itemData = await unifiedItemsService.getItemById(id)
       if (itemData) {
         setItem(itemData)
         setFormData({
@@ -116,7 +116,7 @@ export default function EditBusinessInventoryItem() {
     setIsSubmitting(true)
 
     try {
-      await businessInventoryService.updateBusinessInventoryItem(id, formData)
+      await unifiedItemsService.updateItem(id, formData)
       navigate(`/business-inventory/${id}`)
     } catch (error) {
       console.error('Error updating item:', error)
@@ -358,10 +358,10 @@ export default function EditBusinessInventoryItem() {
                 <option value="pending">Allocated</option>
                 <option value="sold">Sold</option>
               </select>
-              {item.current_project_id && (
+              {item.project_id && (
                 <div className="mt-4 p-4 bg-yellow-50 rounded-md">
                   <p className="text-sm text-yellow-800">
-                    <strong>Note:</strong> This item is currently allocated to project {item.current_project_id}.
+                    <strong>Note:</strong> This item is currently allocated to project {item.project_id}.
                     Changing the status may affect the pending transaction.
                   </p>
                 </div>

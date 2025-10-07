@@ -1,7 +1,7 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect, useRef } from 'react'
-import { itemService, transactionService, projectService } from '@/services/inventoryService'
+import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
 import { Transaction, ItemImage } from '@/types'
@@ -159,7 +159,7 @@ export default function AddItem() {
         images: images.length > 0 ? images : undefined
       }
 
-      await itemService.createItem(projectId, itemData)
+      await unifiedItemsService.createItem(itemData)
       navigate(`/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Error creating item:', error)

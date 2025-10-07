@@ -6,7 +6,7 @@ import { useMemo } from 'react'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Transaction, Project, Item, TransactionItemFormData } from '@/types'
-import { transactionService, projectService, itemService } from '@/services/inventoryService'
+import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
@@ -102,18 +102,19 @@ export default function TransactionDetail() {
           projectData = await projectService.getProject(actualProjectId)
         } else {
           // Fetch transaction, project data, and transaction items for regular project transactions
-          const [fetchedTransactionData, fetchedProjectData, itemIds] = await Promise.all([
+          const [fetchedTransactionData, fetchedProjectData, transactionItems] = await Promise.all([
             transactionService.getTransaction(actualProjectId, transactionId),
             projectService.getProject(actualProjectId),
-            itemService.getTransactionItems(actualProjectId, transactionId)
+            unifiedItemsService.getItemsForTransaction(actualProjectId, transactionId)
           ])
 
           transactionData = fetchedTransactionData
           projectData = fetchedProjectData
 
           // Fetch the actual item details for regular project transactions
-          if (itemIds.length > 0 && actualProjectId) {
-            const itemsPromises = itemIds.map(itemId => itemService.getItem(actualProjectId!, itemId))
+          if (transactionItems.length > 0 && actualProjectId) {
+            const itemIds = transactionItems.map(item => item.item_id)
+            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
             console.log('TransactionDetail - fetched items:', validItems.length)
@@ -137,9 +138,10 @@ export default function TransactionDetail() {
         // Fetch transaction items for business inventory transactions
         if (!projectId && actualProjectId) {
           // For business inventory transactions, fetch items after we have the project ID
-          const itemIds = await itemService.getTransactionItems(actualProjectId!, transactionId)
-          if (itemIds.length > 0) {
-            const itemsPromises = itemIds.map(itemId => itemService.getItem(actualProjectId!, itemId))
+          const transactionItems = await unifiedItemsService.getItemsForTransaction(actualProjectId!, transactionId)
+          if (transactionItems.length > 0) {
+            const itemIds = transactionItems.map(item => item.item_id)
+            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
             console.log('TransactionDetail - fetched items for business inventory transaction:', validItems.length)
@@ -371,13 +373,24 @@ export default function TransactionDetail() {
 
     try {
       // Create the item linked to the existing transaction
-      const itemId = await itemService.addItemToTransaction(
-        projectId,
-        transactionId,
-        transaction.transaction_date || new Date().toISOString(),
-        transaction.source,
-        item
-      )
+      const itemData = {
+        ...item,
+        project_id: projectId,
+        transaction_id: transactionId,
+        date_created: transaction.transaction_date || new Date().toISOString(),
+        source: transaction.source,
+        inventory_status: 'available' as const,
+        payment_method: 'Unknown',
+        qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        bookmark: false,
+        sku: item.sku || '',
+        purchase_price: item.purchase_price || '',
+        project_price: item.project_price || '',
+        market_value: item.market_value || '',
+        notes: item.notes || '',
+        space: item.space || ''
+      }
+      const itemId = await unifiedItemsService.createItem(itemData)
 
       // Upload item images if any
       // Try to get files from the map first, then fall back to item.imageFiles
@@ -427,7 +440,7 @@ export default function TransactionDetail() {
 
           // Update the item with uploaded images
           if (validImages.length > 0) {
-            await itemService.updateItemImages(projectId, itemId, validImages)
+            await unifiedItemsService.updateItem(itemId, { images: validImages })
           }
         } catch (error) {
           console.error('Error in image upload process:', error)
@@ -435,8 +448,9 @@ export default function TransactionDetail() {
       }
 
       // Refresh the transaction items list
-      const itemIds = await itemService.getTransactionItems(projectId, transactionId)
-      const itemsPromises = itemIds.map(id => itemService.getItem(projectId, id))
+      const transactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+      const itemIds = transactionItems.map(item => item.item_id)
+      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(id))
       const items = await Promise.all(itemsPromises)
       const validItems = items.filter(item => item !== null) as Item[]
       setTransactionItems(validItems)

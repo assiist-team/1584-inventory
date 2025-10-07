@@ -8,6 +8,11 @@ Today the app duplicates items across two separate collections:
 
 This causes data drift and complex flows. We will refactor to a single top‑level `items` collection as the source of truth. Project assignment is tracked by `project_id`; availability is tracked by `inventory_status`. No migration/backwards compatibility is required — we will change the code to point at the new `items` collection and delete duplication logic.
 
+Additionally, we will enforce at most two canonical transactions per project related to inventory movement:
+- One singleton "inventory sale to client" transaction (client owes)
+- One singleton "inventory buy‑from‑client" transaction (we owe)
+All other vendor/store/fuel transactions remain many‑per‑project and are unchanged.
+
 ## What the code does today (verified)
 
 - Project items are queried from a project subcollection:
@@ -19,7 +24,7 @@ export const itemService = {
     filters?: FilterOptions,
     pagination?: PaginationOptions
   ): Promise<Item[]> {
-const itemsRef = collection(db, 'projects', projectId, 'items')
+    const itemsRef = collection(db, 'projects', projectId, 'items')
 ```
 
 - Business inventory is queried/written in `business_inventory`:
@@ -91,6 +96,29 @@ export interface Item {
 - Business inventory view = `items` WHERE `project_id == null`.
 - Transactions store which items are involved via `item_ids: string[]`.
 
+## Singleton transactions per project
+
+We will maintain up to two canonical transactions per project that represent inventory movement:
+- Inventory sale to client (items allocated to project): reimbursement_type = 'Client Owes'
+- Inventory buy‑from‑client (items returned to business inventory): reimbursement_type = 'We Owe'
+
+Canonical IDs (deterministic):
+- Sale: `INV_SALE_<projectId>`
+- Buy: `INV_BUY_<projectId>`
+
+Implementation rules:
+- Upsert by ID: `setDoc(doc(projects/<id>/transactions/<CANONICAL_ID>), data, { merge: true })`.
+- Maintain `item_ids` on the transaction via `arrayUnion(itemId)` and `arrayRemove(itemId)` when needed.
+- Compute `amount` as the sum of linked items:
+  - Sale: sum of `project_price` for all `item_ids`.
+  - Buy: sum of `purchase_price` (or chosen field) for all `item_ids`.
+- Status:
+  - `pending` while any linked item is pending/unpaid.
+  - `completed` when payment is recorded.
+- Concurrency:
+  - Use Firestore transactions for amount recompute. Use `arrayUnion/arrayRemove` for item_ids updates, then re‑read to recompute.
+- Other transactions (stores, gas, vendors) remain normal many‑per‑project docs.
+
 ## Refactor Plan (no migration, no backward compatibility)
 Make the following code edits. You can keep everything inside `src/services/inventoryService.ts` for now to minimize churn, then optionally split later.
 
@@ -115,24 +143,24 @@ Implement these functions (either in a new `itemsService` or within `inventorySe
 - `deleteItem(itemId: string): Promise<void>`
 
 ### 3) Allocation and sale flows (no duplicates)
-Replace the existing allocation/deallocation/batch logic:
+Replace the existing allocation/deallocation/batch logic with singleton transactions:
 - `allocateItemToProject(itemId, projectId, amount?, notes?)`:
-  - Create a project transaction in `projects/{projectId}/transactions` with `status: 'pending'`, `trigger_event: 'Inventory allocation'`, and `item_ids: [itemId]`.
+  - Upsert `projects/{projectId}/transactions/INV_SALE_<projectId>` with `status: 'pending'`, `trigger_event: 'Inventory allocation'`, `reimbursement_type = 'Client Owes'` and `arrayUnion(itemId)`. Recompute `amount` from current items.
   - Update the item (top‑level `items/{itemId}`):
     - `project_id = projectId`
     - `inventory_status = 'pending'`
-    - `pending_transaction_id = <transactionId>`
+    - `pending_transaction_id = 'INV_SALE_<projectId>'`
 - `batchAllocateItemsToProject(itemIds[], projectId, { notes?, space? })`:
-  - Create a single transaction with `item_ids = itemIds` (no creating project duplicates).
+  - Upsert the same `INV_SALE_<projectId>` transaction with all ids via `arrayUnion(...itemIds)` and recompute `amount`.
   - For each `itemId`, update top‑level item as above; do NOT write to `projects/{projectId}/items`.
-- `returnItemFromProject(itemId, transactionId, projectId)`:
-  - Update transaction to `status: 'cancelled'`.
-  - Update item: `inventory_status = 'available'`, `pending_transaction_id = undefined`, set `project_id = null`.
-- `completePendingTransaction(itemId, transactionId, projectId, paymentMethod)`:
-  - Update transaction to `status: 'completed'`, set `payment_method`.
-  - Update item: `inventory_status = 'sold'`, `pending_transaction_id = undefined`. Keep `project_id` (to show project of sale) or set to null if you want it removed from project views after sale.
+- `returnItemFromProject(itemId, projectId, amount?, notes?)` (buy‑from‑client):
+  - Upsert `projects/{projectId}/transactions/INV_BUY_<projectId>` with `status: 'pending'`, `trigger_event: 'Inventory return'`, `reimbursement_type = 'We Owe'`, `arrayUnion(itemId)`. Recompute `amount` from items.
+  - Update item: `inventory_status = 'available'`, `pending_transaction_id = 'INV_BUY_<projectId>'`, `project_id = null`.
+- `completePendingTransaction(transactionType: 'sale'|'buy', projectId, paymentMethod)`:
+  - Mark the canonical transaction as `status: 'completed'`, set `payment_method`.
+  - For all linked items, clear `pending_transaction_id`; for sale, optionally keep `project_id` as the sold project or set to null per your UX.
 
-Implement a helper: `getItemsForTransaction(projectId, transactionId)` that queries top‑level `items` where `(pending_transaction_id == transactionId) OR (transaction_id == transactionId)` and optionally `project_id == projectId`.
+Implement a helper: `getItemsForTransaction(projectId, transactionId)` that queries top‑level `items` where `(pending_transaction_id == transactionId)` and optionally `project_id == projectId`. For completed sales, you may also link via an optional `last_transaction_id` field on items if you want historical lookups without pending links.
 
 ### 4) Replace old per‑collection code paths
 Remove usage of:
@@ -147,15 +175,15 @@ Update callers to use the new top‑level items API. Files to edit:
   - Replace all `businessInventoryService.*` calls with top‑level `items` equivalents (get/subscribe/create/update/delete/duplicate if needed).
   - Update batch allocation to call `batchAllocateItemsToProject` from the new flow (no duplicates).
 - `src/pages/BusinessInventoryItemDetail.tsx`
-  - Replace `businessInventoryService.allocateItemToProject` with the new `allocateItemToProject` (top‑level `items`).
+  - Replace `businessInventoryService.allocateItemToProject` with the new singleton‑aware `allocateItemToProject` (top‑level `items`).
   - Replace `deleteBusinessInventoryItem/updateBusinessInventoryItem` with `deleteItem/updateItem` on `items`.
 - `src/pages/TransactionDetail.tsx`, `src/pages/AddTransaction.tsx`, `src/pages/EditTransaction.tsx`
   - Change any calls to `itemService.getTransactionItems(projectId, transactionId)` to use the new `getItemsForTransaction(projectId, transactionId)` against top‑level `items`.
 
 ### 5) Transactions shape
-- In all transaction creations related to allocation, include `item_ids`.
-- For batch allocation, set all item IDs in that single transaction.
-- For “sale complete”, set `status: 'completed'` and move `pending_transaction_id` off the item; optionally set a final `transaction_id` on the item for historical linkage.
+- Use canonical IDs `INV_SALE_<projectId>` / `INV_BUY_<projectId>` for inventory movement.
+- Maintain `item_ids` via `arrayUnion/arrayRemove` and recompute `amount` from linked items.
+- For “sale complete” / “buy complete”, set `status: 'completed'` and clear `pending_transaction_id` on items.
 
 ### 6) Clean up types and dead code
 - Remove `BusinessInventoryItem` interface and all imports/usages after callers are updated.
@@ -164,15 +192,17 @@ Update callers to use the new top‑level items API. Files to edit:
 
 ### 7) Firestore security rules
 - Open `firestore.rules` and grant appropriate read/write access to the top‑level `items` collection as your app requires.
+- Allow `arrayUnion/arrayRemove` updates on canonical transaction docs; validate `amount` server‑side if you add Cloud Functions.
 - Remove references that assumed `projects/*/items` and `business_inventory`.
 
 ## Acceptance checklist
 - All item queries read from top‑level `items` only.
 - Project views filter by `project_id`.
 - Business inventory view filters by `project_id == null`.
-- Allocation updates the same item: sets `project_id`, `inventory_status = 'pending'`, and links a transaction; no duplicates created.
-- Batch allocation updates only the existing items and creates a single transaction with `item_ids`.
-- Transaction detail pages show items by querying top‑level `items` for the given `transactionId`.
+- Allocation/return flows update canonical transactions `INV_SALE_<projectId>` / `INV_BUY_<projectId>`.
+- Transaction `item_ids` maintained via `arrayUnion/arrayRemove`; `amount` reflects sum of linked items.
+- Items updated without duplication; `pending_transaction_id` points at the appropriate canonical transaction while pending.
+- Transaction detail pages show items by querying top‑level `items` for the canonical transaction ID.
 - No references to `projects/{projectId}/items` or `business_inventory` remain.
 
 ## Notes for the implementer (why this is safe now)
@@ -186,7 +216,7 @@ const businessItemsRef = collection(db, 'business_inventory')
 - Verified `Item` currently has both `project_id` and `current_project_id`; this refactor removes the latter and makes `project_id` nullable.
 
 ## Additional cleanup recommendations
-- Standardize on a single cost field naming: prefer `purchase_price` and remove any duplicate `price` usage where possible.
+- Standardize on a single cost field naming: prefer `purchase_price`; eliminate duplicate `price` where possible.
 - If you no longer need `item.transaction_id` on the item document, replace it with `last_transaction_id` (optional) and rely on `Transaction.item_ids` for linkage.
 - Ensure QR key generation (`qr_key`) is consistent in allocation and creation flows.
 - Remove any references to per‑project item images handling that assume subcollections; images should live on the top‑level item document.

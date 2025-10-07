@@ -72,7 +72,7 @@ export interface Item {
   qr_key: string;
   bookmark: boolean;
   transaction_id: string;
-  project_id: string;
+  project_id?: string | null;   // null = business inventory, string = allocated to project
   date_created: string;
   last_updated: string;
   images?: ItemImage[];         // Images associated with this item
@@ -80,9 +80,8 @@ export interface Item {
   // Optional transaction selection for form UI
   selectedTransactionId?: string; // UI field for selecting transaction
 
-  // NEW: Business Inventory fields
+  // Business Inventory fields (unified with Item)
   inventory_status?: 'available' | 'pending' | 'sold';
-  current_project_id?: string;  // If currently allocated to a project
   business_inventory_location?: string; // Warehouse location details
   pending_transaction_id?: string; // Links to pending transaction when allocated
 }
@@ -177,6 +176,9 @@ export interface Transaction {
   status?: 'pending' | 'completed' | 'cancelled';
   reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
   trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
+
+  // NEW: Item linkage for unified inventory system
+  item_ids?: string[]; // Links to items in the top-level items collection
 }
 
 export enum BudgetCategory {
@@ -270,30 +272,8 @@ export interface TransactionFormProps {
   isEditing?: boolean;
 }
 
-// Business Inventory Types
-export interface BusinessInventoryItem {
-  item_id: string;
-  description: string;
-  source: string;
-  sku: string;
-  purchase_price?: string;      // What we paid for the item
-  project_price?: string;       // What we sell it for (1584 design project price) - formerly resale_price
-  market_value?: string;        // Current market value
-  payment_method: string;
-  disposition?: string;
-  notes?: string;
-  space?: string;
-  qr_key: string;
-  bookmark: boolean;
-  inventory_status: 'available' | 'pending' | 'sold';
-  current_project_id?: string;
-  business_inventory_location?: string;
-  pending_transaction_id?: string;
-  date_created: string;
-  last_updated: string;
-  images?: ItemImage[];
-  transaction_id?: string; // Links to original purchase transaction
-}
+// Business Inventory Types (REMOVED: Use Item interface instead)
+// All business inventory functionality now uses the unified Item interface
 
 // Business Inventory Summary Stats
 export interface BusinessInventoryStats {

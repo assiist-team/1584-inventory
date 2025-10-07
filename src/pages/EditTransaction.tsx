@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
-import { transactionService, projectService, itemService } from '@/services/inventoryService'
+import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
 import { useAuth } from '../contexts/AuthContext'
@@ -113,20 +113,22 @@ export default function EditTransaction() {
 
           // Load transaction items
           try {
-            const transactionItemIds = await itemService.getTransactionItems(projectId, transactionId)
-            console.log('Loaded transaction item IDs:', transactionItemIds)
+            const transactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+            console.log('Loaded transaction items:', transactionItems)
 
-            const transactionItems = await Promise.all(
-              transactionItemIds.map(async (itemId) => {
-                const item = await itemService.getItem(projectId, itemId)
-                console.log(`Loaded item ${itemId}:`, {
-                  id: itemId,
+            const transactionItemIds = transactionItems.map(item => item.item_id)
+            console.log('Transaction item IDs:', transactionItemIds)
+
+            const itemsWithDetails = await Promise.all(
+              transactionItems.map(async (item) => {
+                console.log(`Loaded item ${item.item_id}:`, {
+                  id: item.item_id,
                   description: item?.description || '',
-                  hasValidFormat: itemId.startsWith('I-') && itemId.length > 10
+                  hasValidFormat: item.item_id.startsWith('I-') && item.item_id.length > 10
                 })
 
                 return {
-                  id: itemId,
+                  id: item.item_id,
                   description: item?.description || '',
                   price: item?.purchase_price?.toString() || '',
                   sku: item?.sku || '',
@@ -138,11 +140,11 @@ export default function EditTransaction() {
               })
             )
             console.log('Loaded transaction items:', transactionItems.map(item => ({
-              id: item.id,
+              id: item.item_id,
               description: item.description,
-              isTempId: item.id.startsWith('temp-')
+              isTempId: item.item_id.startsWith('temp-')
             })))
-            setItems(transactionItems)
+            setItems(itemsWithDetails)
           } catch (itemError) {
             console.error('Error loading transaction items:', itemError)
           }
@@ -239,7 +241,7 @@ export default function EditTransaction() {
 
         // Update existing items (classification is now robust, so no additional safety checks needed)
         for (const item of existingItems) {
-          await itemService.updateItem(projectId, item.id, {
+          await unifiedItemsService.updateItem(item.id, {
             description: item.description,
             purchase_price: item.purchase_price,
             sku: item.sku,
@@ -252,12 +254,27 @@ export default function EditTransaction() {
         // Create new items using the same batch infrastructure as new transactions
         let createdItemIds: string[] = []
         if (newItems.length > 0) {
-          createdItemIds = await itemService.createTransactionItems(
-            projectId,
-            transactionId,
-            formData.transaction_date,
-            formData.source,
-            newItems
+          createdItemIds = await Promise.all(
+            newItems.map(async (item) => {
+              const itemData = {
+                ...item,
+                project_id: projectId,
+                transaction_id: transactionId,
+                date_created: formData.transaction_date,
+                source: formData.source,
+                inventory_status: 'available' as const,
+                payment_method: 'Unknown',
+                qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                bookmark: false,
+                sku: item.sku || '',
+                purchase_price: item.purchase_price || '',
+                project_price: item.project_price || '',
+                market_value: item.market_value || '',
+                notes: item.notes || '',
+                space: item.space || ''
+              }
+              return await unifiedItemsService.createItem(itemData)
+            })
           )
           console.log('Created new items:', createdItemIds)
 

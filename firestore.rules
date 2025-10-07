@@ -59,8 +59,8 @@ service cloud.firestore {
     }
 
     // Items - role-based access (no anonymous access allowed)
-    // Items are stored as subcollections under projects
-    match /projects/{projectId}/items/{itemId} {
+    // Items are stored in top-level items collection
+    match /items/{itemId} {
       allow read: if canAccessForSetup() && (isViewer() || !hasRole());
       allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
       allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
@@ -68,18 +68,19 @@ service cloud.firestore {
 
     // Transactions - role-based access (no anonymous access allowed)
     // Transactions are stored as subcollections under projects
+    // Special rules for inventory allocation transactions (canonical IDs)
     match /projects/{projectId}/transactions/{transactionId} {
       allow read: if canAccessForSetup() && (isViewer() || !hasRole());
       allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
       allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
+
+      // Allow arrayUnion/arrayRemove operations for item_ids management
+      // This is needed for inventory allocation flows
+      allow update: if canAccessForSetup() && (isDesigner() || !hasRole()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['item_ids', 'last_updated']);
     }
 
-    // Business Inventory - role-based access (no anonymous access allowed)
-    match /business_inventory/{itemId} {
-      allow read: if canAccessForSetup() && (isViewer() || !hasRole());
-      allow write: if canAccessForSetup() && (isDesigner() || !hasRole());
-      allow delete: if canAccessForSetup() && (isAdmin() || !hasRole());
-    }
+    // Business Inventory items are now handled by the unified /items collection above
 
     // No anonymous access allowed for any other documents
     // All access requires proper user authentication

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Edit, Trash2, ArrowLeft, Package, Plus, ImagePlus, FileText, Copy } from 'lucide-react'
-import { BusinessInventoryItem, Project } from '@/types'
-import { businessInventoryService, projectService } from '@/services/inventoryService'
+import { Item, Project } from '@/types'
+import { unifiedItemsService, projectService } from '@/services/inventoryService'
 import { formatDate } from '@/utils/dateUtils'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { ImageUploadService } from '@/services/imageService'
@@ -11,7 +11,7 @@ import { useDuplication } from '@/hooks/useDuplication'
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [item, setItem] = useState<BusinessInventoryItem | null>(null)
+  const [item, setItem] = useState<Item | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -38,7 +38,19 @@ export default function BusinessInventoryItemDetail() {
         setItem(items[0])
       }
     },
-    duplicationService: (itemId: string) => businessInventoryService.duplicateBusinessInventoryItem(itemId)
+    duplicationService: async (itemId: string) => {
+      // Since we're using the unified service, we need to create a duplicate item
+      const originalItem = await unifiedItemsService.getItemById(itemId)
+      if (!originalItem) throw new Error('Item not found')
+
+      // Create a new item with similar data but new ID
+      const { item_id, date_created, last_updated, ...itemData } = originalItem
+      return await unifiedItemsService.createItem({
+        ...itemData,
+        inventory_status: 'available',
+        project_id: null
+      })
+    }
   })
 
   // Helper functions
@@ -84,7 +96,7 @@ export default function BusinessInventoryItemDetail() {
   useEffect(() => {
     if (!id) return
 
-    const unsubscribe = businessInventoryService.subscribeToBusinessInventory(
+    const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
       (items) => {
         const updatedItem = items.find(i => i.item_id === id)
         if (updatedItem) {
@@ -100,7 +112,7 @@ export default function BusinessInventoryItemDetail() {
     if (!id) return
 
     try {
-      const itemData = await businessInventoryService.getBusinessInventoryItem(id)
+      const itemData = await unifiedItemsService.getItemById(id)
       setItem(itemData)
     } catch (error) {
       console.error('Error loading item:', error)
@@ -115,7 +127,7 @@ export default function BusinessInventoryItemDetail() {
 
     if (window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
       try {
-        await businessInventoryService.deleteBusinessInventoryItem(id)
+        await unifiedItemsService.deleteItem(id)
         navigate('/business-inventory')
       } catch (error) {
         console.error('Error deleting item:', error)
@@ -148,8 +160,8 @@ export default function BusinessInventoryItemDetail() {
 
     setIsUpdating(true)
     try {
-      await businessInventoryService.allocateItemToProject(
-        id,
+      await unifiedItemsService.allocateItemToProject(
+        id!,
         allocationForm.projectId
       )
       closeAllocationModal()
@@ -222,7 +234,7 @@ export default function BusinessInventoryItemDetail() {
     const currentImages = item.images || []
     const updatedImages = [...currentImages, newImage]
 
-    await businessInventoryService.updateBusinessInventoryItem(item.item_id, { images: updatedImages })
+    await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
 
     // Show success notification on the last file
     if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
@@ -237,7 +249,7 @@ export default function BusinessInventoryItemDetail() {
     try {
       // Update in database
       const updatedImages = item.images?.filter(img => img.url !== imageUrl) || []
-      await businessInventoryService.updateBusinessInventoryItem(item.item_id, { images: updatedImages })
+      await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
 
       // Update local state
       setItem({ ...item, images: updatedImages })
@@ -256,7 +268,7 @@ export default function BusinessInventoryItemDetail() {
         ...img,
         isPrimary: img.url === imageUrl
       })) || []
-      await businessInventoryService.updateBusinessInventoryItem(item.item_id, { images: updatedImages })
+      await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
 
       // Update local state
       setItem({ ...item, images: updatedImages })
@@ -478,15 +490,15 @@ export default function BusinessInventoryItemDetail() {
                   <dd className="mt-1 text-sm text-gray-900">{formatDate(item.last_updated)}</dd>
                 </div>
 
-                {item.current_project_id && (
+                {item.project_id && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.current_project_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={`/project/${item.project_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
-                        {formatLinkedProjectText(item.current_project_id)}
+                        {formatLinkedProjectText(item.project_id)}
                       </Link>
                     </dd>
                   </div>
@@ -497,7 +509,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.current_project_id}/transaction/${item.pending_transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={`/project/${item.project_id}/transaction/${item.pending_transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {item.pending_transaction_id}
