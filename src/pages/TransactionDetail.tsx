@@ -601,7 +601,7 @@ export default function TransactionDetail() {
                     ? 'bg-primary-100 text-primary-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {transaction.transaction_type === 'To Inventory' ? 'Inventory' : transaction.transaction_type}
+                  {transaction.transaction_type}
                 </span>
               </dd>
             </div>

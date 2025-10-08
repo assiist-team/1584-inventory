@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Transaction, Project } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
+import { toDateOnlyString } from '@/utils/dateUtils'
 
 export default function EditBusinessInventoryTransaction() {
   const { projectId, transactionId } = useParams<{ projectId: string; transactionId: string }>()
@@ -55,7 +56,7 @@ export default function EditBusinessInventoryTransaction() {
           setTransaction(transactionData)
           setFormData({
             project_id: transactionData.project_id || '',
-            transaction_date: transactionData.transaction_date,
+            transaction_date: toDateOnlyString(transactionData.transaction_date) || '',
             source: transactionData.source,
             transaction_type: transactionData.transaction_type,
             payment_method: transactionData.payment_method,
@@ -93,9 +94,7 @@ export default function EditBusinessInventoryTransaction() {
       errors.project_id = 'Project selection is required'
     }
 
-    if (!formData.transaction_date.trim()) {
-      errors.transaction_date = 'Transaction date is required'
-    }
+    // Transaction date is optional
 
     if (!formData.source.trim()) {
       errors.source = 'Source is required'
@@ -221,7 +220,7 @@ export default function EditBusinessInventoryTransaction() {
 
                 <div>
                   <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-                    Transaction Date *
+                    Transaction Date
                   </label>
                   <input
                     type="date"

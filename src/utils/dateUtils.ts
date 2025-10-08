@@ -166,3 +166,32 @@ export const formatNumber = (num: string | number, fallback: string = '0.00'): s
   })
 }
 
+/**
+ * Returns today's date as a date-only string in YYYY-MM-DD format (local time)
+ */
+export const getTodayDateString = (): string => {
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+/**
+ * Converts an input date value to a date-only string (YYYY-MM-DD) if possible.
+ * Returns an empty string when conversion fails or value is falsy.
+ */
+export const toDateOnlyString = (value: DateValue): string => {
+  if (!value) return ''
+  // Already a date-only string
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value
+  }
+  const d = toDate(value)
+  if (!d) return ''
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+

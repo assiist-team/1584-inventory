@@ -9,6 +9,7 @@ import ImageUpload from '@/components/ui/ImageUpload'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
+import { toDateOnlyString } from '@/utils/dateUtils'
 
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
@@ -83,13 +84,17 @@ export default function EditTransaction() {
           setProjectName(project.name)
         }
         if (transaction) {
-          // Check if source is custom (not in predefined list)
-          const sourceIsCustom = Boolean(transaction.source && !TRANSACTION_SOURCES.includes(transaction.source as any))
+          // Determine the source to display: if Firestore saved 'Other' (legacy), use project name
+          const legacyOther = transaction.source === 'Other' || transaction.source === ''
+          const resolvedSource = legacyOther && project ? project.name : transaction.source
 
-          // Use the transaction date directly for date input
+          // Check if source is custom (not in predefined list)
+          const sourceIsCustom = Boolean(resolvedSource && !TRANSACTION_SOURCES.includes(resolvedSource as any))
+
+          // Use the transaction date directly for date input (convert Date object to YYYY-MM-DD string)
           setFormData({
-            transaction_date: transaction.transaction_date || '',
-            source: transaction.source,
+            transaction_date: toDateOnlyString(transaction.transaction_date) || '',
+            source: resolvedSource,
             transaction_type: transaction.transaction_type,
             payment_method: transaction.payment_method,
             amount: transaction.amount,
@@ -104,6 +109,15 @@ export default function EditTransaction() {
           })
 
           setIsCustomSource(sourceIsCustom)
+
+          // If legacy 'Other' was stored, immediately correct Firestore to the project name
+          if (legacyOther && project && projectId && transactionId) {
+            try {
+              await transactionService.updateTransaction(projectId, transactionId, { source: project.name })
+            } catch (e) {
+              console.warn('Failed to auto-correct source to project name:', e)
+            }
+          }
 
           // Handle legacy and new image fields for loading transaction data
           // Note: Legacy transaction_images is loaded but not stored in local state, receipt_images is the current field
@@ -163,17 +177,13 @@ export default function EditTransaction() {
   const validateForm = (): boolean => {
     const newErrors: TransactionValidationErrors = {}
 
+    // Source is still required to maintain data quality
     if (!formData.source.trim()) {
       newErrors.source = 'Source is required'
     }
 
-    if (!formData.transaction_type.trim()) {
-      newErrors.transaction_type = 'Transaction type is required'
-    }
-
-    if (!formData.payment_method.trim()) {
-      newErrors.payment_method = 'Payment method is required'
-    }
+    // TransactionType is optional
+    // PaymentMethod is optional
 
     if (!formData.budget_category?.trim()) {
       newErrors.budget_category = 'Budget category is required'
@@ -185,9 +195,7 @@ export default function EditTransaction() {
       newErrors.amount = 'Amount must be a positive number'
     }
 
-    if (!formData.transaction_date) {
-      newErrors.transaction_date = 'Transaction date is required'
-    }
+    // TransactionDate is optional
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -479,7 +487,7 @@ export default function EditTransaction() {
           {/* Transaction Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Type *
+              Transaction Type
             </label>
             <div className="flex items-center space-x-6">
               <div className="flex items-center">
@@ -666,7 +674,7 @@ export default function EditTransaction() {
           {/* Payment Method */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Payment Method *
+              Payment Method
             </label>
             <div className="flex items-center space-x-6">
               <div className="flex items-center">
@@ -816,7 +824,7 @@ export default function EditTransaction() {
           {/* Transaction Date */}
           <div>
             <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
+              Transaction Date
             </label>
             <input
               type="date"

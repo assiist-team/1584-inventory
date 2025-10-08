@@ -263,7 +263,15 @@ export const transactionService = {
       finalUpdates.status = 'pending'
     }
 
-    await updateDoc(transactionRef, finalUpdates)
+    // Filter out undefined values to prevent Firebase errors
+    const cleanUpdates: any = {}
+    Object.keys(finalUpdates).forEach(key => {
+      if (finalUpdates[key] !== undefined) {
+        cleanUpdates[key] = finalUpdates[key]
+      }
+    })
+
+    await updateDoc(transactionRef, cleanUpdates)
   },
 
   // Delete transaction (top-level collection)
@@ -763,7 +771,7 @@ export const unifiedItemsService = {
         ...existingData,
         item_ids: itemIds,
         amount: totalAmount,
-        notes: notes || existingData.notes || 'Items purchased from business inventory',  // Preserve existing notes or use canonical
+        notes: notes || existingData.notes || 'Transaction for items purchased from business inventory and allocated to project',  // Preserve existing notes or use canonical
         last_updated: new Date().toISOString()
       }
 
@@ -782,7 +790,7 @@ export const unifiedItemsService = {
         payment_method: 'Pending',
         amount: finalAmount,
         budget_category: 'Furnishings',
-        notes: notes || '',  // Clear, canonical notes
+        notes: notes || 'Transaction for items purchased from business inventory and allocated to project',  // Generic notes for multiple items
         status: 'pending' as const,
         reimbursement_type: 'Client Owes' as const,
         trigger_event: 'Inventory allocation' as const,
@@ -857,7 +865,7 @@ export const unifiedItemsService = {
         ...existingData,
         item_ids: allItemIds,
         amount: totalAmount,
-        notes: allocationData.notes || existingData.notes || '',
+        notes: allocationData.notes || existingData.notes || 'Transaction for items purchased from business inventory and allocated to project',
         last_updated: new Date().toISOString()
       }
 
@@ -880,7 +888,7 @@ export const unifiedItemsService = {
         payment_method: 'Pending',
         amount: totalAmount,
         budget_category: 'Furnishings',
-        notes: allocationData.notes || '',  // Clear, canonical notes
+        notes: allocationData.notes || 'Transaction for items purchased from business inventory and allocated to project',  // Generic notes for multiple items
         status: 'pending' as const,
         reimbursement_type: 'Client Owes' as const,
         trigger_event: 'Inventory allocation' as const,
