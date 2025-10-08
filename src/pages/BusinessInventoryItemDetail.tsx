@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { Edit, Trash2, ArrowLeft, Package, Plus, ImagePlus, FileText, Copy } from 'lucide-react'
+import { Edit, Trash2, ArrowLeft, Package, DollarSign, ImagePlus, FileText, Copy } from 'lucide-react'
 import { Item, Project } from '@/types'
 import { unifiedItemsService, projectService } from '@/services/inventoryService'
 import { formatDate } from '@/utils/dateUtils'
@@ -18,7 +18,8 @@ export default function BusinessInventoryItemDetail() {
   const [showAllocationModal, setShowAllocationModal] = useState(false)
   const [showProjectDropdown, setShowProjectDropdown] = useState(false)
   const [allocationForm, setAllocationForm] = useState({
-    projectId: ''
+    projectId: '',
+    space: ''
   })
 
   // Image upload state
@@ -147,7 +148,8 @@ export default function BusinessInventoryItemDetail() {
     setShowAllocationModal(false)
     setShowProjectDropdown(false)
     setAllocationForm({
-      projectId: ''
+      projectId: '',
+      space: ''
     })
   }
 
@@ -163,7 +165,9 @@ export default function BusinessInventoryItemDetail() {
     try {
       await unifiedItemsService.allocateItemToProject(
         id!,
-        allocationForm.projectId
+        allocationForm.projectId,
+        undefined,
+        undefined
       )
       closeAllocationModal()
 
@@ -334,7 +338,7 @@ export default function BusinessInventoryItemDetail() {
                 className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
                 title="Allocate to Project"
               >
-                <Plus className="h-4 w-4" />
+                <DollarSign className="h-4 w-4" />
               </button>
             )}
             <Link
@@ -527,7 +531,12 @@ export default function BusinessInventoryItemDetail() {
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Original Transaction</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <span className="text-gray-600 font-medium">{item.transaction_id}</span>
+                      <Link
+                        to={`/project/${item.project_id}/transaction/${item.transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        className="text-primary-600 hover:text-primary-800 font-medium"
+                      >
+                        {item.transaction_id}
+                      </Link>
                     </dd>
                   </div>
                 )}
@@ -599,11 +608,20 @@ export default function BusinessInventoryItemDetail() {
                     )}
                   </div>
                 </div>
-
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Space (optional)</label>
+                  <input
+                    type="text"
+                    value={allocationForm.space}
+                    onChange={(e) => setAllocationForm(prev => ({ ...prev, space: e.target.value }))}
+                    placeholder="e.g. Living Room, Bedroom"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  />
+                </div>
 
               </div>
 
-              <div className="flex justify-end gap-3 mt-6">
+                <div className="flex justify-end gap-3 mt-6">
                 <button
                   type="button"
                   onClick={closeAllocationModal}
@@ -613,8 +631,8 @@ export default function BusinessInventoryItemDetail() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleAllocationSubmit}
-                  disabled={!allocationForm.projectId || isUpdating}
+                    onClick={handleAllocationSubmit}
+                    disabled={!allocationForm.projectId || isUpdating}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
                 >
                   {isUpdating ? 'Allocating...' : 'Allocate Item'}

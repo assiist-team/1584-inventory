@@ -1,4 +1,4 @@
-import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy, DollarSign } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
@@ -512,7 +512,7 @@ export default function BusinessInventory() {
                   disabled={selectedItems.size === 0}
                   title="Allocate selected items to project"
                 >
-                  <Plus className="h-4 w-4" />
+                  <DollarSign className="h-4 w-4" />
                 </button>
 
                 <button
