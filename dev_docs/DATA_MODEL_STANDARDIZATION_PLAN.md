@@ -6,7 +6,7 @@ A practical, step-by-step plan to standardize data structures and field names ac
 
 ### Goals
 - **Consistency**: Use the same field names and shapes for common concepts across all documents and operations.
-- **Clarity**: Remove redundant/ambiguous fields (e.g., `transactionDate` vs `createdAt`).
+- **Clarity**: Disambiguate date fields; ensure `transaction_date` (date-only) co-exists with `created_at` (insert timestamp) in Transactions, and remove ambiguous synonyms.
 - **Safety**: Migrate data with dual-read/dual-write and a reversible path.
 - **Traceability**: Ensure every change is discoverable, reviewable, and auditable.
 
@@ -21,92 +21,96 @@ A practical, step-by-step plan to standardize data structures and field names ac
 
 ---
 
-### Canonical Field Dictionary (cross-cutting)
-Use these field names and semantics everywhere they apply. For dates/times, prefer Firestore `Timestamp` at rest; convert to `Date` only at the edges.
+### Canonical Field Dictionary (by domain)
+Use the exact casing and names already present in the codebase. For timestamps, store ISO strings unless otherwise noted. For Transactions, `transaction_date` is intentionally date-only (`YYYY-MM-DD`).
 
-- **id**: Firestore document ID (string). Not stored unless required; when stored, name is `id`.
-- **schemaVersion**: Integer representing the schema version of the stored document.
-- **createdAt**: When the document was first created in the database (server timestamp).
-- **createdBy**: The user ID that created the document (`users/{uid}` ID, string).
-- **updatedAt**: When the document was last updated (server timestamp). Always present after first update.
-- **updatedBy**: The user ID that last updated the document (string).
-- **deletedAt**: Soft delete timestamp. Absent/`null` means not deleted.
-- **deletedBy**: The user ID that soft-deleted this document (string).
-- **status**: Canonical lifecycle indicator. Allowed values per domain (see domain tables below). Avoid separate boolean flags and a string status for the same meaning.
-- **tags**: `string[]` of user-defined tags.
-- **notes**: Freeform text notes.
-- **projectId / itemId / transactionId / ...**: Singular noun with `Id` suffix for references. Prefer `...Id` over ambiguous `...Ref` strings unless storing a Firestore `DocumentReference` object.
-- **occurredAt**: Use for domain events (e.g., a financial transaction date/time when it happened). Distinct from `createdAt` which is when a record was inserted.
-- **effectiveAt**: Use for rules/budgeting when a value takes effect, if different from when it occurred.
+- Projects (camelCase):
+  - `id` (string), `name` (string), `description` (string), `clientName` (string)
+  - `createdAt` (Date/ISO), `updatedAt` (Date/ISO), `createdBy` (string)
+  - Optional: `budget`, `designFee`, `budgetCategories`, `settings`, `metadata`, `status` (`active`|`archived`)
 
-Money and quantities:
-- **money**: Use a consistent shape when amounts and currency appear together. Canonical shape: `{ amountMinor: number, currencyCode: string }` where `amountMinor` is in the smallest unit (e.g., cents). If a single amount appears without currency, prefer `amountMinor` and require the context to supply the `currencyCode`.
-- **quantity**: Numeric quantity for items. When units matter, include `unit` (e.g., `pcs`, `kg`, `lb`), or a domain-specific field.
+- Transactions (snake_case):
+  - Required: `transaction_id` (string), `transaction_date` (YYYY-MM-DD), `source` (string), `transaction_type` (string), `payment_method` (string), `amount` (string), `created_at` (ISO), `created_by` (string)
+  - Optional: `project_id` (string|null), `project_name` (string|null), `budget_category` (string), `notes` (string), `status` (`pending`|`completed`|`cancelled`), `reimbursement_type`, `trigger_event`, `item_ids` (string[])
+  - Images: `transaction_images` (legacy), `receipt_images`, `other_images`
 
-Files and images:
-- **images**: Array of `{ storagePath, url, width, height, createdAt, createdBy }` where `storagePath` and `url` are consistent with image service.
+- Items (snake_case):
+  - Required: `item_id` (string), `description` (string), `source` (string), `payment_method` (string), `qr_key` (string), `bookmark` (boolean), `transaction_id` (string), `date_created` (ISO), `last_updated` (ISO)
+  - Optional: `sku` (string), `price` (string), `purchase_price` (string), `project_price` (string), `market_value` (string), `disposition` (string), `notes` (string), `space` (string), `project_id` (string|null), `images` (array)
+  - Business inventory: `inventory_status` (`available`|`pending`|`sold`), `business_inventory_location` (string)
+
+- Item location shape (optional, where used): `storage` (string), `shelf` (string), `position` (string)
+
+- Files and images:
+  - Items: `images` with `{ url, alt, isPrimary, uploadedAt, fileName, size, mimeType, caption? }`
+  - Transactions: `transaction_images` (legacy), `receipt_images`, `other_images`
 
 ---
 
 ### Domain Canonicals and Status Values
 
 Transactions (financial or inventory movement):
-- Required: `occurredAt`, `createdAt`, `createdBy`
-- Optional: `updatedAt`, `updatedBy`, `deletedAt`, `deletedBy`, `notes`, `tags`
-- Relationships: `projectId`, `itemId` (when applicable)
-- Amounts: prefer `{ money: { amountMinor, currencyCode } }` or domain equivalents (e.g., `total` -> `money`)
-- Status: `status` in { `posted`, `void`, `pending` } as applicable
+- Required: `transaction_date` (YYYY-MM-DD), `created_at`, `created_by`
+- Optional: `last_updated`, `notes`, `status`, `reimbursement_type`, `trigger_event`, images fields
+- Relationships: `project_id`, `item_ids` (when applicable)
+- Amounts: use existing `amount` (string)
+- Status: `status` in { `pending`, `completed`, `cancelled` }
 
 Items (catalog or inventory items):
-- Required: `createdAt`, `createdBy`, `name`
-- Optional: `updatedAt`, `updatedBy`, `deletedAt`, `deletedBy`, `description`, `tags`
-- Relationships: `projectId` (if items are project-scoped)
-- Status: `status` in { `active`, `archived` }
+- Required: `date_created`, `last_updated`, `description`
+- Optional: `inventory_status`, `business_inventory_location`, `project_id`, pricing fields (`price`, `purchase_price`, `project_price`, `market_value`), `disposition`, `notes`, `space`, `images`
+- Relationships: `transaction_id`, `project_id` (if allocated)
 
 Projects:
 - Required: `name`, `createdAt`, `createdBy`
-- Optional: `updatedAt`, `updatedBy`, `deletedAt`, `deletedBy`, `notes`, `tags`
+- Optional: `updatedAt`, `notes`, `tags`
 - Status: `status` in { `active`, `archived` }
 
-Business Inventory Transactions:
-- Same as Transactions with domain-specific fields for source/target locations.
-- Prefer `occurredAt` for the real-world move date and `createdAt` for record creation.
+Business Inventory (items and related transactions):
+- Use `business_inventory_location` (string) for storage location. Do not introduce new location fields (`fromLocationId`, `toLocationId`, bins, etc.).
+- Transactions use the same Transaction fields above; `transaction_date` is date-only.
 
 Images/Attachments:
 - Use `images` array shape listed above.
 
 ---
 
-### Old → New Field Mapping (examples and rules)
-These are common synonyms we will consolidate. Use the “New Canonical” column going forward.
+### Old → New Field Mapping (by domain)
+Use the “New Canonical” column going forward for each domain.
 
+Transactions (snake_case):
 | Concept | Example Current Names (any of these) | New Canonical |
 |---|---|---|
-| Created timestamp | `created_at`, `creationDate`, `createdOn`, `dateCreated` | `createdAt` |
-| Created by | `createdByUid`, `creator`, `owner`, `userId` (when creator) | `createdBy` |
-| Updated timestamp | `updated_at`, `lastUpdated`, `modifiedAt`, `updatedOn` | `updatedAt` |
-| Updated by | `updatedByUid`, `modifiedBy`, `lastModifiedBy`, `editorId` | `updatedBy` |
-| Deleted flag | `isDeleted`, `deleted`, `archived` | Prefer `deletedAt` (+ optional `deletedBy`). Use `status: archived` for archives, not deletions |
-| Transaction date | `transactionDate`, `date`, `timestamp` (domain-specific) | `occurredAt` |
-| Amount | `amount`, `amountCents`, `price`, `cost`, `total` | `money.amountMinor` (+ `currencyCode`) or domain field pointing to money |
-| References | `project`, `projectRef`, `projectID` | `projectId` |
-| References | `item`, `itemRef`, `itemID` | `itemId` |
-| Generic date | `date`, `timestamp` | Avoid ambiguous names. Choose `createdAt`, `updatedAt`, `occurredAt`, or `effectiveAt` |
+| Created timestamp | `createdAt`, `dateCreated`, `creationDate` | `created_at` |
+| Created by | `createdBy`, `creator`, `owner`, `userId` | `created_by` |
+| Last updated | `updatedAt`, `lastUpdated`, `modifiedAt`, `updatedOn` | `last_updated` |
+| Transaction date | `transactionDate`, `date`, `timestamp` | `transaction_date` (YYYY-MM-DD) |
+| References | `projectId` | `project_id` |
+| Images | `images` | `receipt_images` / `other_images` / `transaction_images` (legacy) |
+
+Items (snake_case):
+| Concept | Example Current Names (any of these) | New Canonical |
+|---|---|---|
+| Created timestamp | `createdAt`, `dateCreated` | `date_created` |
+| Last updated | `updatedAt`, `lastUpdated` | `last_updated` |
+| Storage location | `storageLocation`, `warehouse`, `location` | `business_inventory_location` |
+| References | `projectId` | `project_id` |
+| Generic date | `date` | Avoid; choose `date_created` or `last_updated` |
 
 Rules of thumb:
-- If the field’s meaning is "when it was inserted", it is `createdAt`.
-- If the field’s meaning is "when a real-world event occurred", it is `occurredAt`.
-- If both exist, keep both; never treat them as interchangeable.
-- Use a single boolean only if it cannot be modeled by `status` or `deletedAt`. Prefer explicit `status` values to avoid multiple flags.
+- Transactions: `transaction_date` is the real-world date (no time). `created_at` is when the record was inserted. Keep both; never treat them as interchangeable.
+- Items: use `date_created` and `last_updated` consistently.
+- Do not introduce new location fields; use `business_inventory_location` where relevant.
+- Use a single boolean only if it cannot be modeled by `status`. Prefer explicit `status` values to avoid multiple flags.
 
 ---
 
 ### Conventions and Guardrails
-- **Naming**: camelCase for field names; singular noun + `Id` for references.
-- **Time**: Timestamps are Firestore `Timestamp` in UTC. Convert at the UI boundary.
-- **Money**: Always store in minor units with an explicit `currencyCode`.
-- **Schema version**: Add `schemaVersion` to all canonical docs; increment when making breaking schema changes.
-- **Soft delete**: Prefer `deletedAt` (+ optional `deletedBy`). Do not use `isDeleted` and `deletedAt` together.
+- **Naming**: Honor existing casing by domain. Projects use camelCase (`createdAt`, `updatedAt`, `createdBy`). Transactions and Items use snake_case (`created_at`, `last_updated`, `created_by`, `date_created`).
+- **References**: Use snake_case `*_id` for Transactions/Items (e.g., `project_id`, `transaction_id`, `item_id`).
+- **Time**: Transactions: `transaction_date` is `YYYY-MM-DD` (date-only). `created_at`/`last_updated` are ISO strings. Items: `date_created`/`last_updated` are ISO strings.
+- **Money**: Keep existing `amount` as string for Transactions and pricing fields as strings for Items.
+- **Schema version**: Add `schemaVersion` only if/when needed to coordinate migrations (optional).
 - **Status**: Single `status` string per document type; avoid redundant booleans.
 - **Extensibility**: Use `metadata: Record<string, unknown>` only where needed to avoid schema creep.
 
@@ -120,14 +124,14 @@ This is the step-by-step process to execute changes safely and traceably.
 - Search the codebase for potential synonyms. Use ripgrep (install `rg` if necessary):
 
 ```bash
-rg -n --no-ignore -S "created_at|creationDate|createdOn|dateCreated|createdAt" src
-rg -n --no-ignore -S "updated_at|lastUpdated|modifiedAt|updatedOn|updatedAt" src
-rg -n --no-ignore -S "updatedBy|updated_by|modifiedBy|lastModifiedBy|editorId" src
-rg -n --no-ignore -S "transactionDate|occurredAt|purchaseDate|date\b|timestamp\b" src
-rg -n --no-ignore -S "amountCents|amountMinor|amount\b|price\b|cost\b|total\b" src
-rg -n --no-ignore -S "isDeleted|deletedAt|archived|isArchived|status" src
-rg -n --no-ignore -S "projectId|project\b|projectRef|projectID" src
-rg -n --no-ignore -S "itemId|item\b|itemRef|itemID" src
+rg -n --no-ignore -S "created_at|date_created|createdAt|dateCreated" src
+rg -n --no-ignore -S "last_updated|updatedAt|lastUpdated|modifiedAt|updatedOn" src
+rg -n --no-ignore -S "created_by|createdBy" src
+rg -n --no-ignore -S "transaction_date|transactionDate" src
+rg -n --no-ignore -S "business_inventory_location|storageLocation|warehouse|location" src
+rg -n --no-ignore -S "amount\b|price\b|purchase_price\b|project_price\b|market_value\b" src
+rg -n --no-ignore -S "project_id\b|transaction_id\b|item_id\b|projectId\b" src
+rg -n --no-ignore -S "receipt_images\b|transaction_images\b|other_images\b|images\b" src
 ```
 
 - Create an inventory spreadsheet (or markdown table) with columns: `File`, `Line`, `Domain`, `Current Field`, `Intended Canonical`, `Notes`.
@@ -151,8 +155,8 @@ rg -n --no-ignore -S "itemId|item\b|itemRef|itemID" src
 - Define validation queries and spot checks (sample counts per status, date ranges, and money totals).
 
 5) Update Firestore Rules and Indexes
-- Update `firestore.rules` to authorize new fields and enforce invariants (e.g., `createdAt` server-only).
-- Add or update indexes required by the new `status`/date fields or queries relying on `occurredAt`.
+- Update `firestore.rules` to authorize new fields and enforce invariants (e.g., server-only for created timestamps).
+- Add or update indexes required by the new `status`/date fields or queries relying on `transaction_date`.
 
 6) UI/Service Refactors
 - Update TypeScript types in `src/types/` to reflect canonical fields only.
@@ -186,6 +190,7 @@ rg -n --no-ignore -S "itemId|item\b|itemRef|itemID" src
 - [ ] Services read both old and new fields (dual-read)
 - [ ] Services write new canonical fields (dual-write)
 - [ ] UI updated to consume canonical fields
+- [ ] `transaction_date` stored as ISO date-only string (`YYYY-MM-DD`) for transactions
 - [ ] Firestore rules updated and reviewed
 - [ ] Indexes added/updated (if needed)
 - [ ] Migration spec prepared (idempotent, batched)
@@ -198,23 +203,24 @@ rg -n --no-ignore -S "itemId|item\b|itemRef|itemID" src
 ### Domain-by-Domain To-Do (execution sequence)
 
 1) Transactions
-- Replace any `transactionDate`/`date` with `occurredAt`.
-- Keep `createdAt` for insertion time. Never treat `occurredAt` and `createdAt` as the same.
-- Consolidate `amount` fields under `money.amountMinor` + `currencyCode`.
-- Standardize `status` (prefer `posted`, `pending`, `void`).
+- Replace any `date`/`transactionDate` with `transaction_date` (date-only).
+- Ensure `created_at` is set when inserting; keep distinct from `transaction_date`.
+- Use `last_updated` on updates.
+- Keep `amount` as string; no money object.
+- Standardize `status` to existing values (`pending`, `completed`, `cancelled`).
 
 2) Items
-- Ensure `createdAt`, `createdBy`, `updatedAt`, `updatedBy` are present and consistent.
-- Consolidate status to `active`/`archived`.
-- Normalize references: `projectId` (if applicable).
+- Ensure `date_created` and `last_updated` are present and consistent.
+- Use `business_inventory_location` for storage location; remove/rename any synonyms.
+- Normalize references: `project_id` (if applicable) and `transaction_id`.
 
 3) Projects
 - Ensure canonical audit fields.
 - Prefer `status` = `active`/`archived`.
 
-4) Business Inventory (items and transactions)
-- Use `occurredAt` for movements; `createdAt` for record creation.
-- Normalize location/source/target fields with consistent names.
+4) Business Inventory
+- Use `business_inventory_location` for item storage; do not add new location fields.
+- Transactions follow the Transactions rules above (`transaction_date`, `created_at`, `last_updated`).
 
 5) Images/Attachments
 - Use `images` array shape; drop ad-hoc fields.
@@ -223,8 +229,9 @@ rg -n --no-ignore -S "itemId|item\b|itemRef|itemID" src
 
 ### Validation and Acceptance Criteria
 - All domains use canonical field names only in `src/types/`.
+- Transactions contain `transaction_date` as ISO `YYYY-MM-DD` (date-only), not a timestamp.
 - No occurrences of deprecated names in the codebase (verified via ripgrep and linter).
-- Firestore documents sampled from each collection contain expected canonical fields and `schemaVersion`.
+- Firestore documents sampled from each collection contain expected canonical fields (e.g., `created_at`, `last_updated`, `created_by`, `date_created`).
 - Dual-read removed and code reads/writes canonicals exclusively.
 - All relevant UI flows function with real data after migration.
 
@@ -242,4 +249,138 @@ rg -n --no-ignore -S "itemId|item\b|itemRef|itemID" src
 - Require the PR checklist for all schema-affecting changes.
 - Keep `dev_docs/DATA_SCHEMA.md` and this plan updated with each schema change (bump `schemaVersion`).
 
+
+---
+
+### Verifier Playbook (for second dev/model)
+Follow this exact sequence. Treat any failure as a stop-and-fix gate.
+
+1) Run final sweep searches (repo-wide)
+
+```bash
+# Transactions & Items audit: created timestamps
+rg -n --no-ignore -S "\bcreatedAt\b|\bdateCreated\b|\bcreationDate\b" src
+
+# Updates audit
+rg -n --no-ignore -S "\bupdatedAt\b|\blastUpdated\b|\bmodifiedAt\b|\bupdatedOn\b" src
+
+# Transaction date audit
+rg -n --no-ignore -S "\btransactionDate\b|\boccurredAt\b|\btransaction_date\b" src
+
+# Inventory storage/location audit
+rg -n --no-ignore -S "\bbusiness_inventory_location\b|\bstorageLocation\b|\bwarehouse\b|\blocation\b" src
+
+# Audit snake_case IDs vs camelCase
+rg -n --no-ignore -S "\bprojectId\b|\bitemId\b|\btransactionId\b|\bproject_id\b|\bitem_id\b|\btransaction_id\b" src
+
+# Image fields in transactions & items
+rg -n --no-ignore -S "\breceipt_images\b|\bother_images\b|\btransaction_images\b|\bimages\b" src
+
+# Created/updated fields actually used
+rg -n --no-ignore -S "\bcreated_at\b|\blast_updated\b|\bdate_created\b|\bcreated_by\b" src
+```
+
+Pass criteria:
+- Only canonical fields exist in code outside tests/migration logs.
+- If any deprecated field appears, either it’s in comments/tests or it’s a bug to fix.
+
+2) Types and Service layer spot-check
+- Open `src/types/index.ts` and verify Transactions and Items match this document.
+- Open `src/services/inventoryService.ts` and verify all reads/writes use `transaction_date`, `created_at`, `last_updated`, `date_created`, `created_by`, and `business_inventory_location` as applicable.
+
+3) UI spot-checks (happy paths)
+- Add Transaction: confirm date input binds to `transaction_date` and creates `created_at`.
+- Add Item: confirm `date_created`/`last_updated` populate; storage uses `business_inventory_location`.
+- List/detail pages: confirm date displays use `transaction_date` for transactions and `date_created`/`last_updated` for items.
+
+4) Firestore document sampling
+- Sample 50 recent Transactions: all have `transaction_date` (YYYY-MM-DD), `created_at` (ISO), and no camelCase timestamp fields.
+- Sample 50 recent Items: all have `date_created`, `last_updated`, and storage (when applicable) in `business_inventory_location` only.
+
+5) CI checks green
+- Ensure denylist lints/grep (below) pass.
+
+---
+
+### Deprecated Fields Denylist (must not appear outside tests/migrations)
+
+- Transactions:
+  - Timestamps: `createdAt`, `dateCreated`, `creationDate`, `updatedAt`, `lastUpdated`, `modifiedAt`, `updatedOn`
+  - Dates: `transactionDate`, `occurredAt`
+  - References: `projectId`, `itemId`, `transactionId`
+
+- Items:
+  - Timestamps: `createdAt`, `dateCreated`, `updatedAt`, `lastUpdated`
+  - Storage: `storageLocation`, `warehouse`, `location` (when used as storage field)
+  - References: `projectId`
+
+Allowed replacements:
+- Transactions: `created_at`, `last_updated`, `transaction_date`, `project_id`, `item_ids`, `transaction_id`, `created_by`.
+- Items: `date_created`, `last_updated`, `business_inventory_location`, `project_id`, `transaction_id`.
+
+---
+
+### Final Sweep Commands (copy-paste as a single audit)
+
+```bash
+set -e
+echo "🔎 Audit: deprecated timestamps"
+rg -n --no-ignore -S "\bcreatedAt\b|\bdateCreated\b|\bcreationDate\b|\bupdatedAt\b|\blastUpdated\b|\bmodifiedAt\b|\bupdatedOn\b" src || true
+
+echo "🔎 Audit: transaction date synonyms"
+rg -n --no-ignore -S "\btransactionDate\b|\boccurredAt\b" src || true
+
+echo "🔎 Audit: references casing"
+rg -n --no-ignore -S "\bprojectId\b|\bitemId\b|\btransactionId\b" src || true
+
+echo "🔎 Audit: canonical fields presence"
+rg -n --no-ignore -S "\btransaction_date\b|\bcreated_at\b|\blast_updated\b|\bdate_created\b|\bcreated_by\b" src
+
+echo "🔎 Audit: inventory storage fields"
+rg -n --no-ignore -S "\bbusiness_inventory_location\b|\bstorageLocation\b|\bwarehouse\b|\blocation\b" src || true
+
+echo "✅ Expectation: no deprecated fields (first three audits) outside tests; canonical fields present"
+```
+
+Reviewer outcome:
+- If any deprecated field matches appear in non-test, non-doc files, mark as FAIL and open a follow-up fix.
+
+---
+
+### Data Validation Acceptance Checks (post-migration)
+
+- Transactions (sample ≥50 or full set if small):
+  - `transaction_date` matches `/^\d{4}-\d{2}-\d{2}$/`.
+  - `created_at` is present and ISO-like.
+  - `last_updated` present on any doc that was edited after creation.
+  - No camelCase timestamp fields present.
+
+- Items (sample ≥50 or full set if small):
+  - `date_created` and `last_updated` present and ISO-like.
+  - No camelCase timestamp fields present.
+  - `business_inventory_location` used where storage is displayed/required; no legacy storage fields.
+
+Record results in the PR with counts: total docs checked, failures (0 expected), example document IDs if failures.
+
+---
+
+### CI Enforcement (recommended)
+
+- Add a CI step that fails on denylist terms outside `**/test/**` and `dev_docs/**`:
+
+```bash
+rg -n --no-ignore -S "\bcreatedAt\b|\bdateCreated\b|\bcreationDate\b|\bupdatedAt\b|\blastUpdated\b|\bmodifiedAt\b|\bupdatedOn\b|\btransactionDate\b|\boccurredAt\b|\bprojectId\b|\bitemId\b|\btransactionId\b" src && echo "❌ Deprecated terms found" && exit 1 || echo "✅ No deprecated terms"
+```
+
+- Optionally, wire a lightweight ESLint custom rule or a simple script that scans changed files in PRs and blocks merges if denylist terms are introduced.
+
+---
+
+### Reviewer Checklist (paste into review)
+- [ ] Final sweep commands run; no deprecated fields found outside tests/docs.
+- [ ] `src/types/index.ts` matches this plan (Transactions snake_case, Items snake_case, Projects camelCase).
+- [ ] `src/services/inventoryService.ts` reads/writes only canonical fields.
+- [ ] UI flows verified: add/edit transaction uses `transaction_date`; add item sets `date_created`/`last_updated`; storage uses `business_inventory_location`.
+- [ ] Firestore sampling done; 0 failures on validation checks.
+- [ ] CI denylist step passed.
 
