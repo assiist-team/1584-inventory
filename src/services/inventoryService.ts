@@ -2281,6 +2281,7 @@ export const deallocationService = {
         project_id: null,
         inventory_status: 'available',
         transaction_id: transactionId,
+        space: '', // Clear space field when moving to business inventory
         last_updated: new Date().toISOString()
       })
 
