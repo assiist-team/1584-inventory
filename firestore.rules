@@ -84,6 +84,18 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['item_ids', 'last_updated', 'amount', 'status', 'payment_method', 'transaction_date']);
     }
 
+    // Audit logs - authenticated users can write audit events
+    match /audit_logs/{auditId} {
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+    }
+
+    // Transaction audit logs - authenticated users can write transaction audit events
+    match /transaction_audit_logs/{auditId} {
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+    }
+
     // Legacy business_inventory collection (for backwards compatibility)
     match /business_inventory/{itemId} {
       allow read, write, delete: if isAuthenticatedUser();

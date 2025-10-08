@@ -14,7 +14,19 @@ export default function EditBusinessInventoryItem() {
   // Track if user has manually edited project_price
   const projectPriceEditedRef = useRef(false)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    description: string;
+    source: string;
+    sku: string;
+    purchase_price: string;
+    project_price: string;
+    market_value: string;
+    disposition: string;
+    notes: string;
+    bookmark: boolean;
+    business_inventory_location: string;
+    inventory_status: 'available' | 'allocated' | 'sold' | undefined;
+  }>({
     description: '',
     source: '',
     sku: '',
@@ -25,7 +37,7 @@ export default function EditBusinessInventoryItem() {
     notes: '',
     bookmark: false,
     business_inventory_location: '',
-    inventory_status: 'available' as 'available' | 'pending' | 'sold' | undefined
+    inventory_status: 'available' as 'available' | 'allocated' | 'sold' | undefined
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -348,14 +360,14 @@ export default function EditBusinessInventoryItem() {
               <label htmlFor="inventory_status" className="block text-sm font-medium text-gray-700">
                 Inventory Status
               </label>
-              <select
+            <select
                 id="inventory_status"
                 value={formData.inventory_status}
                 onChange={(e) => handleInputChange('inventory_status', e.target.value)}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               >
                 <option value="available">Available</option>
-                <option value="pending">Allocated</option>
+                <option value="allocated">Allocated</option>
                 <option value="sold">Sold</option>
               </select>
               {item.project_id && (

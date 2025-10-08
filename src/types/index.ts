@@ -71,7 +71,7 @@ export interface Item {
   space?: string;               // Space/location where item is placed
   qr_key: string;
   bookmark: boolean;
-  transaction_id: string;
+  transaction_id?: string | null;
   project_id?: string | null;   // null = business inventory, string = allocated to project
   date_created: string;
   last_updated: string;
@@ -81,7 +81,7 @@ export interface Item {
   selectedTransactionId?: string; // UI field for selecting transaction
 
   // Business Inventory fields (unified with Item)
-  inventory_status?: 'available' | 'pending' | 'sold';
+  inventory_status?: 'available' | 'allocated' | 'sold';
   business_inventory_location?: string; // Warehouse location details
 }
 
@@ -174,7 +174,7 @@ export interface Transaction {
   // NEW: Pending Transaction fields for Enhanced Transaction System
   status?: 'pending' | 'completed' | 'cancelled';
   reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
-  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
+  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
 
   // NEW: Item linkage for unified inventory system
   item_ids?: string[]; // Links to items in the top-level items collection
@@ -210,7 +210,7 @@ export interface TransactionFormData {
   notes?: string;
   status?: 'pending' | 'completed' | 'cancelled';
   reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
-  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
+  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
   transaction_images?: File[]; // Legacy field for backward compatibility
   receipt_images?: File[]; // New field for receipt image files
   other_images?: File[]; // New field for other image files
@@ -278,7 +278,7 @@ export interface TransactionFormProps {
 export interface BusinessInventoryStats {
   totalItems: number;
   availableItems: number;
-  pendingItems: number;
+  allocatedItems: number;
   soldItems: number;
 }
 

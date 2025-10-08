@@ -606,12 +606,12 @@ export default function BusinessInventory() {
                             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                               item.inventory_status === 'available'
                                 ? 'bg-green-100 text-green-800'
-                                : item.inventory_status === 'pending'
+                                : item.inventory_status === 'allocated'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                             }`}>
                               {item.inventory_status === 'available' ? 'Available' :
-                               item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
+                               item.inventory_status === 'allocated' ? 'Allocated' : 'Sold'}
                             </span>
                           </div>
                         </div>

@@ -56,7 +56,8 @@ export const auditService = {
       })
       console.log(`📋 Audit logged: ${eventType} for item ${itemId}`)
     } catch (error) {
-      console.error('❌ Failed to log audit event:', error)
+      console.warn('⚠️ Failed to log audit event (non-critical):', error)
+      // Don't throw - audit logging failures shouldn't break the main flow
     }
   },
 
@@ -79,7 +80,8 @@ export const auditService = {
       })
       console.log(`📋 Transaction audit logged: ${changeType} for ${transactionId}`)
     } catch (error) {
-      console.error('❌ Failed to log transaction audit:', error)
+      console.warn('⚠️ Failed to log transaction audit (non-critical):', error)
+      // Don't throw - audit logging failures shouldn't break the main flow
     }
   }
 }
@@ -819,13 +821,17 @@ export const unifiedItemsService = {
       finalAmount
     })
 
-    // Log allocation start
-    await (auditService.logAllocationEvent as any)('allocation', itemId, item.project_id, currentTransactionId, {
-      action: 'allocation_started',
-      target_project_id: projectId,
-      current_transaction_id: currentTransactionId,
-      amount: finalAmount
-    })
+    // Log allocation start (catch errors to prevent cascading failures)
+    try {
+      await (auditService.logAllocationEvent as any)('allocation', itemId, item.project_id, currentTransactionId, {
+        action: 'allocation_started',
+        target_project_id: projectId,
+        current_transaction_id: currentTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log allocation start:', auditError)
+    }
 
     // DETERMINISTIC FLOW LOGIC from ALLOCATION_TRANSACTION_LOGIC.md
 
@@ -834,7 +840,40 @@ export const unifiedItemsService = {
       const currentProjectId = currentTransactionId.replace('INV_SALE_', '')
 
       if (currentProjectId === projectId) {
-        // A.1: Allocate to same project - remove from Sale, update amount, delete if empty
+        // A.1: Special-case when item is in inventory but linked to a Sale for the same project.
+        // Treat as a reversion: remove from Sale and allocate back to the project WITHOUT creating a Purchase.
+        if (item.project_id === null) {
+          console.log('📋 Scenario A.1 (inventory+sale): Item linked to Sale and currently in inventory, allocating back to same project without creating purchase')
+
+          // Remove item from existing Sale transaction
+          await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+
+          // Update item to reflect allocation back to project without creating a purchase
+          await this.updateItem(itemId, {
+            project_id: projectId,
+            inventory_status: 'allocated',
+            transaction_id: null,
+            disposition: 'keep'
+          })
+
+          console.log('✅ A.1 completed: Sale → Project (no purchase created)')
+
+          try {
+            await auditService.logAllocationEvent('allocation', itemId, projectId, null, {
+              action: 'allocation_completed',
+              scenario: 'A.1',
+              from_transaction: currentTransactionId,
+              to_transaction: null,
+              amount: finalAmount
+            })
+          } catch (auditError) {
+            console.warn('⚠️ Failed to log allocation completion:', auditError)
+          }
+
+          return projectId
+        }
+
+        // If item is not in inventory (true Sale state), fall through to normal A.1 behavior
         console.log('📋 Scenario A.1: Item in Sale, allocating to same project')
         return await this.handleSaleToPurchaseMove(itemId, currentTransactionId, projectId, finalAmount, notes)
       } else {
@@ -889,21 +928,25 @@ export const unifiedItemsService = {
     // Update item status
     await this.updateItem(itemId, {
       project_id: projectId,
-      inventory_status: 'pending',
+      inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
       disposition: 'keep'
     })
 
     console.log('✅ A.1 completed: Sale → Purchase (same project)')
 
-    // Log successful allocation
-    await auditService.logAllocationEvent('allocation', itemId, projectId, purchaseTransactionId, {
-      action: 'allocation_completed',
-      scenario: 'A.1',
-      from_transaction: currentTransactionId,
-      to_transaction: purchaseTransactionId,
-      amount: finalAmount
-    })
+    // Log successful allocation (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('allocation', itemId, projectId, purchaseTransactionId, {
+        action: 'allocation_completed',
+        scenario: 'A.1',
+        from_transaction: currentTransactionId,
+        to_transaction: purchaseTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log allocation completion:', auditError)
+    }
 
     return purchaseTransactionId
   },
@@ -927,21 +970,25 @@ export const unifiedItemsService = {
     // Update item status
     await this.updateItem(itemId, {
       project_id: newProjectId,
-      inventory_status: 'pending',
+      inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
       disposition: 'keep'
     })
 
     console.log('✅ A.2 completed: Sale → Purchase (different project)')
 
-    // Log successful allocation
-    await auditService.logAllocationEvent('allocation', itemId, newProjectId, purchaseTransactionId, {
-      action: 'allocation_completed',
-      scenario: 'A.2',
-      from_transaction: currentTransactionId,
-      to_transaction: purchaseTransactionId,
-      amount: finalAmount
-    })
+    // Log successful allocation (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('allocation', itemId, newProjectId, purchaseTransactionId, {
+        action: 'allocation_completed',
+        scenario: 'A.2',
+        from_transaction: currentTransactionId,
+        to_transaction: purchaseTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log allocation completion:', auditError)
+    }
 
     return purchaseTransactionId
   },
@@ -967,14 +1014,18 @@ export const unifiedItemsService = {
 
     console.log('✅ B.1 completed: Purchase → Inventory (same project)')
 
-    // Log successful deallocation
-    await auditService.logAllocationEvent('deallocation', itemId, null, 'inventory', {
-      action: 'deallocation_completed',
-      scenario: 'B.1',
-      from_transaction: currentTransactionId,
-      to_status: 'inventory',
-      amount: finalAmount
-    })
+    // Log successful deallocation (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('deallocation', itemId, null, 'inventory', {
+        action: 'deallocation_completed',
+        scenario: 'B.1',
+        from_transaction: currentTransactionId,
+        to_status: 'inventory',
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log deallocation completion:', auditError)
+    }
 
     return currentTransactionId // Return the original transaction ID since item is now in inventory
   },
@@ -993,7 +1044,7 @@ export const unifiedItemsService = {
     await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
 
     // Add item to Sale transaction for new project (create if none)
-    await this.addItemToTransaction(itemId, saleTransactionId, finalAmount, 'Sale', 'Inventory return', notes)
+    await this.addItemToTransaction(itemId, saleTransactionId, finalAmount, 'To Inventory', 'Inventory sale', notes)
 
     // Update item status
     await this.updateItem(itemId, {
@@ -1005,14 +1056,18 @@ export const unifiedItemsService = {
 
     console.log('✅ B.2 completed: Purchase → Sale (different project)')
 
-    // Log successful allocation
-    await auditService.logAllocationEvent('allocation', itemId, null, saleTransactionId, {
-      action: 'allocation_completed',
-      scenario: 'B.2',
-      from_transaction: currentTransactionId,
-      to_transaction: saleTransactionId,
-      amount: finalAmount
-    })
+    // Log successful allocation (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('allocation', itemId, null, saleTransactionId, {
+        action: 'allocation_completed',
+        scenario: 'B.2',
+        from_transaction: currentTransactionId,
+        to_transaction: saleTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log allocation completion:', auditError)
+    }
 
     return saleTransactionId
   },
@@ -1032,21 +1087,25 @@ export const unifiedItemsService = {
     // Update item status
     await this.updateItem(itemId, {
       project_id: projectId,
-      inventory_status: 'pending',
+      inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
       disposition: 'keep'
     })
 
     console.log('✅ C completed: Inventory → Purchase (new allocation)')
 
-    // Log successful allocation
-    await auditService.logAllocationEvent('allocation', itemId, projectId, purchaseTransactionId, {
-      action: 'allocation_completed',
-      scenario: 'C',
-      from_status: 'inventory',
-      to_transaction: purchaseTransactionId,
-      amount: finalAmount
-    })
+    // Log successful allocation (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('allocation', itemId, projectId, purchaseTransactionId, {
+        action: 'allocation_completed',
+        scenario: 'C',
+        from_status: 'inventory',
+        to_transaction: purchaseTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log allocation completion:', auditError)
+    }
 
     return purchaseTransactionId
   },
@@ -1067,35 +1126,51 @@ export const unifiedItemsService = {
 
     if (updatedItemIds.length === 0) {
       // No items left - delete transaction
-      await deleteDoc(transactionRef)
+      try {
+        await deleteDoc(transactionRef)
+        console.log('🗑️ Deleted empty transaction:', transactionId)
 
-      // Log transaction deletion
-      await auditService.logTransactionStateChange(transactionId, 'deleted', existingData, null)
-
-      console.log('🗑️ Deleted empty transaction:', transactionId)
+        // Log transaction deletion (catch errors to prevent cascading failures)
+        try {
+          await auditService.logTransactionStateChange(transactionId, 'deleted', existingData, null)
+        } catch (auditError) {
+          console.warn('⚠️ Failed to log transaction deletion:', auditError)
+        }
+      } catch (error) {
+        console.error('❌ Failed to delete empty transaction:', transactionId, error)
+        // Don't throw - allow the allocation to continue even if deletion fails
+      }
     } else {
       // Recalculate amount from remaining items
-      const itemsRef = collection(db, 'items')
-      const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
-      const itemsSnapshot = await getDocs(itemsQuery)
+      try {
+        const itemsRef = collection(db, 'items')
+        const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
+        const itemsSnapshot = await getDocs(itemsQuery)
 
-      const totalAmount = itemsSnapshot.docs
-        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
-        .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
-        .toFixed(2)
+        const totalAmount = itemsSnapshot.docs
+          .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+          .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
+          .toFixed(2)
 
-      const updateData = {
-        item_ids: updatedItemIds,
-        amount: totalAmount,
-        last_updated: new Date().toISOString()
+        const updateData = {
+          item_ids: updatedItemIds,
+          amount: totalAmount,
+          last_updated: new Date().toISOString()
+        }
+
+        await updateDoc(transactionRef, updateData)
+        console.log('🔄 Updated transaction after removal:', transactionId, 'new amount:', totalAmount)
+
+        // Log transaction update (catch errors to prevent cascading failures)
+        try {
+          await auditService.logTransactionStateChange(transactionId, 'updated', existingData, updateData)
+        } catch (auditError) {
+          console.warn('⚠️ Failed to log transaction update:', auditError)
+        }
+      } catch (error) {
+        console.error('❌ Failed to update transaction after removal:', transactionId, error)
+        // Don't throw - allow the allocation to continue
       }
-
-      await updateDoc(transactionRef, updateData)
-
-      // Log transaction update
-      await auditService.logTransactionStateChange(transactionId, 'updated', existingData, updateData)
-
-      console.log('🔄 Updated transaction after removal:', transactionId, 'new amount:', totalAmount)
     }
   },
 
@@ -1104,7 +1179,7 @@ export const unifiedItemsService = {
     itemId: string,
     transactionId: string,
     amount: string,
-    transactionType: 'Purchase' | 'Sale',
+    transactionType: 'Purchase' | 'Sale' | 'To Inventory',
     triggerEvent: string,
     notes?: string
   ): Promise<void> {
@@ -1113,62 +1188,78 @@ export const unifiedItemsService = {
 
     if (transactionSnap.exists()) {
       // Transaction exists - add item and recalculate amount
-      const existingData = transactionSnap.data()
-      const existingItemIds = existingData.item_ids || []
-      const updatedItemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
+      try {
+        const existingData = transactionSnap.data()
+        const existingItemIds = existingData.item_ids || []
+        const updatedItemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
 
-      // Get all items to recalculate amount
-      const itemsRef = collection(db, 'items')
-      const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
-      const itemsSnapshot = await getDocs(itemsQuery)
+        // Get all items to recalculate amount
+        const itemsRef = collection(db, 'items')
+        const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
+        const itemsSnapshot = await getDocs(itemsQuery)
 
-      const totalAmount = itemsSnapshot.docs
-        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
-        .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
-        .toFixed(2)
+        const totalAmount = itemsSnapshot.docs
+          .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+          .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
+          .toFixed(2)
 
-      const updateData = {
-        item_ids: updatedItemIds,
-        amount: totalAmount,
-        last_updated: new Date().toISOString()
+        const updateData = {
+          item_ids: updatedItemIds,
+          amount: totalAmount,
+          last_updated: new Date().toISOString()
+        }
+
+        await updateDoc(transactionRef, updateData)
+        console.log('🔄 Added item to existing transaction:', transactionId, 'new amount:', totalAmount)
+
+        // Log transaction update (catch errors to prevent cascading failures)
+        try {
+          await auditService.logTransactionStateChange(transactionId, 'updated', existingData, updateData)
+        } catch (auditError) {
+          console.warn('⚠️ Failed to log transaction update:', auditError)
+        }
+      } catch (error) {
+        console.error('❌ Failed to update existing transaction:', transactionId, error)
+        // Don't throw - allow the allocation to continue
       }
-
-      await updateDoc(transactionRef, updateData)
-
-      // Log transaction update
-      await auditService.logTransactionStateChange(transactionId, 'updated', existingData, updateData)
-
-      console.log('🔄 Added item to existing transaction:', transactionId, 'new amount:', totalAmount)
     } else {
       // Create new transaction
-      const project = await projectService.getProject(transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''))
-      const projectName = project?.name || 'Other'
+      try {
+        const project = await projectService.getProject(transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''))
+        const projectName = project?.name || 'Other'
 
-      const transactionData = {
-        project_id: transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''),
-        project_name: null,
-        transaction_date: toDateOnlyString(new Date()),
-        source: transactionType === 'Purchase' ? 'Inventory' : projectName,
-        transaction_type: transactionType,
-        payment_method: 'Pending',
-        amount: amount,
-        budget_category: 'Furnishings',
-        notes: notes || `Transaction for items ${transactionType === 'Purchase' ? 'purchased from' : 'sold to'} ${transactionType === 'Purchase' ? 'inventory' : 'project'}`,
-        status: 'pending' as const,
-        reimbursement_type: transactionType === 'Purchase' ? 'Client Owes' : 'We Owe',
-        trigger_event: triggerEvent,
-        item_ids: [itemId],
-        created_by: 'system',
-        created_at: new Date().toISOString(),
-        last_updated: new Date().toISOString()
+        const transactionData = {
+          project_id: transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''),
+          project_name: null,
+          transaction_date: toDateOnlyString(new Date()),
+          source: transactionType === 'Purchase' ? 'Inventory' : projectName,
+          transaction_type: transactionType,
+          payment_method: 'Pending',
+          amount: amount,
+          budget_category: 'Furnishings',
+          notes: notes || `Transaction for items ${transactionType === 'Purchase' ? 'purchased from' : 'sold to'} ${transactionType === 'Purchase' ? 'inventory' : 'project'}`,
+          status: 'pending' as const,
+          reimbursement_type: transactionType === 'Purchase' ? 'Client Owes' : 'We Owe',
+          trigger_event: triggerEvent,
+          item_ids: [itemId],
+          created_by: 'system',
+          created_at: new Date().toISOString(),
+          last_updated: new Date().toISOString()
+        }
+
+        await setDoc(transactionRef, transactionData)
+        console.log('🆕 Created new transaction:', transactionId, 'amount:', amount)
+
+        // Log transaction creation (catch errors to prevent cascading failures)
+        try {
+          await auditService.logTransactionStateChange(transactionId, 'created', null, transactionData)
+        } catch (auditError) {
+          console.warn('⚠️ Failed to log transaction creation:', auditError)
+        }
+      } catch (error) {
+        console.error('❌ Failed to create new transaction:', transactionId, error)
+        // Don't throw - allow the allocation to continue
       }
-
-      await setDoc(transactionRef, transactionData)
-
-      // Log transaction creation
-      await auditService.logTransactionStateChange(transactionId, 'created', null, transactionData)
-
-      console.log('🆕 Created new transaction:', transactionId, 'amount:', amount)
     }
   },
 
@@ -1250,6 +1341,7 @@ export const unifiedItemsService = {
         trigger_event: 'Inventory allocation' as const,
         item_ids: allItemIds,
         created_by: 'system',
+        created_at: new Date().toISOString(),
         last_updated: new Date().toISOString()
       }
 
@@ -1264,7 +1356,7 @@ export const unifiedItemsService = {
       const itemId = itemDoc.id
       batch.update(doc(db, 'items', itemId), {
         project_id: projectId,
-        inventory_status: 'pending',
+        inventory_status: 'allocated',
         transaction_id: canonicalTransactionId,
         disposition: 'keep',
         last_updated: new Date().toISOString()
@@ -1302,13 +1394,17 @@ export const unifiedItemsService = {
       finalAmount
     })
 
-    // Log return start
-    await (auditService.logAllocationEvent as any)('return', itemId, item.project_id, currentTransactionId, {
-      action: 'return_started',
-      target_project_id: projectId,
-      current_transaction_id: currentTransactionId,
-      amount: finalAmount
-    })
+    // Log return start (catch errors to prevent cascading failures)
+    try {
+      await (auditService.logAllocationEvent as any)('return', itemId, item.project_id, currentTransactionId, {
+        action: 'return_started',
+        target_project_id: projectId,
+        current_transaction_id: currentTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log return start:', auditError)
+    }
 
     // DETERMINISTIC FLOW LOGIC for returns (reverse of allocation)
 
@@ -1336,33 +1432,39 @@ export const unifiedItemsService = {
     finalAmount: string,
     notes?: string
   ): Promise<string> {
-    // Remove item from existing Purchase transaction
+    // Remove item from existing Purchase transaction and return it to inventory.
+    // Per allocation rules, do NOT create an INV_SALE when the item was part of
+    // an INV_PURCHASE for the same project. Simply remove the item from the
+    // purchase (the helper will delete the purchase if empty), then update the
+    // item to reflect that it's back in business inventory.
     await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
 
-    // Create or update Sale transaction (project selling TO us)
-    const saleTransactionId = `INV_SALE_${currentTransactionId.replace('INV_PURCHASE_', '')}`
-    await this.addItemToTransaction(itemId, saleTransactionId, finalAmount, 'Sale', 'Inventory return', notes)
-
-    // Update item status to inventory
+    // Update item status to inventory and clear transaction linkage for canonical state
     await this.updateItem(itemId, {
       project_id: null,
       inventory_status: 'available',
-      transaction_id: saleTransactionId,
-      disposition: 'inventory'
+      transaction_id: null,
+      disposition: 'inventory',
+      notes: notes || 'Item returned to inventory from project'
     })
 
-    console.log('✅ Return completed: Purchase → Sale (same project)')
+    console.log('✅ Return completed: Purchase → Inventory (same project)')
 
-    // Log successful return
-    await auditService.logAllocationEvent('return', itemId, null, saleTransactionId, {
-      action: 'return_completed',
-      scenario: 'return_from_purchase',
-      from_transaction: currentTransactionId,
-      to_transaction: saleTransactionId,
-      amount: finalAmount
-    })
+    // Log successful return (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('return', itemId, null, currentTransactionId, {
+        action: 'return_completed',
+        scenario: 'return_from_purchase',
+        from_transaction: currentTransactionId,
+        to_status: 'inventory',
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log return completion:', auditError)
+    }
 
-    return saleTransactionId
+    // Return the original purchase transaction id (may have been deleted)
+    return currentTransactionId
   },
 
   // Helper: Handle new return (item was already in inventory or no transaction)
@@ -1389,14 +1491,14 @@ export const unifiedItemsService = {
       project_name: null,
       transaction_date: toDateOnlyString(new Date()),
       source: projectName,
-      transaction_type: 'Sale',  // Project is selling item TO us
+      transaction_type: 'To Inventory',  // Project is moving item TO inventory
       payment_method: 'Pending',
       amount: finalAmount,
       budget_category: 'Furnishings',
       notes: notes || 'Transaction for items purchased from project and moved to business inventory',
       status: 'pending' as const,
       reimbursement_type: 'We Owe' as const,  // We owe the client for this purchase
-      trigger_event: 'Inventory return' as const,
+      trigger_event: 'Inventory sale' as const,
       item_ids: [itemId],
       created_by: 'system',
       created_at: new Date().toISOString(),
@@ -1416,14 +1518,18 @@ export const unifiedItemsService = {
 
     console.log('✅ New return completed: Inventory → Sale')
 
-    // Log successful return
-    await auditService.logAllocationEvent('return', itemId, null, saleTransactionId, {
-      action: 'return_completed',
-      scenario: 'new_return',
-      from_status: 'inventory',
-      to_transaction: saleTransactionId,
-      amount: finalAmount
-    })
+    // Log successful return (catch errors to prevent cascading failures)
+    try {
+      await auditService.logAllocationEvent('return', itemId, null, saleTransactionId, {
+        action: 'return_completed',
+        scenario: 'new_return',
+        from_status: 'inventory',
+        to_transaction: saleTransactionId,
+        amount: finalAmount
+      })
+    } catch (auditError) {
+      console.warn('⚠️ Failed to log return completion:', auditError)
+    }
 
     return saleTransactionId
   },
@@ -1764,7 +1870,7 @@ export const businessInventoryService = {
     const allItemsSnap = await getDocs(allItemsQuery)
 
     let availableItems = 0
-    let pendingItems = 0
+    let allocatedItems = 0
     let soldItems = 0
 
     allItemsSnap.docs.forEach(doc => {
@@ -1773,8 +1879,8 @@ export const businessInventoryService = {
         case 'available':
           availableItems++
           break
-        case 'pending':
-          pendingItems++
+        case 'allocated':
+          allocatedItems++
           break
         case 'sold':
           soldItems++
@@ -1785,7 +1891,7 @@ export const businessInventoryService = {
     return {
       totalItems: snapshot.data().count,
       availableItems,
-      pendingItems,
+      allocatedItems,
       soldItems
     }
   },
@@ -1865,9 +1971,9 @@ export const businessInventoryService = {
     const transactionsRef = collection(db, 'projects', projectId, 'transactions')
     const transactionRef = await addDoc(transactionsRef, transactionData)
 
-    // Update item status to pending and link to transaction
+    // Update item status to allocated and link to transaction
     await this.updateBusinessInventoryItem(itemId, {
-      inventory_status: 'pending',
+      inventory_status: 'allocated',
       transaction_id: transactionRef.id
     })
 
@@ -2111,15 +2217,57 @@ export const deallocationService = {
       }
       console.log('✅ Item found:', item.item_id, 'disposition:', item.disposition, 'project_id:', item.project_id)
 
+      // If the item is currently linked to an INV_PURCHASE for the same project,
+      // this is a purchase-reversion: remove it from the purchase and return it
+      // to inventory instead of creating an INV_SALE. This prevents creating
+      // both INV_PURCHASE and INV_SALE canonical transactions for the same
+      // item/project.
+      if (item.transaction_id && item.transaction_id.startsWith('INV_PURCHASE_')) {
+        const purchaseProjectId = item.transaction_id.replace('INV_PURCHASE_', '')
+        if (purchaseProjectId === projectId) {
+          console.log('🔁 Detected purchase-reversion: removing from INV_PURCHASE and returning to inventory')
+
+          // Remove item from the existing purchase (will delete if empty)
+          await unifiedItemsService.removeItemFromTransaction(item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
+
+          // Update the item to reflect it's back in business inventory
+          await unifiedItemsService.updateItem(item.item_id, {
+            project_id: null,
+            inventory_status: 'available',
+            transaction_id: null,
+            last_updated: new Date().toISOString()
+          })
+
+          try {
+            await auditService.logAllocationEvent('deallocation', itemId, null, item.transaction_id, {
+              action: 'deallocation_completed',
+              scenario: 'purchase_reversion',
+              from_transaction: item.transaction_id,
+              to_status: 'inventory',
+              amount: item.project_price || item.market_value || '0.00'
+            })
+          } catch (auditError) {
+            console.warn('⚠️ Failed to log deallocation completion for purchase-reversion:', auditError)
+          }
+
+          console.log('✅ Purchase-reversion handled: item returned to inventory without creating INV_SALE')
+          return
+        }
+      }
+
       // Unified approach: Always create/update a "Sale" transaction for inventory designation (project selling TO us)
       console.log('🏦 Creating/updating Sale transaction for inventory designation')
 
-      // Log deallocation start
-      await (auditService.logAllocationEvent as any)('deallocation', itemId, item.project_id, item.transaction_id, {
-        action: 'deallocation_started',
-        target_status: 'inventory',
-        current_transaction_id: item.transaction_id
-      })
+      // Log deallocation start (catch errors to prevent cascading failures)
+      try {
+        await (auditService.logAllocationEvent as any)('deallocation', itemId, item.project_id, item.transaction_id, {
+          action: 'deallocation_started',
+          target_status: 'inventory',
+          current_transaction_id: item.transaction_id
+        })
+      } catch (auditError) {
+        console.warn('⚠️ Failed to log deallocation start:', auditError)
+      }
 
       const transactionId = await this.ensureSaleTransaction(
         item,
@@ -2136,13 +2284,17 @@ export const deallocationService = {
         last_updated: new Date().toISOString()
       })
 
-      // Log successful deallocation
-      await auditService.logAllocationEvent('deallocation', itemId, null, transactionId, {
-        action: 'deallocation_completed',
-        from_project_id: item.project_id,
-        to_transaction: transactionId,
-        amount: item.project_price || item.market_value || '0.00'
-      })
+      // Log successful deallocation (catch errors to prevent cascading failures)
+      try {
+        await auditService.logAllocationEvent('deallocation', itemId, null, transactionId, {
+          action: 'deallocation_completed',
+          from_project_id: item.project_id,
+          to_transaction: transactionId,
+          amount: item.project_price || item.market_value || '0.00'
+        })
+      } catch (auditError) {
+        console.warn('⚠️ Failed to log deallocation completion:', auditError)
+      }
 
       console.log('✅ Item moved to business inventory successfully')
 
@@ -2158,7 +2310,7 @@ export const deallocationService = {
     item: Item,
     projectId: string,
     additionalNotes?: string
-  ): Promise<string> {
+  ): Promise<string | null> {
     console.log('🏦 Creating/updating sale transaction for item:', item.item_id)
 
     // Get project name for source field
@@ -2168,6 +2320,27 @@ export const deallocationService = {
       projectName = project?.name || 'Other'
     } catch (error) {
       console.warn('Could not fetch project name for transaction source:', error)
+    }
+
+    // Defensive check: if the item is still linked to a purchase for this
+    // project, treat as purchase-reversion and do not create an INV_SALE.
+    if (item.transaction_id && item.transaction_id.startsWith('INV_PURCHASE_')) {
+      const purchaseProjectId = item.transaction_id.replace('INV_PURCHASE_', '')
+      if (purchaseProjectId === projectId) {
+        console.log('ℹ️ ensureSaleTransaction detected existing INV_PURCHASE for same project; performing purchase-reversion instead of creating INV_SALE')
+
+        // Remove the item from the purchase and return to inventory
+        await unifiedItemsService.removeItemFromTransaction(item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
+        await unifiedItemsService.updateItem(item.item_id, {
+          project_id: null,
+          inventory_status: 'available',
+          transaction_id: null,
+          last_updated: new Date().toISOString()
+        })
+
+        // Return null to indicate no INV_SALE was created
+        return null
+      }
     }
 
     const canonicalTransactionId = `INV_SALE_${projectId}`
@@ -2209,20 +2382,20 @@ export const deallocationService = {
         // Calculate amount from item for new transaction
       const calculatedAmount = item.project_price || item.market_value || '0.00'
 
-      // New transaction - create Sale transaction (project selling TO us)
+      // New transaction - create Sale transaction (project moving item TO inventory)
       const transactionData = {
         project_id: projectId,
         project_name: null,
         transaction_date: toDateOnlyString(new Date()),
-        source: projectName,  // Project name as source (project selling to us)
-        transaction_type: 'Sale',  // Project is selling item TO us
+        source: projectName,  // Project name as source (project moving to inventory)
+        transaction_type: 'To Inventory',  // Project is moving item TO inventory
         payment_method: 'Pending',
         amount: parseFloat(calculatedAmount || '0').toFixed(2),
         budget_category: 'Furnishings',
         notes: additionalNotes || 'Transaction for items purchased from project and moved to business inventory',
         status: 'pending' as const,
         reimbursement_type: 'We Owe' as const,  // We owe the client for this purchase
-        trigger_event: 'Inventory return' as const,
+        trigger_event: 'Inventory sale' as const,
         item_ids: [item.item_id],
         created_by: 'system',
         created_at: new Date().toISOString(),

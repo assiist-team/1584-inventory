@@ -166,6 +166,10 @@ export default function BusinessInventoryItemDetail() {
         allocationForm.projectId
       )
       closeAllocationModal()
+
+      // Navigate to the item detail in the project after successful allocation
+      navigate(`/project/${allocationForm.projectId}/item/${id}`)
+
       // Item will be updated via real-time subscription
     } catch (error) {
       console.error('Error allocating item:', error)
@@ -451,12 +455,12 @@ export default function BusinessInventoryItemDetail() {
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     item.inventory_status === 'available'
                       ? 'bg-green-100 text-green-800'
-                      : item.inventory_status === 'pending'
+                      : item.inventory_status === 'allocated'
                       ? 'bg-yellow-100 text-yellow-800'
                       : 'bg-red-100 text-red-800'
                   }`}>
                     {item.inventory_status === 'available' ? 'Available' :
-                     item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
+                     item.inventory_status === 'allocated' ? 'Allocated' : 'Sold'}
                   </span>
                 </dd>
               </div>

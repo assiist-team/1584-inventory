@@ -24,7 +24,7 @@ export default function EditBusinessInventoryTransaction() {
     notes: '',
     status: 'pending' as 'pending' | 'completed' | 'cancelled',
     reimbursement_type: 'Client Owes' as 'Client Owes' | 'We Owe',
-    trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual',
+    trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
     receipt_emailed: false
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
