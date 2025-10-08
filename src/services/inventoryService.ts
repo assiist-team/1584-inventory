@@ -800,7 +800,8 @@ export const unifiedItemsService = {
     itemId: string,
     projectId: string,
     amount?: string,
-    notes?: string
+    notes?: string,
+    space?: string
   ): Promise<string> {
     await ensureAuthenticatedForStorage()
 
@@ -853,7 +854,8 @@ export const unifiedItemsService = {
             project_id: projectId,
             inventory_status: 'allocated',
             transaction_id: null,
-            disposition: 'keep'
+            disposition: 'keep',
+            space: space
           })
 
           console.log('✅ A.1 completed: Sale → Project (no purchase created)')
@@ -875,11 +877,11 @@ export const unifiedItemsService = {
 
         // If item is not in inventory (true Sale state), fall through to normal A.1 behavior
         console.log('📋 Scenario A.1: Item in Sale, allocating to same project')
-        return await this.handleSaleToPurchaseMove(itemId, currentTransactionId, projectId, finalAmount, notes)
+        return await this.handleSaleToPurchaseMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
       } else {
         // A.2: Allocate to different project - remove from Sale, add to Purchase (Project Y)
         console.log('📋 Scenario A.2: Item in Sale, allocating to different project')
-        return await this.handleSaleToDifferentProjectMove(itemId, currentTransactionId, projectId, finalAmount, notes)
+        return await this.handleSaleToDifferentProjectMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
       }
     }
 
@@ -890,18 +892,18 @@ export const unifiedItemsService = {
       if (currentProjectId === projectId) {
         // B.1: Allocate to same project - remove from Purchase, update amount, delete if empty
         console.log('📋 Scenario B.1: Item in Purchase, allocating to same project')
-        return await this.handlePurchaseToInventoryMove(itemId, currentTransactionId, projectId, finalAmount, notes)
+        return await this.handlePurchaseToInventoryMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
       } else {
         // B.2: Allocate to different project - remove from Purchase, add to Sale (Project Y)
         console.log('📋 Scenario B.2: Item in Purchase, allocating to different project')
-        return await this.handlePurchaseToDifferentProjectMove(itemId, currentTransactionId, projectId, finalAmount, notes)
+        return await this.handlePurchaseToDifferentProjectMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
       }
     }
 
     // Scenario C: Item in Inventory (no transaction)
     if (!currentTransactionId || item.project_id === null) {
       console.log('📋 Scenario C: Item in inventory, allocating to project')
-      return await this.handleInventoryToPurchaseMove(itemId, projectId, finalAmount, notes)
+      return await this.handleInventoryToPurchaseMove(itemId, projectId, finalAmount, notes, space)
     }
 
     // Fallback: Unknown scenario, treat as new allocation
@@ -915,7 +917,8 @@ export const unifiedItemsService = {
     currentTransactionId: string,
     projectId: string,
     finalAmount: string,
-    notes?: string
+    notes?: string,
+    space?: string
   ): Promise<string> {
     const purchaseTransactionId = `INV_PURCHASE_${projectId}`
 
@@ -930,7 +933,8 @@ export const unifiedItemsService = {
       project_id: projectId,
       inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
-      disposition: 'keep'
+      disposition: 'keep',
+      space: space
     })
 
     console.log('✅ A.1 completed: Sale → Purchase (same project)')
@@ -957,7 +961,8 @@ export const unifiedItemsService = {
     currentTransactionId: string,
     newProjectId: string,
     finalAmount: string,
-    notes?: string
+    notes?: string,
+    space?: string
   ): Promise<string> {
     const purchaseTransactionId = `INV_PURCHASE_${newProjectId}`
 
@@ -972,7 +977,8 @@ export const unifiedItemsService = {
       project_id: newProjectId,
       inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
-      disposition: 'keep'
+      disposition: 'keep',
+      space: space
     })
 
     console.log('✅ A.2 completed: Sale → Purchase (different project)')
@@ -999,7 +1005,8 @@ export const unifiedItemsService = {
     currentTransactionId: string,
     _projectId: string,
     finalAmount: string,
-    _notes?: string
+    _notes?: string,
+    space?: string
   ): Promise<string> {
     // Remove item from existing Purchase transaction
     await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
@@ -1009,7 +1016,8 @@ export const unifiedItemsService = {
       project_id: null,
       inventory_status: 'available',
       disposition: 'inventory',
-      notes: _notes || 'Item returned to inventory from project'
+      notes: _notes || 'Item moved to inventory from project',
+      space: space ?? ''
     })
 
     console.log('✅ B.1 completed: Purchase → Inventory (same project)')
@@ -1036,7 +1044,8 @@ export const unifiedItemsService = {
     currentTransactionId: string,
     newProjectId: string,
     finalAmount: string,
-    notes?: string
+    notes?: string,
+    space?: string
   ): Promise<string> {
     const saleTransactionId = `INV_SALE_${newProjectId}`
 
@@ -1051,7 +1060,8 @@ export const unifiedItemsService = {
       project_id: null,
       inventory_status: 'available',
       transaction_id: saleTransactionId,
-      disposition: 'inventory'
+      disposition: 'inventory',
+      space: space ?? ''
     })
 
     console.log('✅ B.2 completed: Purchase → Sale (different project)')
@@ -1077,7 +1087,8 @@ export const unifiedItemsService = {
     itemId: string,
     projectId: string,
     finalAmount: string,
-    notes?: string
+    notes?: string,
+    space?: string
   ): Promise<string> {
     const purchaseTransactionId = `INV_PURCHASE_${projectId}`
 
@@ -1089,7 +1100,8 @@ export const unifiedItemsService = {
       project_id: projectId,
       inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
-      disposition: 'keep'
+      disposition: 'keep',
+      space: space
     })
 
     console.log('✅ C completed: Inventory → Purchase (new allocation)')
@@ -1359,6 +1371,7 @@ export const unifiedItemsService = {
         inventory_status: 'allocated',
         transaction_id: canonicalTransactionId,
         disposition: 'keep',
+        space: allocationData.space || '',
         last_updated: new Date().toISOString()
       })
     })

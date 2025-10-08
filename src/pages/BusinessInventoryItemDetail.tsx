@@ -167,7 +167,8 @@ export default function BusinessInventoryItemDetail() {
         id!,
         allocationForm.projectId,
         undefined,
-        undefined
+        undefined,
+        allocationForm.space
       )
       closeAllocationModal()
 
