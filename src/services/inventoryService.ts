@@ -18,6 +18,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
+import { toDateOnlyString } from '@/utils/dateUtils'
 import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, BusinessInventoryStats } from '@/types'
 
 // Audit Logging Service for allocation/de-allocation events
@@ -451,8 +452,11 @@ export const transactionService = {
 
     // Set transaction_date to current time if completing
     if (status === 'completed' && !updates?.transaction_date) {
-      updateData.transaction_date = new Date().toISOString()
+      updateData.transaction_date = toDateOnlyString(new Date())
     }
+
+    // Add last_updated timestamp
+    updateData.last_updated = new Date().toISOString()
 
     await updateDoc(transactionRef, updateData)
   },
@@ -1143,7 +1147,7 @@ export const unifiedItemsService = {
       const transactionData = {
         project_id: transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''),
         project_name: null,
-        transaction_date: new Date().toISOString(),
+        transaction_date: toDateOnlyString(new Date()),
         source: transactionType === 'Purchase' ? 'Inventory' : projectName,
         transaction_type: transactionType,
         payment_method: 'Pending',
@@ -1234,7 +1238,7 @@ export const unifiedItemsService = {
 
       const transactionData = {
         project_id: projectId,
-        transaction_date: new Date().toISOString(),
+        transaction_date: toDateOnlyString(new Date()),
         source: 'Inventory',  // Project purchasing inventory from 1584
         transaction_type: 'Purchase',  // Project purchasing inventory from 1584
         payment_method: 'Pending',
@@ -1383,7 +1387,7 @@ export const unifiedItemsService = {
     const transactionData = {
       project_id: projectId,
       project_name: null,
-      transaction_date: new Date().toISOString(),
+      transaction_date: toDateOnlyString(new Date()),
       source: projectName,
       transaction_type: 'Sale',  // Project is selling item TO us
       payment_method: 'Pending',
@@ -1452,7 +1456,7 @@ export const unifiedItemsService = {
     await updateDoc(transactionRef, {
       status: 'completed',
       payment_method: paymentMethod,
-      transaction_date: new Date().toISOString(),
+      transaction_date: toDateOnlyString(new Date()),
       last_updated: new Date().toISOString()
     })
 
@@ -1550,7 +1554,7 @@ export const unifiedItemsService = {
   async createTransactionItems(
     projectId: string,
     transactionId: string,
-    transactionDate: string,
+    transaction_date: string,
     transactionSource: string,
     items: TransactionItemFormData[]
   ): Promise<string[]> {
@@ -1580,7 +1584,7 @@ export const unifiedItemsService = {
         bookmark: false,
         transaction_id: transactionId,
         project_id: projectId,
-        date_created: transactionDate,
+        date_created: transaction_date,
         last_updated: now.toISOString(),
         images: [] // Start with empty images array, will be populated after upload
       } as Item
@@ -1845,7 +1849,7 @@ export const businessInventoryService = {
     // Create pending transaction first
     const transactionData = {
       project_id: projectId,
-      transaction_date: new Date().toISOString(),
+      transaction_date: toDateOnlyString(new Date()),
       source: 'Inventory',  // Project purchasing inventory from 1584
       transaction_type: 'Purchase',  // Project purchasing inventory from 1584
       payment_method: 'Pending',
@@ -1905,7 +1909,7 @@ export const businessInventoryService = {
     // Create a single transaction for the batch allocation
     const transactionData = {
       project_id: projectId,
-      transaction_date: now.toISOString(),
+      transaction_date: toDateOnlyString(now),
       source: 'Inventory',  // Project purchasing inventory from 1584
       transaction_type: 'Purchase',  // Project purchasing inventory from 1584
       payment_method: 'Pending',
@@ -1984,7 +1988,8 @@ export const businessInventoryService = {
     // Cancel the pending transaction
     const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
     await updateDoc(transactionRef, {
-      status: 'cancelled'
+      status: 'cancelled',
+      last_updated: new Date().toISOString()
     })
 
     // Update item status back to available and clear project links
@@ -2005,8 +2010,9 @@ export const businessInventoryService = {
     const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
     await updateDoc(transactionRef, {
       status: 'completed',
-      transaction_date: new Date().toISOString(),
-      payment_method: paymentMethod
+      transaction_date: toDateOnlyString(new Date()),
+      payment_method: paymentMethod,
+      last_updated: new Date().toISOString()
     })
 
     // Update item status to sold and clear project links
@@ -2037,7 +2043,7 @@ export const businessInventoryService = {
     // Create "We owe client" transaction
     const transactionData = {
       project_id: projectId,
-      transaction_date: new Date().toISOString(),
+      transaction_date: toDateOnlyString(new Date()),
       source: 'Client Purchase',
       transaction_type: 'Purchase',
       payment_method: 'Pending',
@@ -2207,7 +2213,7 @@ export const deallocationService = {
       const transactionData = {
         project_id: projectId,
         project_name: null,
-        transaction_date: new Date().toISOString(),
+        transaction_date: toDateOnlyString(new Date()),
         source: projectName,  // Project name as source (project selling to us)
         transaction_type: 'Sale',  // Project is selling item TO us
         payment_method: 'Pending',
