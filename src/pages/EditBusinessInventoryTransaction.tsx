@@ -22,7 +22,7 @@ export default function EditBusinessInventoryTransaction() {
     amount: '',
     budget_category: 'Furnishings',
     notes: '',
-    status: 'pending' as 'pending' | 'completed' | 'cancelled',
+    status: 'pending' as 'pending' | 'completed' | 'canceled',
     reimbursement_type: 'Client Owes' as 'Client Owes' | 'We Owe',
     trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
     receipt_emailed: false
@@ -328,7 +328,7 @@ export default function EditBusinessInventoryTransaction() {
                   >
                     <option value="pending">Pending</option>
                     <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
+                    <option value="canceled">Canceled</option>
                   </select>
                 </div>
               </div>

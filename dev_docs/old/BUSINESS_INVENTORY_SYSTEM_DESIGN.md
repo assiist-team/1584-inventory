@@ -49,7 +49,7 @@ interface Transaction {
   created_by: string
 
   // Pending Transaction fields
-  status: 'pending' | 'completed' | 'cancelled'
+  status: 'pending' | 'completed' | 'canceled'
   reimbursement_type?: 'Client owes us' | 'We owe client'
   trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual'
 }

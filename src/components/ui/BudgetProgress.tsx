@@ -21,16 +21,19 @@ interface CategoryBudgetData {
 export default function BudgetProgress({ budget, designFee, budgetCategories, transactions, previewMode = false }: BudgetProgressProps) {
   const [showAllCategories, setShowAllCategories] = useState(false)
 
-  // Calculate total spent for overall budget (only furnishings transactions)
+  // Calculate total spent for overall budget (include all categories, including Design Fee)
   const calculateSpent = async (): Promise<number> => {
     if (!budget && budget !== 0) return 0
 
     console.log('BudgetProgress - calculateSpent: Starting calculation for', transactions.length, 'transactions')
 
-    // Sum furnishings transactions (purchases add, returns subtract) - based on transaction amounts directly
+    // Sum all transactions (purchases add, returns subtract)
     let totalAmount = 0
 
-    for (const transaction of transactions) {
+    // Exclude canceled transactions from all calculations
+    const activeTransactions = transactions.filter(t => (t.status || '').toLowerCase() !== 'canceled')
+
+    for (const transaction of activeTransactions) {
       console.log('BudgetProgress - Processing transaction:', {
         id: transaction.transaction_id,
         type: transaction.transaction_type,
@@ -38,20 +41,16 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         amount: transaction.amount
       })
 
-      if (transaction.budget_category === BudgetCategory.FURNISHINGS) {
-        // Use transaction amount directly for budget calculation
-        const transactionAmount = parseFloat(transaction.amount || '0')
-        console.log('BudgetProgress - Transaction amount:', transactionAmount)
+      // Use transaction amount directly for budget calculation
+      const transactionAmount = parseFloat(transaction.amount || '0')
+      console.log('BudgetProgress - Transaction amount:', transactionAmount)
 
-        // Apply transaction type multiplier: purchases add, returns subtract
-        const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
-        const finalAmount = transactionAmount * multiplier
-        totalAmount += finalAmount
+      // Apply transaction type multiplier: purchases add, returns subtract
+            const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+      const finalAmount = transactionAmount * multiplier
+      totalAmount += finalAmount
 
-        console.log('BudgetProgress - Added', finalAmount, 'to total. Running total:', totalAmount)
-      } else {
-        console.log('BudgetProgress - Skipping transaction', transaction.transaction_id, '- not furnishings category')
-      }
+      console.log('BudgetProgress - Added', finalAmount, 'to total. Running total:', totalAmount)
     }
 
     console.log('BudgetProgress - Final total amount:', totalAmount)
@@ -116,6 +115,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
           let categorySpent = 0
 
           const categoryTransactions = transactions.filter(transaction =>
+            (transaction.status || '').toLowerCase() !== 'canceled' &&
             transaction.budget_category === label
           )
 

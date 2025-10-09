@@ -66,7 +66,7 @@ Items are moved directly to inventory without a prior transaction representing t
 **Condition**: All items in the transaction are being returned to inventory.
 
 **Requirements**:
-1. **Transaction Cancellation**: Automatically update transaction status to `"cancelled"`
+1. **Transaction Cancellation**: Automatically update transaction status to `"canceled"`
 2. **Item Removal**: Remove all items from the transaction
 3. **Amount Reset**: Set transaction amount to $0.00 or remove amount field
 

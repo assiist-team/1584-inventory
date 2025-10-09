@@ -120,7 +120,7 @@ Use the exact casing and names already present in the codebase. For timestamps, 
 
 - Transactions (snake_case):
   - Required: `transaction_id` (string), `transaction_date` (YYYY-MM-DD), `source` (string), `transaction_type` (string), `payment_method` (string), `amount` (string), `created_at` (ISO), `created_by` (string)
-  - Optional: `project_id` (string|null), `project_name` (string|null), `budget_category` (string), `notes` (string), `status` (`pending`|`completed`|`cancelled`), `reimbursement_type`, `trigger_event`, `item_ids` (string[])
+  - Optional: `project_id` (string|null), `project_name` (string|null), `budget_category` (string), `notes` (string), `status` (`pending`|`completed`|`canceled`), `reimbursement_type`, `trigger_event`, `item_ids` (string[])
   - Images: `transaction_images` (legacy), `receipt_images`, `other_images`
 
 - Items (snake_case):

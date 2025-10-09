@@ -442,7 +442,7 @@ export const transactionService = {
   async updateTransactionStatus(
     projectId: string,
     transactionId: string,
-    status: 'pending' | 'completed' | 'cancelled',
+    status: 'pending' | 'completed' | 'canceled',
     updates?: Partial<Transaction>
   ): Promise<void> {
     const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
@@ -2113,11 +2113,11 @@ export const businessInventoryService = {
   },
 
   // Return item from project (cancels pending transaction)
-  async returnItemFromProject(itemId: string, transactionId: string, projectId: string): Promise<void> {
+    async returnItemFromProject(itemId: string, transactionId: string, projectId: string): Promise<void> {
     // Cancel the pending transaction
     const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
     await updateDoc(transactionRef, {
-      status: 'cancelled',
+      status: 'canceled',
       last_updated: new Date().toISOString()
     })
 

@@ -36,7 +36,7 @@ Decision: During migration, copy all existing transactions as‑is and keep thei
     - `receipt_emailed`: boolean
     - `created_at`: ISO string
     - `created_by`: string
-    - `status?`: 'pending' | 'completed' | 'cancelled'
+    - `status?`: 'pending' | 'completed' | 'canceled'
     - `reimbursement_type?`: 'Client Owes' | 'We Owe' | null | ''
     - `trigger_event?`: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual'
     - `item_ids?`: string[] (IDs from top‑level `items`)

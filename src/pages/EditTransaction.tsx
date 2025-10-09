@@ -575,15 +575,15 @@ export default function EditTransaction() {
               <div className="flex items-center">
                 <input
                   type="radio"
-                  id="status_cancelled"
+                id="status_cancelled"
                   name="status"
-                  value="cancelled"
-                  checked={formData.status === 'cancelled'}
+                  value="canceled"
+                  checked={formData.status === 'canceled'}
                   onChange={(e) => handleInputChange('status', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="status_cancelled" className="ml-2 block text-sm text-gray-900">
-                  Cancelled
+                  Canceled
                 </label>
               </div>
             </div>

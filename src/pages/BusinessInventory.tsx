@@ -29,7 +29,7 @@ export default function BusinessInventory() {
 
   // Filter state for transactions tab
   const [showTransactionFilterMenu, setShowTransactionFilterMenu] = useState(false)
-  const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'cancelled' | 'inventory-only'>('all')
+  const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'canceled' | 'inventory-only'>('all')
 
   // Image upload state
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
@@ -794,14 +794,14 @@ export default function BusinessInventory() {
                             </button>
                             <button
                               onClick={() => {
-                                setTransactionFilterMode('cancelled')
+                                setTransactionFilterMode('canceled')
                                 setShowTransactionFilterMenu(false)
                               }}
                               className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                transactionFilterMode === 'cancelled' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                                transactionFilterMode === 'canceled' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
                               }`}
                             >
-                              Cancelled
+                              Canceled
                             </button>
                             <button
                               onClick={() => {
@@ -861,7 +861,7 @@ export default function BusinessInventory() {
                                 }`}>
                                   {transaction.status === 'completed' ? 'Completed' :
                                    transaction.status === 'pending' ? 'Pending' :
-                                   transaction.status === 'cancelled' ? 'Cancelled' :
+                                   transaction.status === 'canceled' ? 'Canceled' :
                                    transaction.status}
                                 </span>
                               </div>

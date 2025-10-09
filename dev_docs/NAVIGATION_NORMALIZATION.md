@@ -287,7 +287,7 @@ describe('useNavigationContext', () => {
 #### Functional Requirements
 - [ ] **Business Inventory Item Detail** back buttons work correctly in all contexts
 - [ ] **Project links** pass proper navigation context
-- [ ] **Transaction forms** return to appropriate locations when cancelled
+- [ ] **Transaction forms** return to appropriate locations when canceled
 - [ ] **All existing functionality** continues to work unchanged
 
 #### Code Quality Requirements

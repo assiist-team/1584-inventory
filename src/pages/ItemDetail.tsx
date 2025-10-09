@@ -610,6 +610,13 @@ export default function ItemDetail() {
                 </div>
               )}
 
+              {item.space && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Space</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.space}</dd>
+                </div>
+              )}
+
               {item.purchase_price && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
@@ -660,6 +667,10 @@ export default function ItemDetail() {
                   <dd className="mt-1 text-sm text-gray-900">{projectName}</dd>
                 </div>
                 <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
+                </div>
+                <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
                     <Link
@@ -667,15 +678,15 @@ export default function ItemDetail() {
                         ? buildContextUrl(`/business-inventory/transaction/${item.transaction_id}`)
                         : buildContextUrl(`/project/${projectId}/transaction/${item.transaction_id}`)
                       }
-                      className="text-primary-600 hover:text-primary-800 underline"
+                    className="text-primary-600 hover:text-primary-800 underline"
                     >
-                      {item.transaction_id}
+                      {item.transaction_id
+                        ? item.transaction_id.startsWith('INV_PURCHASE')
+                          ? 'INV_PURCHASE...'
+                          : (item.transaction_id.length > 12 ? `${item.transaction_id.slice(0, 12)}...` : item.transaction_id)
+                        : ''}
                     </Link>
                   </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
                 </div>
               </dl>
 

@@ -172,7 +172,7 @@ export interface Transaction {
   created_by: string;
 
   // NEW: Pending Transaction fields for Enhanced Transaction System
-  status?: 'pending' | 'completed' | 'cancelled';
+  status?: 'pending' | 'completed' | 'canceled';
   reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
   trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
 
@@ -208,7 +208,7 @@ export interface TransactionFormData {
   amount: string;
   budget_category?: string;
   notes?: string;
-  status?: 'pending' | 'completed' | 'cancelled';
+  status?: 'pending' | 'completed' | 'canceled';
   reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
   trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
   transaction_images?: File[]; // Legacy field for backward compatibility
