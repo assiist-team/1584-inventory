@@ -25,7 +25,7 @@ interface InventoryListItem {
   disposition?: string
   date_created: string
   last_updated: string
-  transaction_id: string
+  transaction_id?: string | null
   project_id?: string | null
   images?: ItemImage[]
 }
