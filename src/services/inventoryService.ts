@@ -1030,7 +1030,7 @@ export const unifiedItemsService = {
       project_id: null,
       inventory_status: 'available',
       disposition: 'inventory',
-      notes: _notes || 'Item moved to inventory from project',
+      notes: _notes,
       space: space ?? ''
     })
 
@@ -1338,7 +1338,7 @@ export const unifiedItemsService = {
             inventory_status: 'allocated',
             transaction_id: null,
             disposition: 'keep',
-            notes: allocationData.notes || 'Item allocated to project from sale',
+            notes: allocationData.notes,
             space: allocationData.space || '',
             last_updated: new Date().toISOString()
           })
@@ -1468,7 +1468,7 @@ export const unifiedItemsService = {
       inventory_status: 'available',
       transaction_id: null,
       disposition: 'inventory',
-      notes: notes || 'Item returned to inventory from project'
+      notes: notes
     })
 
     console.log('✅ Return completed: Purchase → Inventory (same project)')
@@ -1654,7 +1654,7 @@ export const unifiedItemsService = {
       market_value: originalItem.market_value || '',
       payment_method: originalItem.payment_method,
       disposition: 'keep', // Default disposition for duplicates
-      notes: originalItem.notes || '',
+      notes: originalItem.notes,
       space: originalItem.space || '',
       qr_key: newQrKey,
       bookmark: false, // Default bookmark to false for duplicates
@@ -1708,7 +1708,7 @@ export const unifiedItemsService = {
         market_value: itemData.market_value || '',
         payment_method: 'Client Card', // Default payment method
         disposition: 'keep',
-        notes: itemData.notes || '',
+        notes: itemData.notes,
         qr_key: qrKey,
         bookmark: false,
         transaction_id: transactionId,
@@ -1810,7 +1810,7 @@ export const businessInventoryService = {
       market_value: originalItem.market_value || '',
       payment_method: originalItem.payment_method,
       disposition: 'keep', // Default disposition for duplicates
-      notes: originalItem.notes || '',
+      notes: originalItem.notes,
       space: originalItem.space || '',
       qr_key: newQrKey,
       bookmark: false, // Default bookmark to false for duplicates
@@ -2073,7 +2073,7 @@ export const businessInventoryService = {
         market_value: businessItemData.market_value || '',
         payment_method: '1584', // Default payment method for allocated items
         disposition: 'keep', // Default disposition for allocated items
-        notes: businessItemData.notes || '',
+        notes: businessItemData.notes,
         space: allocationData.space || '', // Optional space field
         qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`, // Generate new QR key
         bookmark: false, // Default bookmark to false
