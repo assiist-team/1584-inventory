@@ -887,18 +887,18 @@ export default function TransactionDetail() {
 
                       {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                        {item.purchase_price && (
-                          <span className="font-medium text-gray-700">{formatCurrency(item.purchase_price)}</span>
+                        {(item.project_price || item.purchase_price) && (
+                          <span className="font-medium text-gray-700">{formatCurrency(item.project_price || item.purchase_price || '0')}</span>
                         )}
                         {item.source && (
                           <>
-                            {(item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                            {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
                             <span className="font-medium text-gray-700">{item.source}</span>
                           </>
                         )}
                         {item.sku && (
                           <>
-                            {(item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                            {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
                             <span className="font-medium text-gray-700">{item.sku}</span>
                           </>
                         )}
