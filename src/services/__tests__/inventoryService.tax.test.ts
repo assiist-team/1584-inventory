@@ -51,9 +51,6 @@ describe('Tax System Integration', () => {
     })
 
     it('should compute tax rate correctly for Other state', async () => {
-      const { addDoc } = await import('firebase/firestore')
-      const mockAddDoc = vi.mocked(addDoc).mockResolvedValue({ id: 'test-id' } as any)
-
       const transactionData = {
         project_id: 'project-1',
         transaction_date: '2023-01-01',
@@ -66,11 +63,7 @@ describe('Tax System Integration', () => {
         subtotal: '100.00'
       }
 
-      // Mock the actual tax rate calculation
-      const expectedTaxRate = ((108.38 - 100) / 100) * 100 // 8.38%
-
-      // In a real scenario, this would work if we properly mocked the Firebase calls
-      // For now, we'll test the calculation logic directly
+      // Test the calculation logic directly without mocking firebase internals
       const amountNum = parseFloat(transactionData.amount)
       const subtotalNum = parseFloat(transactionData.subtotal)
       const calculatedRate = ((amountNum - subtotalNum) / subtotalNum) * 100

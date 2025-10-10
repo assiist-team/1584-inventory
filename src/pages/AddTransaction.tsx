@@ -162,7 +162,8 @@ export default function AddTransaction() {
         project_name: projectName,
         created_by: 'system',
         tax_state: taxState,
-      subtotal: taxState === 'Other' ? subtotal : ''
+        receipt_emailed: formData.receipt_emailed ?? false,
+        subtotal: taxState === 'Other' ? subtotal : ''
       }
 
       console.log('Attempting to create transaction with data:', transactionData)
@@ -377,7 +378,7 @@ export default function AddTransaction() {
     }
   }
 
-  const handleInputChange = (field: keyof TransactionFormData, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_state' | 'subtotal'>, value: string | boolean | File[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Clear error when user starts typing

@@ -357,7 +357,7 @@ export default function EditTransaction() {
     }
   }
 
-  const handleInputChange = (field: keyof TransactionFormData, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_state' | 'subtotal'>, value: string | boolean | File[]) => {
     setFormData(prev => {
       const newData = { ...prev, [field]: value }
 

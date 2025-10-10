@@ -1,3 +1,4 @@
+// React import unused in modern JSX runtime; keep to satisfy older setups if needed
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, test, expect } from 'vitest'
