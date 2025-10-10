@@ -21,17 +21,17 @@ interface CategoryBudgetData {
 export default function BudgetProgress({ budget, designFee, budgetCategories, transactions, previewMode = false }: BudgetProgressProps) {
   const [showAllCategories, setShowAllCategories] = useState(false)
 
-  // Calculate total spent for overall budget (include all categories, including Design Fee)
+  // Calculate total spent for overall budget (exclude Design Fee transactions)
   const calculateSpent = async (): Promise<number> => {
-    if (!budget && budget !== 0) return 0
-
     console.log('BudgetProgress - calculateSpent: Starting calculation for', transactions.length, 'transactions')
 
-    // Sum all transactions (purchases add, returns subtract)
+    // Sum all transactions (purchases add, returns subtract), excluding canceled and design fee transactions
     let totalAmount = 0
 
-    // Exclude canceled transactions from all calculations
-    const activeTransactions = transactions.filter(t => (t.status || '').toLowerCase() !== 'canceled')
+    const activeTransactions = transactions.filter(t =>
+      (t.status || '').toLowerCase() !== 'canceled' &&
+      t.budget_category !== BudgetCategory.DESIGN_FEE
+    )
 
     for (const transaction of activeTransactions) {
       console.log('BudgetProgress - Processing transaction:', {
@@ -41,20 +41,17 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         amount: transaction.amount
       })
 
-      // Use transaction amount directly for budget calculation
       const transactionAmount = parseFloat(transaction.amount || '0')
       console.log('BudgetProgress - Transaction amount:', transactionAmount)
 
-      // Apply transaction type multiplier: purchases add, returns subtract
-            const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+      const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
       const finalAmount = transactionAmount * multiplier
       totalAmount += finalAmount
 
       console.log('BudgetProgress - Added', finalAmount, 'to total. Running total:', totalAmount)
     }
 
-    console.log('BudgetProgress - Final total amount:', totalAmount)
-    // Design fee is tracked separately and should NOT contribute to the overall budget
+    console.log('BudgetProgress - Final total amount (excluding design fee):', totalAmount)
     return totalAmount
   }
 
@@ -160,6 +157,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   const [percentage, setPercentage] = useState(0)
   const [allCategoryData, setAllCategoryData] = useState<CategoryBudgetData[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [computedOverallBudget, setComputedOverallBudget] = useState<number>(budget || 0)
 
   // Calculate budget data when component mounts or when props change
   useEffect(() => {
@@ -177,19 +175,27 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         const spentAmount = await calculateSpent()
         const categoryData = await calculateCategoryBudgetData()
 
+        // Compute overall budget as the sum of category budgets (exclude designFee key)
+        const overallFromCategories = budgetCategories ? Object.entries(budgetCategories).reduce((sum, [key, val]) => {
+          if (key === 'designFee') return sum
+          return sum + (val as number || 0)
+        }, 0) : 0
+
         const spentRounded = Math.round(spentAmount)
-        const percentageValue = budget && budget > 0 ? (spentRounded / budget) * 100 : 0
+        const percentageValue = overallFromCategories > 0 ? (spentRounded / overallFromCategories) * 100 : 0
 
         console.log('BudgetProgress - Final results:', {
           spentAmount,
           spentRounded,
           percentageValue,
+          overallFromCategories,
           categoryDataLength: categoryData.length
         })
 
         setSpent(spentRounded)
         setPercentage(percentageValue)
         setAllCategoryData(categoryData)
+        setComputedOverallBudget(overallFromCategories)
       } catch (error) {
         console.error('Error calculating budget data:', error)
         setSpent(0)
@@ -213,11 +219,11 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     if (furnishingsCategory) {
       // Show only furnishings budget category
       categoryData = [furnishingsCategory]
-    } else if (budget !== null && budget !== undefined && budget > 0) {
-      // No category budgets set, show overall budget (which only includes furnishings transactions)
+    } else if (computedOverallBudget > 0) {
+      // No category budgets set, show overall budget (sum of categories, excluding design fee)
       overallBudgetCategory = {
         category: 'Overall Budget' as BudgetCategory,
-        budget: budget,
+        budget: computedOverallBudget,
         spent: spent,
         percentage: percentage
       }
@@ -229,17 +235,26 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     )
 
     // Add overall budget as a category if it exists and should be shown
-    // Show overall budget if: there's a budget > 0 AND (no primary categories exist OR showAllCategories is true)
-    // Note: Overall budget only includes furnishings transactions, not design fees or other categories
-    const hasPrimaryCategories = allCategoryData.some(cat => cat.category === BudgetCategory.FURNISHINGS)
-    const shouldShowOverallBudget = budget !== null && budget !== undefined && budget > 0 && (!hasPrimaryCategories || showAllCategories)
+    // Show overall budget only when the toggle is expanded (showAllCategories === true)
+    const shouldShowOverallBudget = computedOverallBudget > 0 && showAllCategories
+
     overallBudgetCategory = shouldShowOverallBudget ? {
       category: 'Overall Budget' as BudgetCategory,
-      budget: budget,
+      budget: computedOverallBudget,
       spent: spent,
       percentage: percentage
     } : null
   }
+
+  // Build the final render list and append overall budget at the very bottom (below Design Fee)
+  const renderCategories: CategoryBudgetData[] = (() => {
+    const cats: CategoryBudgetData[] = [...(categoryData || [])]
+    if (overallBudgetCategory) {
+      // Always append overall budget at the end of the list
+      cats.push(overallBudgetCategory)
+    }
+    return cats
+  })()
 
 
   const getProgressColor = (percentage: number) => {
@@ -283,7 +298,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   }
 
   // If no budget or categories are set, don't show anything
-  const hasOverallBudget = budget !== null && budget !== undefined && budget > 0
+  const hasOverallBudget = computedOverallBudget > 0
   const hasDesignFee = designFee !== null && designFee !== undefined && designFee > 0
   const hasCategoryBudgets = budgetCategories && Object.values(budgetCategories).some(v => v > 0)
 
@@ -368,7 +383,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         <div>
 
           <div className="space-y-4">
-            {[...categoryData, ...(overallBudgetCategory ? [overallBudgetCategory] : [])].map((category) => {
+            {renderCategories.map((category) => {
               const isDesignFee = category.category === BudgetCategory.DESIGN_FEE
               return (
                 <div key={category.category}>

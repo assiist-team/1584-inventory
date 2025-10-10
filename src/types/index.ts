@@ -76,6 +76,9 @@ export interface Item {
   date_created: string;
   last_updated: string;
   images?: ItemImage[];         // Images associated with this item
+  // Tax fields
+  tax_rate_pct?: number; // percentage, e.g., 8.25
+  tax_amount?: string; // USD string, reserved for future auto-calculation
 
   // Optional transaction selection for form UI
   selectedTransactionId?: string; // UI field for selecting transaction
@@ -178,6 +181,10 @@ export interface Transaction {
 
   // NEW: Item linkage for unified inventory system
   item_ids?: string[]; // Links to items in the top-level items collection
+  // Tax fields
+  tax_state?: 'NV' | 'UT' | 'Other';
+  tax_rate_pct?: number; // percentage, e.g., 8.25
+  subtotal?: string; // pre-tax amount as string, e.g. '100.00'
 }
 
 export enum BudgetCategory {
@@ -214,8 +221,11 @@ export interface TransactionFormData {
   transaction_images?: File[]; // Legacy field for backward compatibility
   receipt_images?: File[]; // New field for receipt image files
   other_images?: File[]; // New field for other image files
-  receipt_emailed: boolean;
+  receipt_emailed?: boolean;
   items?: TransactionItemFormData[];
+  // Tax form fields
+  tax_state?: 'NV' | 'UT' | 'Other';
+  subtotal?: string;
 }
 
 export interface TransactionItemFormData {

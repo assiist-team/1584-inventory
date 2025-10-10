@@ -16,6 +16,11 @@
     "firebase:deploy": "firebase deploy",
     "firebase:setup-cors": "gsutil cors set cors.json gs://inventory-management-090999.appspot.com"
   },
+  "vitest": {
+    "setupFiles": ["src/setupTests.ts"],
+    "globals": true,
+    "environment": "jsdom"
+  },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
     "@hookform/resolvers": "^3.3.2",
@@ -54,6 +59,10 @@
     "typescript": "^5.2.2",
     "vite": "^5.0.8",
     "vite-plugin-pwa": "^1.0.3",
-    "vitest": "^1.0.4"
+    "vitest": "^1.0.4",
+    "jsdom": "^22.1.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "@testing-library/user-event": "^14.4.3"
   }
 }

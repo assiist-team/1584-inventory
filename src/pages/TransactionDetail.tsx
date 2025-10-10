@@ -611,6 +611,27 @@ export default function TransactionDetail() {
               <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.amount)}</dd>
             </div>
 
+            {transaction.tax_state && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Tax State</dt>
+                <dd className="mt-1 text-sm text-gray-900">{transaction.tax_state}</dd>
+              </div>
+            )}
+
+            {transaction.subtotal && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Subtotal</dt>
+                <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.subtotal)}</dd>
+              </div>
+            )}
+
+            {transaction.tax_rate_pct !== undefined && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Tax Rate</dt>
+                <dd className="mt-1 text-sm text-gray-900">{Number(transaction.tax_rate_pct).toFixed(2)}%</dd>
+              </div>
+            )}
+
             <div>
               <dt className="text-sm font-medium text-gray-500">Transaction Date</dt>
               <dd className="mt-1 text-sm text-gray-900">

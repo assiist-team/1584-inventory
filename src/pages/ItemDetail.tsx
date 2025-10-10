@@ -640,6 +640,13 @@ export default function ItemDetail() {
                   <dd className="mt-1 text-sm text-gray-900 font-medium">${item.market_value}</dd>
                 </div>
               )}
+              {item.tax_rate_pct !== undefined && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Tax Rate</dt>
+                  <p className="text-xs text-gray-500 mt-1">Applied tax rate for this item</p>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{item.tax_rate_pct}%</dd>
+                </div>
+              )}
 
               {item.payment_method && (
                 <div>

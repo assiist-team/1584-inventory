@@ -17,6 +17,7 @@ import {
   deleteField,
   serverTimestamp
 } from 'firebase/firestore'
+import { STATE_TAX_RATE_PCT, SupportedTaxState } from '@/constants/tax'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, BusinessInventoryStats } from '@/types'
@@ -283,21 +284,55 @@ export const transactionService = {
       console.log('Creating transaction:', newTransaction)
       console.log('Transaction items:', items)
 
-      const docRef = await addDoc(transactionsRef, newTransaction)
+      // Apply tax mapping for NV/UT or compute from subtotal when Other
+      const txToSave: any = { ...newTransaction }
+
+      // Apply tax mapping for NV/UT or compute from subtotal for Other
+      if (txToSave.tax_state === 'NV' || txToSave.tax_state === 'UT') {
+        // Require mapping to exist
+        const mapped = STATE_TAX_RATE_PCT[txToSave.tax_state as SupportedTaxState]
+        if (mapped === undefined || mapped === null) {
+          throw new Error('Configured tax rate for selected state is missing.')
+        }
+        txToSave.tax_rate_pct = mapped
+        // Remove subtotal for mapped states
+        if (txToSave.subtotal !== undefined) {
+          delete txToSave.subtotal
+        }
+      } else if (txToSave.tax_state === 'Other') {
+        // Validate subtotal presence
+        const amountNum = parseFloat((txToSave.amount as any) || '0')
+        const subtotalNum = parseFloat((txToSave.subtotal as any) || '0')
+        if (isNaN(subtotalNum) || subtotalNum <= 0) {
+          throw new Error('Subtotal must be greater than 0 when Tax state is Other.')
+        }
+        if (isNaN(amountNum) || amountNum < subtotalNum) {
+          throw new Error('Subtotal cannot exceed the total amount.')
+        }
+        const rate = ((amountNum - subtotalNum) / subtotalNum) * 100
+        txToSave.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
+      }
+
+      const docRef = await addDoc(transactionsRef, txToSave)
       const transactionId = docRef.id
       console.log('Transaction created successfully:', transactionId)
 
       // Create items linked to this transaction if provided
       if (items && items.length > 0) {
         console.log('Creating items for transaction:', transactionId)
+        // Propagate tax_rate_pct to created items if present on transaction
+        const itemsToCreate = items.map(i => ({ ...i }))
         const createdItemIds = await unifiedItemsService.createTransactionItems(
           projectId || '',
           transactionId,
           transactionData.transaction_date,
           transactionData.source, // Pass transaction source to items
-          items
+          itemsToCreate,
+          txToSave.tax_rate_pct
         )
         console.log('Created items:', createdItemIds)
+
+        // tax_rate_pct is included at item creation when possible (see createTransactionItems)
       }
 
       return transactionId
@@ -338,7 +373,48 @@ export const transactionService = {
       }
     })
 
-    await updateDoc(transactionRef, cleanUpdates)
+    // Apply tax mapping / computation before save
+    const processedUpdates: any = { ...cleanUpdates }
+    if (processedUpdates.tax_state === 'NV' || processedUpdates.tax_state === 'UT') {
+      try {
+        processedUpdates.tax_rate_pct = STATE_TAX_RATE_PCT[processedUpdates.tax_state as SupportedTaxState]
+        // Remove subtotal when using mapped states
+        if (processedUpdates.subtotal !== undefined) {
+          processedUpdates.subtotal = deleteField()
+        }
+      } catch (e) {
+        console.warn('Tax mapping failed during update:', e)
+      }
+    } else if (processedUpdates.tax_state === 'Other') {
+      // compute from provided subtotal and amount if present in finalUpdates or existing doc
+      const txSnap = await getDoc(transactionRef)
+      const existing = txSnap.exists() ? txSnap.data() : {}
+      const amountVal = processedUpdates.amount !== undefined ? parseFloat(processedUpdates.amount) : parseFloat(existing.amount || '0')
+      const subtotalVal = processedUpdates.subtotal !== undefined ? parseFloat(processedUpdates.subtotal) : parseFloat(existing.subtotal || '0')
+      if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
+        const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
+        processedUpdates.tax_rate_pct = Math.round(rate * 10000) / 10000
+      }
+    }
+
+    await updateDoc(transactionRef, processedUpdates)
+
+    // If tax_rate_pct is set in updates, propagate to items
+    if (processedUpdates.tax_rate_pct !== undefined) {
+      try {
+        const items = await unifiedItemsService.getItemsForTransaction(_projectId, transactionId)
+        if (items && items.length > 0) {
+          const batch = writeBatch(db)
+          items.forEach(item => {
+            const itemRef = doc(db, 'items', item.item_id)
+            batch.update(itemRef, { tax_rate_pct: processedUpdates.tax_rate_pct, last_updated: new Date().toISOString() })
+          })
+          await batch.commit()
+        }
+      } catch (e) {
+        console.warn('Failed to propagate tax_rate_pct to items:', e)
+      }
+    }
   },
 
   // Delete transaction (top-level collection)
@@ -727,11 +803,28 @@ export const unifiedItemsService = {
     const itemsRef = collection(db, 'items')
     const now = new Date()
 
-    const newItem = {
+    const newItem: any = {
       ...itemData,
       inventory_status: itemData.inventory_status || 'available',
       date_created: now.toISOString(),
       last_updated: now.toISOString()
+    }
+
+    // If item is being created with a transaction_id but missing tax_rate_pct,
+    // attempt to read the transaction and inherit its tax_rate_pct.
+    try {
+      if (newItem.transaction_id && newItem.tax_rate_pct === undefined) {
+        const txRef = doc(db, 'transactions', newItem.transaction_id)
+        const txSnap = await getDoc(txRef)
+        if (txSnap.exists()) {
+          const txData: any = txSnap.data()
+          if (txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+            newItem.tax_rate_pct = txData.tax_rate_pct
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to inherit tax_rate_pct when creating item:', e)
     }
 
     const docRef = await addDoc(itemsRef, newItem)
@@ -764,6 +857,30 @@ export const unifiedItemsService = {
     if (updates.space !== undefined) firebaseUpdates.space = updates.space
     if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
     if (updates.images !== undefined) firebaseUpdates.images = updates.images
+    if (updates.tax_rate_pct !== undefined) firebaseUpdates.tax_rate_pct = updates.tax_rate_pct
+    if (updates.tax_amount !== undefined) firebaseUpdates.tax_amount = updates.tax_amount
+
+    // If transaction_id is being set/changed and caller did not provide tax_rate_pct,
+    // attempt to inherit the transaction's tax_rate_pct and include it in the update.
+    try {
+      const willSetTransaction = updates.transaction_id !== undefined && updates.transaction_id !== null
+      const missingTax = updates.tax_rate_pct === undefined || updates.tax_rate_pct === null
+      if (willSetTransaction && missingTax) {
+        const txId = updates.transaction_id as string
+        if (txId) {
+          const txRef = doc(db, 'transactions', txId)
+          const txSnap = await getDoc(txRef)
+          if (txSnap.exists()) {
+            const txData: any = txSnap.data()
+            if (txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+              firebaseUpdates.tax_rate_pct = txData.tax_rate_pct
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to inherit tax_rate_pct when updating item:', e)
+    }
 
     await updateDoc(itemRef, firebaseUpdates)
   },
@@ -1248,6 +1365,17 @@ export const unifiedItemsService = {
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction update:', auditError)
         }
+
+        // If the transaction has a tax rate, propagate it to the added item
+        try {
+          const txTax = existingData.tax_rate_pct
+          if (txTax !== undefined && txTax !== null) {
+            const itemRef = doc(db, 'items', itemId)
+            await updateDoc(itemRef, { tax_rate_pct: txTax, last_updated: new Date().toISOString() })
+          }
+        } catch (e) {
+          console.warn('Failed to set tax_rate_pct on added item:', itemId, e)
+        }
       } catch (error) {
         console.error('❌ Failed to update existing transaction:', transactionId, error)
         // Don't throw - allow the allocation to continue
@@ -1685,20 +1813,38 @@ export const unifiedItemsService = {
     transactionId: string,
     transaction_date: string,
     transactionSource: string,
-    items: TransactionItemFormData[]
+    items: TransactionItemFormData[],
+    taxRatePct?: number
   ): Promise<string[]> {
     const batch = writeBatch(db)
     const createdItemIds: string[] = []
     const now = new Date()
 
-    items.forEach((itemData) => {
+    // Attempt to read the transaction's tax rate once (avoid per-item reads)
+    let inheritedTax: number | undefined = undefined
+    try {
+      if ((taxRatePct === undefined || taxRatePct === null) && transactionId) {
+        const txRef = doc(db, 'transactions', transactionId)
+        const txSnap = await getDoc(txRef)
+        if (txSnap.exists()) {
+          const txData: any = txSnap.data()
+          if (txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+            inheritedTax = txData.tax_rate_pct
+          }
+        }
+      }
+    } catch (e) {
+      // non-fatal - continue without inherited tax
+    }
+
+    for (const itemData of items) {
       const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
       createdItemIds.push(itemId)
 
       const itemRef = doc(db, 'items', itemId)
       const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
 
-      const item = {
+      const item: any = {
         item_id: itemId,
         description: itemData.description,
         source: transactionSource, // Use transaction source for all items
@@ -1716,10 +1862,20 @@ export const unifiedItemsService = {
         date_created: transaction_date,
         last_updated: now.toISOString(),
         images: [] // Start with empty images array, will be populated after upload
-      } as Item
+      }
 
-      batch.set(itemRef, item)
-    })
+      // Attach tax rate from explicit arg, otherwise inherited transaction value
+      if (taxRatePct !== undefined && taxRatePct !== null) {
+        item.tax_rate_pct = taxRatePct
+      } else if (inheritedTax !== undefined) {
+        item.tax_rate_pct = inheritedTax
+      }
+
+      // Cast to Item for downstream callers
+      const itemTyped = item as Item
+
+      batch.set(itemRef, itemTyped)
+    }
 
     await batch.commit()
     return createdItemIds

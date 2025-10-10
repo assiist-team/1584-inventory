@@ -57,6 +57,10 @@ export default function EditTransaction() {
     receipt_emailed: false
   })
 
+  // Tax form state
+  const [taxState, setTaxState] = useState<'NV' | 'UT' | 'Other' | undefined>(undefined)
+  const [subtotal, setSubtotal] = useState<string>('')
+
   const [errors, setErrors] = useState<TransactionValidationErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -107,6 +111,10 @@ export default function EditTransaction() {
             other_images: [],
             receipt_emailed: transaction.receipt_emailed
           })
+
+          // Populate tax fields if present
+          setTaxState(transaction.tax_state as any)
+          setSubtotal(transaction.subtotal || '')
 
           setIsCustomSource(sourceIsCustom)
 
@@ -331,7 +339,11 @@ export default function EditTransaction() {
       const { other_images, receipt_images, transaction_images, ...formDataWithoutImages } = formData
       const updateData = {
         ...formDataWithoutImages,
-        other_images: otherImages
+        other_images: otherImages,
+        // Include tax fields only when a tax state is explicitly selected.
+        // For mapped states (NV/UT) we pass an explicit subtotal value to trigger
+        // deletion on the service layer; for Other we include the provided subtotal.
+        ...(taxState ? { tax_state: taxState, subtotal: taxState === 'Other' ? subtotal : '' } : {})
       }
 
       await transactionService.updateTransaction(projectId, transactionId, updateData)
@@ -670,6 +682,43 @@ export default function EditTransaction() {
               <p className="mt-1 text-sm text-red-600">{errors.amount}</p>
             )}
           </div>
+
+          {/* Tax State */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Tax State</label>
+            <select
+              id="tax_state"
+              value={taxState || ''}
+              onChange={(e) => setTaxState(e.target.value as any)}
+              className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 border-gray-300"
+            >
+              <option value="">None</option>
+              <option value="NV">NV</option>
+              <option value="UT">UT</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          {/* Subtotal (shown only for Other) */}
+          {taxState === 'Other' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Subtotal</label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
+                </div>
+                <input
+                  type="text"
+                  id="subtotal"
+                  value={subtotal}
+                  onChange={(e) => setSubtotal(e.target.value)}
+                  placeholder="0.00"
+                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 border-gray-300`}
+                />
+              </div>
+              <p className="mt-1 text-sm text-gray-500">This will be used to calculate the tax rate.</p>
+            </div>
+          )}
 
           {/* Payment Method */}
           <div>

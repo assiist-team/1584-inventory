@@ -17,12 +17,12 @@ export default function AddBusinessInventoryTransaction() {
     })(),
     source: '',
     transaction_type: 'Reimbursement',
-    payment_method: 'Pending',
+    payment_method: '',
     amount: '',
     budget_category: 'Furnishings',
     notes: '',
     status: 'pending' as const,
-    reimbursement_type: 'Client Owes' as const,
+    reimbursement_type: '' as const,
     trigger_event: 'Manual' as const,
     receipt_emailed: false
   })
