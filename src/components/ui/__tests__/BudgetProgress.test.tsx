@@ -45,7 +45,7 @@ describe('BudgetProgress calculations', () => {
     )
 
     // Wait for async calculations to finish
-    await waitFor(() => expect(screen.getByText(/Furnishings Budget/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Furnishings Budget/)).toBeTruthy())
 
     // Spent should be 300 + 200 - 100 = 400
     expect(screen.getByText(/\$400\s+spent/)).toBeInTheDocument()
@@ -82,7 +82,7 @@ describe('BudgetProgress calculations', () => {
       />
     )
 
-    await waitFor(() => expect(screen.getByText(/Install Budget/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Install Budget/)).toBeTruthy())
 
     // Spent should be 500
     expect(screen.getByText(/\$500\s+spent/)).toBeInTheDocument()
@@ -120,7 +120,7 @@ describe('BudgetProgress calculations', () => {
       />
     )
 
-    await waitFor(() => expect(screen.getByText(/Storage & Receiving Budget/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Storage & Receiving Budget/)).toBeTruthy())
 
     // Spent should be 200
     expect(screen.getByText(/\$200\s+spent/)).toBeInTheDocument()
@@ -189,7 +189,7 @@ describe('BudgetProgress calculations', () => {
       />
     )
 
-    await waitFor(() => expect(screen.getByText(/Design Fee/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Design Fee/)).toBeTruthy())
 
     // Received should be 400 - 100 = 300
     expect(screen.getByText(/\$300\s+received/)).toBeInTheDocument()
@@ -225,7 +225,7 @@ describe('BudgetProgress calculations', () => {
       />
     )
 
-    await waitFor(() => expect(screen.getByText(/Kitchen Budget/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Kitchen Budget/)).toBeTruthy())
 
     // Spent should be 600
     expect(screen.getByText(/\$600\s+spent/)).toBeInTheDocument()
@@ -262,7 +262,7 @@ describe('BudgetProgress calculations', () => {
       />
     )
 
-    await waitFor(() => expect(screen.getByText(/Property Management Budget/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Property Management Budget/)).toBeTruthy())
 
     // Spent should be 100 - 50 = 50
     expect(screen.getByText(/\$50\s+spent/)).toBeInTheDocument()

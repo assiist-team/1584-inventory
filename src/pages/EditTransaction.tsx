@@ -343,7 +343,7 @@ export default function EditTransaction() {
         // Include tax fields only when a tax state is explicitly selected.
         // For mapped states (NV/UT) we pass an explicit subtotal value to trigger
         // deletion on the service layer; for Other we include the provided subtotal.
-        ...(taxState ? { tax_state: taxState, subtotal: taxState === 'Other' ? subtotal : '' } : {})
+      ...(taxState ? { tax_state: taxState, subtotal: taxState === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
       await transactionService.updateTransaction(projectId, transactionId, updateData)

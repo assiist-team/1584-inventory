@@ -162,7 +162,7 @@ export default function AddTransaction() {
         project_name: projectName,
         created_by: 'system',
         tax_state: taxState,
-        subtotal: taxState === 'Other' ? subtotal : undefined
+      subtotal: taxState === 'Other' ? subtotal : ''
       }
 
       console.log('Attempting to create transaction with data:', transactionData)

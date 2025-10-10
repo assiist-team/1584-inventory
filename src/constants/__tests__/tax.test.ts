@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { STATE_TAX_RATE_PCT, isSupportedTaxState, SupportedTaxState } from '../tax'
+import { STATE_TAX_RATE_PCT, isSupportedTaxState } from '../tax'
 
 describe('Tax Constants', () => {
   describe('STATE_TAX_RATE_PCT', () => {

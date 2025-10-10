@@ -29,27 +29,25 @@ describe('Tax System Integration', () => {
 
   describe('Tax Rate Mapping for NV/UT States', () => {
     it('should apply correct tax rate for NV state', async () => {
-      const { addDoc } = await import('firebase/firestore')
-      const mockAddDoc = vi.mocked(addDoc).mockResolvedValue({ id: 'test-id' } as any)
+    const { addDoc } = await import('firebase/firestore')
+    vi.mocked(addDoc).mockResolvedValue({ id: 'test-id' } as any)
 
-      const transactionData = {
-        project_id: 'project-1',
-        transaction_date: '2023-01-01',
-        source: 'Test Source',
-        transaction_type: 'Purchase',
-        payment_method: 'Credit Card',
-        amount: '108.38',
-        budget_category: 'Furnishings',
-        tax_state: 'NV' as const,
-        subtotal: '100.00'
-      }
+    const transactionData = {
+      project_id: 'project-1',
+      transaction_date: '2023-01-01',
+      source: 'Test Source',
+      transaction_type: 'Purchase',
+      payment_method: 'Credit Card',
+      amount: '108.38',
+      budget_category: 'Furnishings',
+      tax_state: 'NV' as const,
+      subtotal: '100.00',
+      created_by: 'test'
+    }
 
-      await expect(async () => {
-        await transactionService.createTransaction('project-1', transactionData, [])
-      }).rejects.toThrow('Configured tax rate for selected state is missing.')
-
-      // The test should pass if we don't throw - but since the mock doesn't have the rate,
-      // we expect it to throw. In real usage, the rate would be available.
+    await expect(async () => {
+      await transactionService.createTransaction('project-1', transactionData as any, [])
+    }).rejects.toThrow('Configured tax rate for selected state is missing.')
     })
 
     it('should compute tax rate correctly for Other state', async () => {
