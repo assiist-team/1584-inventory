@@ -1,5 +1,4 @@
-// React import unused in modern JSX runtime; keep to satisfy older setups if needed
-import React from 'react'
+// React import unused in modern JSX runtime; removed to fix TS6133
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, test, expect } from 'vitest'
 import BudgetProgress from '../BudgetProgress'
