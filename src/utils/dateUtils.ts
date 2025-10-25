@@ -71,16 +71,23 @@ export const toDate = (value: DateValue): Date | null => {
 /**
  * Safely formats a date value to a localized string
  */
-export const formatDate = (value: DateValue, fallback: string = 'Unknown'): string => {
+export const formatDate = (
+  value: DateValue,
+  fallback: string = 'Unknown',
+  options?: Intl.DateTimeFormatOptions
+): string => {
   const date = toDate(value)
   if (!date) return fallback
 
   try {
-    return date.toLocaleDateString('en-US', {
+    const defaultOptions: Intl.DateTimeFormatOptions = {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
-    })
+    }
+
+    const mergedOptions = { ...defaultOptions, ...options }
+    return date.toLocaleDateString('en-US', mergedOptions)
   } catch (error) {
     console.warn('Failed to format date:', value, error)
     return fallback

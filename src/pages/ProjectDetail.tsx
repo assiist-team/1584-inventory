@@ -9,12 +9,14 @@ import TransactionsList from './TransactionsList'
 import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 import { useToast } from '@/components/ui/ToastContext'
+import { Button } from '@/components/ui/Button'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const budgetTabParam = searchParams.get('budgetTab')
   const [project, setProject] = useState<Project | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -28,7 +30,7 @@ export default function ProjectDetail() {
   const activeTab = searchParams.get('tab') || 'transactions'
 
   // Budget tabs state, default to 'budget'
-  const [activeBudgetTab, setActiveBudgetTab] = useState('budget')
+  const [activeBudgetTab, setActiveBudgetTab] = useState<string>(() => (budgetTabParam === 'accounting' ? 'accounting' : 'budget'))
 
   // Navigation context logic
   const currentSearchParams = new URLSearchParams(location.search)
@@ -59,9 +61,21 @@ export default function ProjectDetail() {
     setSearchParams(newSearchParams)
   }
 
+  useEffect(() => {
+    const nextBudgetTab = budgetTabParam === 'accounting' ? 'accounting' : 'budget'
+    setActiveBudgetTab((current) => (current === nextBudgetTab ? current : nextBudgetTab))
+  }, [budgetTabParam])
+
   // Handle budget tab changes
   const handleBudgetTabChange = (tabId: string) => {
     setActiveBudgetTab(tabId)
+    const newSearchParams = new URLSearchParams(searchParams)
+    if (tabId === 'budget') {
+      newSearchParams.delete('budgetTab')
+    } else {
+      newSearchParams.set('budgetTab', tabId)
+    }
+    setSearchParams(newSearchParams)
   }
 
   // Calculate amounts owed
@@ -341,6 +355,11 @@ export default function ProjectDetail() {
             )}
             {activeBudgetTab === 'accounting' && (
               <>
+                <div className="flex justify-end mb-4">
+                  <Button onClick={() => navigate(`/project/${project.id}/invoice`)}>
+                    Generate Invoice
+                  </Button>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   {/* Owed to 1584 */}
                   <div className="bg-gray-50 rounded-lg p-3">

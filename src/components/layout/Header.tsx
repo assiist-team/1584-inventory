@@ -12,7 +12,7 @@ export default function Header() {
   const isSettingsActive = location.pathname.startsWith('/settings')
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="bg-white shadow-sm border-b border-gray-200 print:hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 justify-between items-center gap-2">
           {/* Left side - Logo only */}
