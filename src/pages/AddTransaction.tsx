@@ -1,7 +1,7 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, FormEvent, useEffect } from 'react'
-import { TransactionFormData, TransactionValidationErrors, TransactionItemFormData, ItemImage } from '@/types'
+import { TransactionFormData, TransactionValidationErrors, TransactionItemFormData, ItemImage, TaxPreset } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService } from '@/services/inventoryService'
 import { unifiedItemsService } from '@/services/inventoryService'
@@ -11,6 +11,7 @@ import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
+import { getTaxPresets } from '@/services/taxPresetsService'
 
 export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -81,8 +82,10 @@ export default function AddTransaction() {
   })
 
   // Tax form state
-  const [taxState, setTaxState] = useState<'NV' | 'UT' | 'Other' | undefined>(undefined)
+  const [taxRatePreset, setTaxRatePreset] = useState<string | undefined>(undefined)
   const [subtotal, setSubtotal] = useState<string>('')
+  const [taxPresets, setTaxPresets] = useState<TaxPreset[]>([])
+  const [selectedPresetRate, setSelectedPresetRate] = useState<number | undefined>(undefined)
 
   const [items, setItems] = useState<TransactionItemFormData[]>([])
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
@@ -98,6 +101,29 @@ export default function AddTransaction() {
     }
   }, [formData.source])
 
+  // Load tax presets on mount
+  useEffect(() => {
+    const loadPresets = async () => {
+      try {
+        const presets = await getTaxPresets()
+        setTaxPresets(presets)
+      } catch (error) {
+        console.error('Error loading tax presets:', error)
+      }
+    }
+    loadPresets()
+  }, [])
+
+  // Update selected preset rate when preset changes
+  useEffect(() => {
+    if (taxRatePreset && taxRatePreset !== 'Other') {
+      const preset = taxPresets.find(p => p.id === taxRatePreset)
+      setSelectedPresetRate(preset?.rate)
+    } else {
+      setSelectedPresetRate(undefined)
+    }
+  }, [taxRatePreset, taxPresets])
+
   const [errors, setErrors] = useState<TransactionValidationErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUploadingImages, setIsUploadingImages] = useState(false)
@@ -110,10 +136,7 @@ export default function AddTransaction() {
       newErrors.source = 'Source is required'
     }
 
-    if (!formData.transaction_type.trim()) {
-      newErrors.transaction_type = 'Transaction type is required'
-    }
-
+    // Transaction type is optional
     // Payment method is optional
 
     if (!formData.budget_category?.trim()) {
@@ -127,19 +150,16 @@ export default function AddTransaction() {
     }
 
     // Tax validation for Other
-    if (taxState === 'Other') {
+    if (taxRatePreset === 'Other') {
       if (!subtotal.trim() || isNaN(Number(subtotal)) || Number(subtotal) <= 0) {
-        newErrors.general = 'Subtotal must be provided and greater than 0 when Tax state is Other.'
+        newErrors.general = 'Subtotal must be provided and greater than 0 when Tax Rate Preset is Other.'
       } else if (Number(formData.amount) < Number(subtotal)) {
         newErrors.general = 'Subtotal cannot exceed the total amount.'
       }
     }
 
     // Items are now optional - no validation required
-
-    if (!formData.transaction_date) {
-      newErrors.transaction_date = 'Transaction date is required'
-    }
+    // Transaction date is optional
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -161,9 +181,9 @@ export default function AddTransaction() {
         project_id: projectId,
         project_name: projectName,
         created_by: 'system',
-        tax_state: taxState,
+        tax_rate_preset: taxRatePreset,
         receipt_emailed: formData.receipt_emailed ?? false,
-        subtotal: taxState === 'Other' ? subtotal : ''
+        subtotal: taxRatePreset === 'Other' ? subtotal : ''
       }
 
       console.log('Attempting to create transaction with data:', transactionData)
@@ -378,7 +398,7 @@ export default function AddTransaction() {
     }
   }
 
-  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_state' | 'subtotal'>, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_rate_preset' | 'subtotal'>, value: string | boolean | File[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Clear error when user starts typing
@@ -634,7 +654,7 @@ export default function AddTransaction() {
           {/* Transaction Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Type *
+              Transaction Type
             </label>
             <div className="flex items-center space-x-6">
               <div className="flex items-center">
@@ -682,60 +702,6 @@ export default function AddTransaction() {
             </div>
             {errors.transaction_type && (
               <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
-            )}
-          </div>
-
-          {/* Status */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Status
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="status_pending"
-                  name="status"
-                  value="pending"
-                  checked={formData.status === 'completed'}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="status_pending" className="ml-2 block text-sm text-gray-900">
-                  Pending
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="status_completed"
-                  name="status"
-                  value="completed"
-                  checked={formData.status === 'completed'}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="status_completed" className="ml-2 block text-sm text-gray-900">
-                  Completed
-                </label>
-              </div>
-              <div className="flex items-center">
-              <input
-                  type="radio"
-                  id="status_cancelled"
-                  name="status"
-                  value="canceled"
-                  checked={formData.status === 'canceled'}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="status_cancelled" className="ml-2 block text-sm text-gray-900">
-                  Canceled
-                </label>
-              </div>
-            </div>
-            {errors.status && (
-              <p className="mt-1 text-sm text-red-600">{errors.status}</p>
             )}
           </div>
 
@@ -894,24 +860,53 @@ export default function AddTransaction() {
             )}
           </div>
 
-          {/* Tax State */}
+          {/* Tax Rate Presets */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Tax State</label>
-            <select
-              id="tax_state"
-              value={taxState || ''}
-              onChange={(e) => setTaxState(e.target.value as any)}
-              className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 border-gray-300"
-            >
-              <option value="">None</option>
-              <option value="NV">NV</option>
-              <option value="UT">UT</option>
-              <option value="Other">Other</option>
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Tax Rate Preset</label>
+            <div className="space-y-2">
+              {taxPresets.map((preset) => (
+                <div key={preset.id} className="flex items-center">
+                  <input
+                    type="radio"
+                    id={`tax_preset_${preset.id}`}
+                    name="tax_rate_preset"
+                    value={preset.id}
+                    checked={taxRatePreset === preset.id}
+                    onChange={(e) => setTaxRatePreset(e.target.value)}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                  />
+                  <label htmlFor={`tax_preset_${preset.id}`} className="ml-2 block text-sm text-gray-900">
+                    {preset.name} ({preset.rate.toFixed(2)}%)
+                  </label>
+                </div>
+              ))}
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="tax_preset_other"
+                  name="tax_rate_preset"
+                  value="Other"
+                  checked={taxRatePreset === 'Other'}
+                  onChange={(e) => setTaxRatePreset(e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="tax_preset_other" className="ml-2 block text-sm text-gray-900">
+                  Other
+                </label>
+              </div>
+            </div>
+            {/* Show selected tax rate for presets */}
+            {taxRatePreset && taxRatePreset !== 'Other' && selectedPresetRate !== undefined && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Tax Rate:</span> {selectedPresetRate.toFixed(2)}%
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Subtotal (shown only for Other) */}
-          {taxState === 'Other' && (
+          {taxRatePreset === 'Other' && (
             <div>
               <label className="block text-sm font-medium text-gray-700">Subtotal</label>
               <div className="mt-1 relative rounded-md shadow-sm">
@@ -934,7 +929,7 @@ export default function AddTransaction() {
           {/* Transaction Date */}
           <div>
             <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
-              Transaction Date *
+              Transaction Date
             </label>
             <input
               type="date"

@@ -106,6 +106,12 @@ service cloud.firestore {
       allow read, write, delete: if isAuthenticatedUser();
     }
 
+    // Settings - authenticated users can read (needed for tax presets), designers/admins can write
+    match /settings/{settingId} {
+      allow read: if isAuthenticatedUser();
+      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+    }
+
     // No anonymous access allowed for any other documents
     // All access requires proper user authentication
     match /{document=**} {

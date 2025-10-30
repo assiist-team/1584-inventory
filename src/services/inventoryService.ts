@@ -17,9 +17,9 @@ import {
   deleteField,
   serverTimestamp
 } from 'firebase/firestore'
-import { STATE_TAX_RATE_PCT, SupportedTaxState } from '@/constants/tax'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
 import { toDateOnlyString } from '@/utils/dateUtils'
+import { getTaxPresetById } from './taxPresetsService'
 import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, BusinessInventoryStats } from '@/types'
 
 // Audit Logging Service for allocation/de-allocation events
@@ -284,33 +284,34 @@ export const transactionService = {
       console.log('Creating transaction:', newTransaction)
       console.log('Transaction items:', items)
 
-      // Apply tax mapping for NV/UT or compute from subtotal when Other
+      // Apply tax calculation from presets or compute from subtotal when Other
       const txToSave: any = { ...newTransaction }
 
-      // Apply tax mapping for NV/UT or compute from subtotal for Other
-      if (txToSave.tax_state === 'NV' || txToSave.tax_state === 'UT') {
-        // Require mapping to exist
-        const mapped = STATE_TAX_RATE_PCT[txToSave.tax_state as SupportedTaxState]
-        if (mapped === undefined || mapped === null) {
-          throw new Error('Configured tax rate for selected state is missing.')
+      if (txToSave.tax_rate_preset) {
+        if (txToSave.tax_rate_preset === 'Other') {
+          // Validate subtotal presence and calculate rate
+          const amountNum = parseFloat((txToSave.amount as any) || '0')
+          const subtotalNum = parseFloat((txToSave.subtotal as any) || '0')
+          if (isNaN(subtotalNum) || subtotalNum <= 0) {
+            throw new Error('Subtotal must be greater than 0 when Tax Rate Preset is Other.')
+          }
+          if (isNaN(amountNum) || amountNum < subtotalNum) {
+            throw new Error('Subtotal cannot exceed the total amount.')
+          }
+          const rate = ((amountNum - subtotalNum) / subtotalNum) * 100
+          txToSave.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
+        } else {
+          // Look up preset by ID
+          const preset = await getTaxPresetById(txToSave.tax_rate_preset)
+          if (!preset) {
+            throw new Error(`Tax preset with ID '${txToSave.tax_rate_preset}' not found.`)
+          }
+          txToSave.tax_rate_pct = preset.rate
+          // Remove subtotal for preset selections
+          if (txToSave.subtotal !== undefined) {
+            delete txToSave.subtotal
+          }
         }
-        txToSave.tax_rate_pct = mapped
-        // Remove subtotal for mapped states
-        if (txToSave.subtotal !== undefined) {
-          delete txToSave.subtotal
-        }
-      } else if (txToSave.tax_state === 'Other') {
-        // Validate subtotal presence
-        const amountNum = parseFloat((txToSave.amount as any) || '0')
-        const subtotalNum = parseFloat((txToSave.subtotal as any) || '0')
-        if (isNaN(subtotalNum) || subtotalNum <= 0) {
-          throw new Error('Subtotal must be greater than 0 when Tax state is Other.')
-        }
-        if (isNaN(amountNum) || amountNum < subtotalNum) {
-          throw new Error('Subtotal cannot exceed the total amount.')
-        }
-        const rate = ((amountNum - subtotalNum) / subtotalNum) * 100
-        txToSave.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
       }
 
       const docRef = await addDoc(transactionsRef, txToSave)
@@ -375,25 +376,34 @@ export const transactionService = {
 
     // Apply tax mapping / computation before save
     const processedUpdates: any = { ...cleanUpdates }
-    if (processedUpdates.tax_state === 'NV' || processedUpdates.tax_state === 'UT') {
-      try {
-        processedUpdates.tax_rate_pct = STATE_TAX_RATE_PCT[processedUpdates.tax_state as SupportedTaxState]
-        // Remove subtotal when using mapped states
-        if (processedUpdates.subtotal !== undefined) {
-          processedUpdates.subtotal = deleteField()
+    
+    if (processedUpdates.tax_rate_preset !== undefined) {
+      if (processedUpdates.tax_rate_preset === 'Other') {
+        // Compute from provided subtotal and amount if present in updates or existing doc
+        const txSnap = await getDoc(transactionRef)
+        const existing = txSnap.exists() ? txSnap.data() : {}
+        const amountVal = processedUpdates.amount !== undefined ? parseFloat(processedUpdates.amount) : parseFloat(existing.amount || '0')
+        const subtotalVal = processedUpdates.subtotal !== undefined ? parseFloat(processedUpdates.subtotal) : parseFloat(existing.subtotal || '0')
+        if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
+          const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
+          processedUpdates.tax_rate_pct = Math.round(rate * 10000) / 10000
         }
-      } catch (e) {
-        console.warn('Tax mapping failed during update:', e)
-      }
-    } else if (processedUpdates.tax_state === 'Other') {
-      // compute from provided subtotal and amount if present in finalUpdates or existing doc
-      const txSnap = await getDoc(transactionRef)
-      const existing = txSnap.exists() ? txSnap.data() : {}
-      const amountVal = processedUpdates.amount !== undefined ? parseFloat(processedUpdates.amount) : parseFloat(existing.amount || '0')
-      const subtotalVal = processedUpdates.subtotal !== undefined ? parseFloat(processedUpdates.subtotal) : parseFloat(existing.subtotal || '0')
-      if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
-        const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
-        processedUpdates.tax_rate_pct = Math.round(rate * 10000) / 10000
+      } else {
+        // Look up preset by ID
+        try {
+          const preset = await getTaxPresetById(processedUpdates.tax_rate_preset)
+          if (preset) {
+            processedUpdates.tax_rate_pct = preset.rate
+            // Remove subtotal when using presets
+            if (processedUpdates.subtotal !== undefined) {
+              processedUpdates.subtotal = deleteField()
+            }
+          } else {
+            console.warn(`Tax preset with ID '${processedUpdates.tax_rate_preset}' not found during update`)
+          }
+        } catch (e) {
+          console.warn('Tax preset lookup failed during update:', e)
+        }
       }
     }
 

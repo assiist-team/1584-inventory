@@ -1,4 +1,12 @@
 // Core types for the inventory management system
+
+// Tax preset interface (imported from constants for consistency)
+export interface TaxPreset {
+  id: string;
+  name: string;
+  rate: number; // percentage, e.g., 8.375
+}
+
 export interface User {
   id: string;
   email: string;
@@ -182,9 +190,9 @@ export interface Transaction {
   // NEW: Item linkage for unified inventory system
   item_ids?: string[]; // Links to items in the top-level items collection
   // Tax fields
-  tax_state?: 'NV' | 'UT' | 'Other';
-  tax_rate_pct?: number; // percentage, e.g., 8.25
-  subtotal?: string; // pre-tax amount as string, e.g. '100.00'
+  tax_rate_preset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
+  tax_rate_pct?: number; // percentage, e.g., 8.25 (calculated from preset or subtotal)
+  subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
 }
 
 export enum BudgetCategory {
@@ -224,8 +232,8 @@ export interface TransactionFormData {
   receipt_emailed?: boolean;
   items?: TransactionItemFormData[];
   // Tax form fields
-  tax_state?: 'NV' | 'UT' | 'Other';
-  subtotal?: string;
+  tax_rate_preset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
+  subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
 }
 
 export interface TransactionItemFormData {

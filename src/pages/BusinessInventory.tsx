@@ -714,7 +714,7 @@ export default function BusinessInventory() {
               {/* Header - Add Transaction button */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                 <Link
-                  to="/business-inventory/transactions/add"
+                  to="/business-inventory/transaction/add"
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />

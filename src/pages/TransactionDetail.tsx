@@ -1,17 +1,16 @@
 import { ArrowLeft, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
-import { useMemo } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { useEffect } from 'react'
-import { Transaction, Project, Item, TransactionItemFormData } from '@/types'
+import { Transaction, Project, Item, TransactionItemFormData, TaxPreset } from '@/types'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import TransactionItemForm from '@/components/TransactionItemForm'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { getTaxPresets } from '@/services/taxPresetsService'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -48,6 +47,20 @@ export default function TransactionDetail() {
   const navigate = useNavigate()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [project, setProject] = useState<Project | null>(null)
+  const [taxPresets, setTaxPresets] = useState<TaxPreset[]>([])
+
+  // Load tax presets on mount
+  useEffect(() => {
+    const loadPresets = async () => {
+      try {
+        const presets = await getTaxPresets()
+        setTaxPresets(presets)
+      } catch (error) {
+        console.error('Error loading tax presets:', error)
+      }
+    }
+    loadPresets()
+  }, [])
   const [transactionItems, setTransactionItems] = useState<Item[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
@@ -611,10 +624,18 @@ export default function TransactionDetail() {
               <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.amount)}</dd>
             </div>
 
-            {transaction.tax_state && (
+            {transaction.tax_rate_preset && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">Tax State</dt>
-                <dd className="mt-1 text-sm text-gray-900">{transaction.tax_state}</dd>
+                <dt className="text-sm font-medium text-gray-500">Tax Rate Preset</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {transaction.tax_rate_preset === 'Other' 
+                    ? 'Custom'
+                    : (() => {
+                        const preset = taxPresets.find(p => p.id === transaction.tax_rate_preset)
+                        return preset ? `${preset.name} (${preset.rate.toFixed(2)}%)` : transaction.tax_rate_preset
+                      })()
+                  }
+                </dd>
               </div>
             )}
 

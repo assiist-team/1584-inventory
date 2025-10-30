@@ -1,7 +1,7 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, FormEvent } from 'react'
-import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData } from '@/types'
+import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { toDateOnlyString } from '@/utils/dateUtils'
+import { getTaxPresets } from '@/services/taxPresetsService'
 
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
@@ -58,8 +59,10 @@ export default function EditTransaction() {
   })
 
   // Tax form state
-  const [taxState, setTaxState] = useState<'NV' | 'UT' | 'Other' | undefined>(undefined)
+  const [taxRatePreset, setTaxRatePreset] = useState<string | undefined>(undefined)
   const [subtotal, setSubtotal] = useState<string>('')
+  const [taxPresets, setTaxPresets] = useState<TaxPreset[]>([])
+  const [selectedPresetRate, setSelectedPresetRate] = useState<number | undefined>(undefined)
 
   const [errors, setErrors] = useState<TransactionValidationErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -72,6 +75,29 @@ export default function EditTransaction() {
 
   // Custom source state
   const [isCustomSource, setIsCustomSource] = useState(false)
+
+  // Load tax presets on mount
+  useEffect(() => {
+    const loadPresets = async () => {
+      try {
+        const presets = await getTaxPresets()
+        setTaxPresets(presets)
+      } catch (error) {
+        console.error('Error loading tax presets:', error)
+      }
+    }
+    loadPresets()
+  }, [])
+
+  // Update selected preset rate when preset changes
+  useEffect(() => {
+    if (taxRatePreset && taxRatePreset !== 'Other') {
+      const preset = taxPresets.find(p => p.id === taxRatePreset)
+      setSelectedPresetRate(preset?.rate)
+    } else {
+      setSelectedPresetRate(undefined)
+    }
+  }, [taxRatePreset, taxPresets])
 
   // Load transaction and project data
   useEffect(() => {
@@ -113,7 +139,9 @@ export default function EditTransaction() {
           })
 
           // Populate tax fields if present
-          setTaxState(transaction.tax_state as any)
+          if (transaction.tax_rate_preset) {
+            setTaxRatePreset(transaction.tax_rate_preset)
+          }
           setSubtotal(transaction.subtotal || '')
 
           setIsCustomSource(sourceIsCustom)
@@ -340,10 +368,8 @@ export default function EditTransaction() {
       const updateData = {
         ...formDataWithoutImages,
         other_images: otherImages,
-        // Include tax fields only when a tax state is explicitly selected.
-        // For mapped states (NV/UT) we pass an explicit subtotal value to trigger
-        // deletion on the service layer; for Other we include the provided subtotal.
-      ...(taxState ? { tax_state: taxState, subtotal: taxState === 'Other' ? subtotal : '' } : { subtotal: '' })
+        // Include tax fields only when a tax rate preset is explicitly selected.
+        ...(taxRatePreset ? { tax_rate_preset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
       await transactionService.updateTransaction(projectId, transactionId, updateData)
@@ -357,7 +383,7 @@ export default function EditTransaction() {
     }
   }
 
-  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_state' | 'subtotal'>, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_rate_preset' | 'subtotal'>, value: string | boolean | File[]) => {
     setFormData(prev => {
       const newData = { ...prev, [field]: value }
 
@@ -496,6 +522,116 @@ export default function EditTransaction() {
             )}
           </div>
 
+          {/* Budget Category */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Budget Category *
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_design_fee"
+                  name="budget_category"
+                  value="Design Fee"
+                  checked={formData.budget_category === 'Design Fee'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
+                  Design Fee
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_furnishings"
+                  name="budget_category"
+                  value="Furnishings"
+                  checked={formData.budget_category === 'Furnishings'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
+                  Furnishings
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_property_management"
+                  name="budget_category"
+                  value="Property Management"
+                  checked={formData.budget_category === 'Property Management'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
+                  Property Management
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_kitchen"
+                  name="budget_category"
+                  value="Kitchen"
+                  checked={formData.budget_category === 'Kitchen'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
+                  Kitchen
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_install"
+                  name="budget_category"
+                  value="Install"
+                  checked={formData.budget_category === 'Install'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
+                  Install
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_storage_receiving"
+                  name="budget_category"
+                  value="Storage & Receiving"
+                  checked={formData.budget_category === 'Storage & Receiving'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
+                  Storage & Receiving
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="budget_fuel"
+                  name="budget_category"
+                  value="Fuel"
+                  checked={formData.budget_category === 'Fuel'}
+                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
+                  Fuel
+                </label>
+              </div>
+            </div>
+            {errors.budget_category && (
+              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
+            )}
+          </div>
+
           {/* Transaction Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -587,7 +723,7 @@ export default function EditTransaction() {
               <div className="flex items-center">
                 <input
                   type="radio"
-                id="status_cancelled"
+                  id="status_cancelled"
                   name="status"
                   value="canceled"
                   checked={formData.status === 'canceled'}
@@ -607,7 +743,7 @@ export default function EditTransaction() {
           {/* Payment Method */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Payment Method
+              Transaction Method
             </label>
             <div className="flex items-center space-x-6">
               <div className="flex items-center">
@@ -759,24 +895,53 @@ export default function EditTransaction() {
             )}
           </div>
 
-          {/* Tax State */}
+          {/* Tax Rate Presets */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Tax State</label>
-            <select
-              id="tax_state"
-              value={taxState || ''}
-              onChange={(e) => setTaxState(e.target.value as any)}
-              className="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 border-gray-300"
-            >
-              <option value="">None</option>
-              <option value="NV">NV</option>
-              <option value="UT">UT</option>
-              <option value="Other">Other</option>
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Tax Rate Preset</label>
+            <div className="space-y-2">
+              {taxPresets.map((preset) => (
+                <div key={preset.id} className="flex items-center">
+                  <input
+                    type="radio"
+                    id={`tax_preset_${preset.id}`}
+                    name="tax_rate_preset"
+                    value={preset.id}
+                    checked={taxRatePreset === preset.id}
+                    onChange={(e) => setTaxRatePreset(e.target.value)}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                  />
+                  <label htmlFor={`tax_preset_${preset.id}`} className="ml-2 block text-sm text-gray-900">
+                    {preset.name} ({preset.rate.toFixed(2)}%)
+                  </label>
+                </div>
+              ))}
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="tax_preset_other"
+                  name="tax_rate_preset"
+                  value="Other"
+                  checked={taxRatePreset === 'Other'}
+                  onChange={(e) => setTaxRatePreset(e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="tax_preset_other" className="ml-2 block text-sm text-gray-900">
+                  Other
+                </label>
+              </div>
+            </div>
+            {/* Show selected tax rate for presets */}
+            {taxRatePreset && taxRatePreset !== 'Other' && selectedPresetRate !== undefined && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Tax Rate:</span> {selectedPresetRate.toFixed(2)}%
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Subtotal (shown only for Other) */}
-          {taxState === 'Other' && (
+          {taxRatePreset === 'Other' && (
             <div>
               <label className="block text-sm font-medium text-gray-700">Subtotal</label>
               <div className="mt-1 relative rounded-md shadow-sm">
@@ -795,116 +960,6 @@ export default function EditTransaction() {
               <p className="mt-1 text-sm text-gray-500">This will be used to calculate the tax rate.</p>
             </div>
           )}
-
-          {/* Budget Category */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Budget Category *
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_design_fee"
-                  name="budget_category"
-                  value="Design Fee"
-                  checked={formData.budget_category === 'Design Fee'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
-                  Design Fee
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_furnishings"
-                  name="budget_category"
-                  value="Furnishings"
-                  checked={formData.budget_category === 'Furnishings'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
-                  Furnishings
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_property_management"
-                  name="budget_category"
-                  value="Property Management"
-                  checked={formData.budget_category === 'Property Management'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
-                  Property Management
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_kitchen"
-                  name="budget_category"
-                  value="Kitchen"
-                  checked={formData.budget_category === 'Kitchen'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
-                  Kitchen
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_install"
-                  name="budget_category"
-                  value="Install"
-                  checked={formData.budget_category === 'Install'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
-                  Install
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_storage_receiving"
-                  name="budget_category"
-                  value="Storage & Receiving"
-                  checked={formData.budget_category === 'Storage & Receiving'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
-                  Storage & Receiving
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_fuel"
-                  name="budget_category"
-                  value="Fuel"
-                  checked={formData.budget_category === 'Fuel'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
-                  Fuel
-                </label>
-              </div>
-            </div>
-            {errors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
-            )}
-          </div>
 
           {/* Transaction Date */}
           <div>
