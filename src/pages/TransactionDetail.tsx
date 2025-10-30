@@ -655,7 +655,7 @@ export default function TransactionDetail() {
               <div>
                 <dt className="text-sm font-medium text-gray-500">Reimbursement Type</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {transaction.reimbursement_type === 'Client Owes' ? 'Client Owes' : 'We Owe'}
+                  {transaction.reimbursement_type === 'Client Owes 1584' ? 'Client Owes 1584' : '1584 Owes Client'}
                 </dd>
               </div>
             )}

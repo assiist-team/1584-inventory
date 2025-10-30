@@ -72,7 +72,7 @@ export default function ProjectInvoice() {
 
         const invoiceable = txs
           .filter(t => t.status !== 'canceled')
-          .filter(t => (t.reimbursement_type === 'Client Owes' || t.reimbursement_type === 'We Owe'))
+          .filter(t => (t.reimbursement_type === 'Client Owes 1584' || t.reimbursement_type === '1584 Owes Client'))
 
         // Sort by transaction_date ascending within each group later
         // Fetch items for each transaction in parallel
@@ -94,11 +94,11 @@ export default function ProjectInvoice() {
         }))
 
         const clientOwes = lines
-          .filter(l => l.transaction.reimbursement_type === 'Client Owes')
+          .filter(l => l.transaction.reimbursement_type === 'Client Owes 1584')
           .sort((a, b) => (a.transaction.transaction_date || '').localeCompare(b.transaction.transaction_date || ''))
 
         const credits = lines
-          .filter(l => l.transaction.reimbursement_type === 'We Owe')
+          .filter(l => l.transaction.reimbursement_type === '1584 Owes Client')
           .sort((a, b) => (a.transaction.transaction_date || '').localeCompare(b.transaction.transaction_date || ''))
 
         setClientOwesLines(clientOwes)

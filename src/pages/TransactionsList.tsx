@@ -82,9 +82,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     // Apply reimbursement type filter based on filter mode
     if (filterMode !== 'all') {
       if (filterMode === 'we-owe') {
-        filtered = filtered.filter(t => t.reimbursement_type === 'We Owe')
+        filtered = filtered.filter(t => t.reimbursement_type === '1584 Owes Client')
       } else if (filterMode === 'client-owes') {
-        filtered = filtered.filter(t => t.reimbursement_type === 'Client Owes')
+        filtered = filtered.filter(t => t.reimbursement_type === 'Client Owes 1584')
       }
     }
 

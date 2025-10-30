@@ -544,7 +544,7 @@ export const transactionService = {
     const transactionsRef = collection(db, 'transactions')
     const q = query(
       transactionsRef,
-      where('reimbursement_type', 'in', ['Client Owes', 'We Owe']),
+      where('reimbursement_type', 'in', ['Client Owes 1584', '1584 Owes Client']),
       orderBy('created_at', 'desc')
     )
 
@@ -1397,7 +1397,7 @@ export const unifiedItemsService = {
           budget_category: 'Furnishings',
           notes: notes || `Transaction for items ${transactionType === 'Purchase' ? 'purchased from' : 'sold to'} ${transactionType === 'Purchase' ? 'inventory' : 'project'}`,
           status: 'pending' as const,
-          reimbursement_type: transactionType === 'Purchase' ? 'Client Owes' : 'We Owe',
+          reimbursement_type: transactionType === 'Purchase' ? 'Client Owes 1584' : '1584 Owes Client',
           trigger_event: triggerEvent,
           item_ids: [itemId],
           created_by: 'system',
@@ -1648,7 +1648,7 @@ export const unifiedItemsService = {
       budget_category: 'Furnishings',
       notes: notes || 'Transaction for items purchased from project and moved to business inventory',
       status: 'pending' as const,
-      reimbursement_type: 'We Owe' as const,  // We owe the client for this purchase
+      reimbursement_type: '1584 Owes Client' as const,  // We owe the client for this purchase
       trigger_event: 'Inventory sale' as const,
       item_ids: [itemId],
       created_by: 'system',
@@ -2143,7 +2143,7 @@ export const businessInventoryService = {
       notes: notes || `${projectName} inventory purchase`,  // Include project name in notes
       created_by: 'system',
       status: 'pending' as const,
-      reimbursement_type: 'Client Owes' as const,
+      reimbursement_type: 'Client Owes 1584' as const,
       trigger_event: 'Inventory allocation' as const
     }
 
@@ -2203,7 +2203,7 @@ export const businessInventoryService = {
       notes: allocationData.notes || `${projectName} inventory purchase`,  // Include project name in notes
       created_by: 'system',
       status: 'pending' as const,
-      reimbursement_type: 'Client Owes' as const,
+      reimbursement_type: 'Client Owes 1584' as const,
       trigger_event: 'Inventory allocation' as const
     }
 
@@ -2574,7 +2574,7 @@ export const deallocationService = {
         budget_category: 'Furnishings',
         notes: additionalNotes || 'Transaction for items purchased from project and moved to business inventory',
         status: 'pending' as const,
-        reimbursement_type: 'We Owe' as const,  // We owe the client for this purchase
+        reimbursement_type: '1584 Owes Client' as const,  // We owe the client for this purchase
         trigger_event: 'Inventory sale' as const,
         item_ids: [item.item_id],
         created_by: 'system',

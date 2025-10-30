@@ -84,7 +84,7 @@ export default function ProjectDetail() {
       // For "owed to 1584", we want transactions where the client owes 1584
       // This happens when 1584 paid for the transaction
 
-      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes'
+      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes 1584'
       const isLegacyClientOwes = (!transaction.status || transaction.status === 'pending') &&
                                 transaction.payment_method === '1584 Card'
 
@@ -99,7 +99,7 @@ export default function ProjectDetail() {
       // For "owed to client", we want transactions where 1584 owes the client
       // This happens when the client paid for the transaction
 
-      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === 'We Owe'
+      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === '1584 Owes Client'
       const isLegacyWeOwe = (!transaction.status || transaction.status === 'pending') &&
                            transaction.payment_method === 'Client Card'
 

@@ -739,24 +739,79 @@ export default function AddTransaction() {
             )}
           </div>
 
-          {/* Reimbursement Type */}
+          {/* Transaction Method */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Reimbursement Type
+              Transaction Method
             </label>
             <div className="flex items-center space-x-6">
               <div className="flex items-center">
                 <input
                   type="radio"
+                  id="method_client_card"
+                  name="payment_method"
+                  value="Client Card"
+                  checked={formData.payment_method === 'Client Card'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
+                  Client Card
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_1584_card"
+                  name="payment_method"
+                  value="1584 Design"
+                  checked={formData.payment_method === '1584 Design'}
+                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
+                  1584 Design
+                </label>
+              </div>
+            </div>
+            {errors.payment_method && (
+              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            )}
+          </div>
+
+          {/* Reimbursement Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Reimbursement Type
+            </label>
+            <p className="mb-3 text-xs text-gray-500">Flags transactions that require reimbursement</p>
+            <div className="space-y-2">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="reimbursement_none"
+                  name="reimbursement_type"
+                  value=""
+                  checked={!formData.reimbursement_type}
+                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="reimbursement_none" className="ml-2 block text-sm text-gray-900">
+                  None
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
-                  value="Client Owes"
-                  checked={formData.reimbursement_type === 'Client Owes'}
+                  value="Client Owes 1584"
+                  checked={formData.reimbursement_type === 'Client Owes 1584'}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
-                  Client Owes
+                  Client Owes 1584
                 </label>
               </div>
               <div className="flex items-center">
@@ -764,19 +819,54 @@ export default function AddTransaction() {
                   type="radio"
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
-                  value="We Owe"
-                  checked={formData.reimbursement_type === 'We Owe'}
+                  value="1584 Owes Client"
+                  checked={formData.reimbursement_type === '1584 Owes Client'}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
-                  We Owe
+                  1584 Owes Client
                 </label>
               </div>
             </div>
             {errors.reimbursement_type && (
               <p className="mt-1 text-sm text-red-600">{errors.reimbursement_type}</p>
             )}
+          </div>
+
+          {/* Receipt Email Copy */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Receipt Email Copy
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="receipt_yes"
+                  name="receipt_emailed"
+                  checked={formData.receipt_emailed === true}
+                  onChange={() => handleInputChange('receipt_emailed', true)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
+                  Yes
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="receipt_no"
+                  name="receipt_emailed"
+                  checked={formData.receipt_emailed === false}
+                  onChange={() => handleInputChange('receipt_emailed', false)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
+                  No
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Amount */}
@@ -861,81 +951,6 @@ export default function AddTransaction() {
             {errors.transaction_date && (
               <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
             )}
-          </div>
-
-          {/* Transaction Method */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Transaction Method
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_client_card"
-                  name="payment_method"
-                  value="Client Card"
-                  checked={formData.payment_method === 'Client Card'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
-                  Client Card
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_1584_card"
-                  name="payment_method"
-                  value="1584 Design"
-                  checked={formData.payment_method === '1584 Design'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
-                  1584 Design
-                </label>
-              </div>
-            </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
-            )}
-          </div>
-
-          {/* Receipt Email Copy */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Receipt Email Copy
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="receipt_yes"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === true}
-                  onChange={() => handleInputChange('receipt_emailed', true)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
-                  Yes
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="receipt_no"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === false}
-                  onChange={() => handleInputChange('receipt_emailed', false)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
-                  No
-                </label>
-              </div>
-            </div>
           </div>
 
           {/* Notes */}
