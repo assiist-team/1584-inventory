@@ -25,7 +25,7 @@ export default function EditBusinessInventoryTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'pending' as 'pending' | 'completed' | 'canceled',
-    reimbursement_type: '' as string,
+    reimbursement_type: '' as '' | 'Client Owes 1584' | '1584 Owes Client' | null | undefined,
     trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
     receipt_emailed: false
   })
@@ -192,7 +192,7 @@ export default function EditBusinessInventoryTransaction() {
       // Determine project_id based on selection
       const actualProjectId = formData.project_id === 'business-inventory' ? null : formData.project_id
 
-      const updateData = {
+      const updateData: Partial<Transaction> = {
         ...formData,
         project_id: actualProjectId,
         // Include tax fields only when a tax rate preset is explicitly selected.

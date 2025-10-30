@@ -24,7 +24,7 @@ export default function AddBusinessInventoryTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'pending' as const,
-    reimbursement_type: '' as const,
+    reimbursement_type: '' as '' | 'Client Owes 1584' | '1584 Owes Client' | null | undefined,
     trigger_event: 'Manual' as const,
     receipt_emailed: false
   })
@@ -181,10 +181,6 @@ export default function AddBusinessInventoryTransaction() {
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  const handleCancel = () => {
-    navigate(backDestination)
   }
 
   return (
