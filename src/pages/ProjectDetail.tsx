@@ -10,6 +10,7 @@ import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 import { useToast } from '@/components/ui/ToastContext'
 import { Button } from '@/components/ui/Button'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT, COMPANY_CARD } from '@/constants/company'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -81,25 +82,25 @@ export default function ProjectDetail() {
   // Calculate amounts owed
   const calculateOwedTo1584 = () => {
     const clientOwesTransactions = transactions.filter(transaction => {
-      // For "owed to 1584", we want transactions where the client owes 1584
-      // This happens when 1584 paid for the transaction
+      // For "owed to Design Business", we want transactions where the client owes Design Business
+      // This happens when Design Business paid for the transaction
 
-      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes 1584'
+      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === CLIENT_OWES_COMPANY
       const isLegacyClientOwes = (!transaction.status || transaction.status === 'pending') &&
-                                transaction.payment_method === '1584 Card'
+                                transaction.payment_method === COMPANY_CARD
 
       return isExplicitlyClientOwes || isLegacyClientOwes
     })
-    console.log('Owed to 1584 - Client Owes transactions:', clientOwesTransactions.length)
+    console.log('Owed to Design Business - Client Owes transactions:', clientOwesTransactions.length)
     return clientOwesTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
   }
 
   const calculateOwedToClient = () => {
     const weOweTransactions = transactions.filter(transaction => {
-      // For "owed to client", we want transactions where 1584 owes the client
+      // For "owed to client", we want transactions where Design Business owes the client
       // This happens when the client paid for the transaction
 
-      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === '1584 Owes Client'
+      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === COMPANY_OWES_CLIENT
       const isLegacyWeOwe = (!transaction.status || transaction.status === 'pending') &&
                            transaction.payment_method === 'Client Card'
 
@@ -361,9 +362,9 @@ export default function ProjectDetail() {
                   </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Owed to 1584 */}
+                  {/* Owed to Design Business */}
                   <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to 1584</div>
+                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Design Business</div>
                     <div className="text-xl font-bold text-gray-900">
                       ${calculateOwedTo1584().toFixed(2)}
                     </div>

@@ -4,11 +4,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { Transaction } from '@/types'
 import { transactionService } from '@/services/inventoryService'
 import type { Transaction as TransactionType } from '@/types'
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 // Canonical transaction title for display only
 const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+  if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
   return transaction.source
 }
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
@@ -82,9 +83,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     // Apply reimbursement type filter based on filter mode
     if (filterMode !== 'all') {
       if (filterMode === 'we-owe') {
-        filtered = filtered.filter(t => t.reimbursement_type === '1584 Owes Client')
+        filtered = filtered.filter(t => t.reimbursement_type === COMPANY_OWES_CLIENT)
       } else if (filterMode === 'client-owes') {
-        filtered = filtered.filter(t => t.reimbursement_type === 'Client Owes 1584')
+        filtered = filtered.filter(t => t.reimbursement_type === CLIENT_OWES_COMPANY)
       }
     }
 

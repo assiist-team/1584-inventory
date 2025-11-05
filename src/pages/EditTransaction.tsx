@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
+import { COMPANY_NAME, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
@@ -765,13 +766,13 @@ export default function EditTransaction() {
                   type="radio"
                   id="method_1584_card"
                   name="payment_method"
-                  value="1584 Design"
-                  checked={formData.payment_method === '1584 Design'}
+                  value={COMPANY_NAME}
+                  checked={formData.payment_method === COMPANY_NAME}
                   onChange={(e) => handleInputChange('payment_method', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
-                  1584 Design
+                  {COMPANY_NAME}
                 </label>
               </div>
             </div>
@@ -806,13 +807,13 @@ export default function EditTransaction() {
                   type="radio"
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
-                  value="Client Owes 1584"
-                  checked={formData.reimbursement_type === 'Client Owes 1584'}
+                  value={CLIENT_OWES_COMPANY}
+                  checked={formData.reimbursement_type === CLIENT_OWES_COMPANY}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
-                  Client Owes 1584
+                  {CLIENT_OWES_COMPANY}
                 </label>
               </div>
               <div className="flex items-center">
@@ -820,13 +821,13 @@ export default function EditTransaction() {
                   type="radio"
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
-                  value="1584 Owes Client"
-                  checked={formData.reimbursement_type === '1584 Owes Client'}
+                  value={COMPANY_OWES_CLIENT}
+                  checked={formData.reimbursement_type === COMPANY_OWES_CLIENT}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
-                  1584 Owes Client
+                  {COMPANY_OWES_CLIENT}
                 </label>
               </div>
             </div>

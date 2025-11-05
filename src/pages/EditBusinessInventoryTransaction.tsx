@@ -5,6 +5,7 @@ import { Transaction, Project, TaxPreset } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { getTaxPresets } from '@/services/taxPresetsService'
 
 export default function EditBusinessInventoryTransaction() {
@@ -25,7 +26,7 @@ export default function EditBusinessInventoryTransaction() {
     budget_category: 'Furnishings',
     notes: '',
     status: 'pending' as 'pending' | 'completed' | 'canceled',
-    reimbursement_type: '' as '' | 'Client Owes 1584' | '1584 Owes Client' | null | undefined,
+    reimbursement_type: '' as '' | typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | null | undefined,
     trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
     receipt_emailed: false
   })
@@ -499,13 +500,13 @@ export default function EditBusinessInventoryTransaction() {
                   type="radio"
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
-                  value="Client Owes 1584"
-                  checked={formData.reimbursement_type === 'Client Owes 1584'}
+                  value={CLIENT_OWES_COMPANY}
+                  checked={formData.reimbursement_type === CLIENT_OWES_COMPANY}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
-                  Client Owes 1584
+                  {CLIENT_OWES_COMPANY}
                 </label>
               </div>
               <div className="flex items-center">
@@ -513,13 +514,13 @@ export default function EditBusinessInventoryTransaction() {
                   type="radio"
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
-                  value="1584 Owes Client"
-                  checked={formData.reimbursement_type === '1584 Owes Client'}
+                  value={COMPANY_OWES_CLIENT}
+                  checked={formData.reimbursement_type === COMPANY_OWES_CLIENT}
                   onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
-                  1584 Owes Client
+                  {COMPANY_OWES_CLIENT}
                 </label>
               </div>
             </div>

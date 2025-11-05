@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import type { Item, Project, Transaction } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT, COMPANY_PROJECT_PORTAL_LOGO_ALT } from '@/constants/company'
 
 type InvoiceItemLine = {
   item: Item
@@ -22,8 +23,8 @@ const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' 
 const INVOICE_LOGO_URL = 'https://storage.googleapis.com/msgsndr/zTjqcEq3Ndj90wvhfc47/media/684c87bb082624ba07154dd6.png'
 
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+  if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
   return transaction.source
 }
 
@@ -72,7 +73,7 @@ export default function ProjectInvoice() {
 
         const invoiceable = txs
           .filter(t => t.status !== 'canceled')
-          .filter(t => (t.reimbursement_type === 'Client Owes 1584' || t.reimbursement_type === '1584 Owes Client'))
+          .filter(t => (t.reimbursement_type === CLIENT_OWES_COMPANY || t.reimbursement_type === COMPANY_OWES_CLIENT))
 
         // Sort by transaction_date ascending within each group later
         // Fetch items for each transaction in parallel
@@ -94,11 +95,11 @@ export default function ProjectInvoice() {
         }))
 
         const clientOwes = lines
-          .filter(l => l.transaction.reimbursement_type === 'Client Owes 1584')
+          .filter(l => l.transaction.reimbursement_type === CLIENT_OWES_COMPANY)
           .sort((a, b) => (a.transaction.transaction_date || '').localeCompare(b.transaction.transaction_date || ''))
 
         const credits = lines
-          .filter(l => l.transaction.reimbursement_type === '1584 Owes Client')
+          .filter(l => l.transaction.reimbursement_type === COMPANY_OWES_CLIENT)
           .sort((a, b) => (a.transaction.transaction_date || '').localeCompare(b.transaction.transaction_date || ''))
 
         setClientOwesLines(clientOwes)
@@ -163,7 +164,7 @@ export default function ProjectInvoice() {
         <div className="flex items-start gap-4">
           <img
             src={INVOICE_LOGO_URL}
-            alt="1584 Project Portal logo"
+            alt={COMPANY_PROJECT_PORTAL_LOGO_ALT}
             className="h-24 w-auto object-contain"
           />
           <div>

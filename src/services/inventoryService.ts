@@ -20,6 +20,7 @@ import {
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT, COMPANY_PAYMENT_METHOD } from '@/constants/company'
 import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, BusinessInventoryStats } from '@/types'
 
 // Audit Logging Service for allocation/de-allocation events
@@ -554,7 +555,7 @@ export const transactionService = {
     const transactionsRef = collection(db, 'transactions')
     const q = query(
       transactionsRef,
-      where('reimbursement_type', 'in', ['Client Owes 1584', '1584 Owes Client']),
+      where('reimbursement_type', 'in', [CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT]),
       orderBy('created_at', 'desc')
     )
 
@@ -1407,7 +1408,7 @@ export const unifiedItemsService = {
           budget_category: 'Furnishings',
           notes: notes || `Transaction for items ${transactionType === 'Purchase' ? 'purchased from' : 'sold to'} ${transactionType === 'Purchase' ? 'inventory' : 'project'}`,
           status: 'pending' as const,
-          reimbursement_type: transactionType === 'Purchase' ? 'Client Owes 1584' : '1584 Owes Client',
+          reimbursement_type: transactionType === 'Purchase' ? CLIENT_OWES_COMPANY : COMPANY_OWES_CLIENT,
           trigger_event: triggerEvent,
           item_ids: [itemId],
           created_by: 'system',
@@ -1658,7 +1659,7 @@ export const unifiedItemsService = {
       budget_category: 'Furnishings',
       notes: notes || 'Transaction for items purchased from project and moved to business inventory',
       status: 'pending' as const,
-      reimbursement_type: '1584 Owes Client' as const,  // We owe the client for this purchase
+      reimbursement_type: COMPANY_OWES_CLIENT as const,  // We owe the client for this purchase
       trigger_event: 'Inventory sale' as const,
       item_ids: [itemId],
       created_by: 'system',
@@ -2145,15 +2146,15 @@ export const businessInventoryService = {
     const transactionData = {
       project_id: projectId,
       transaction_date: toDateOnlyString(new Date()),
-      source: 'Inventory',  // Project purchasing inventory from 1584
-      transaction_type: 'Purchase',  // Project purchasing inventory from 1584
+      source: 'Inventory',  // Project purchasing inventory from Design Business
+      transaction_type: 'Purchase',  // Project purchasing inventory from Design Business
       payment_method: 'Pending',
       amount: finalAmount,
       budget_category: 'Furnishings',
       notes: notes || `${projectName} inventory purchase`,  // Include project name in notes
       created_by: 'system',
       status: 'pending' as const,
-      reimbursement_type: 'Client Owes 1584' as const,
+      reimbursement_type: CLIENT_OWES_COMPANY as const,
       trigger_event: 'Inventory allocation' as const
     }
 
@@ -2205,15 +2206,15 @@ export const businessInventoryService = {
     const transactionData = {
       project_id: projectId,
       transaction_date: toDateOnlyString(now),
-      source: 'Inventory',  // Project purchasing inventory from 1584
-      transaction_type: 'Purchase',  // Project purchasing inventory from 1584
+      source: 'Inventory',  // Project purchasing inventory from Design Business
+      transaction_type: 'Purchase',  // Project purchasing inventory from Design Business
       payment_method: 'Pending',
       amount: allocationData.amount || '0.00',
       budget_category: 'Furnishings',
       notes: allocationData.notes || `${projectName} inventory purchase`,  // Include project name in notes
       created_by: 'system',
       status: 'pending' as const,
-      reimbursement_type: 'Client Owes 1584' as const,
+      reimbursement_type: CLIENT_OWES_COMPANY as const,
       trigger_event: 'Inventory allocation' as const
     }
 
@@ -2235,9 +2236,9 @@ export const businessInventoryService = {
         description: businessItemData.description,
         source: businessItemData.source,
         sku: businessItemData.sku,
-        project_price: businessItemData.project_price, // 1584 design project price from business inventory
+        project_price: businessItemData.project_price, // Design Business project price from business inventory
         market_value: businessItemData.market_value || '',
-        payment_method: '1584', // Default payment method for allocated items
+        payment_method: COMPANY_PAYMENT_METHOD, // Default payment method for allocated items
         disposition: 'keep', // Default disposition for allocated items
         notes: businessItemData.notes,
         space: allocationData.space || '', // Optional space field
@@ -2584,7 +2585,7 @@ export const deallocationService = {
         budget_category: 'Furnishings',
         notes: additionalNotes || 'Transaction for items purchased from project and moved to business inventory',
         status: 'pending' as const,
-        reimbursement_type: '1584 Owes Client' as const,  // We owe the client for this purchase
+        reimbursement_type: COMPANY_OWES_CLIENT as const,  // We owe the client for this purchase
         trigger_event: 'Inventory sale' as const,
         item_ids: [item.item_id],
         created_by: 'system',

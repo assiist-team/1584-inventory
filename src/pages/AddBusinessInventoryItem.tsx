@@ -12,14 +12,16 @@ import { UserRole } from '../types'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/company'
+
 // Get canonical transaction title for display
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
   if (transaction.transaction_id?.startsWith('INV_SALE_')) {
-    return '1584 Inventory Sale'
+    return COMPANY_INVENTORY_SALE
   }
   if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
-    return '1584 Inventory Purchase'
+    return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
   return transaction.source

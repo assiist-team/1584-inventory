@@ -7,6 +7,7 @@ import type { Transaction as TransactionType } from '@/types'
 import { unifiedItemsService, transactionService, projectService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
+import { COMPANY_INVENTORY, COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/company'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 
@@ -117,8 +118,8 @@ export default function BusinessInventory() {
 
   // Canonical transaction title for display only
   const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
-    if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
-    if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+    if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+    if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
     return transaction.source
   }
 
@@ -386,7 +387,7 @@ export default function BusinessInventory() {
     <div className="space-y-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">1584 Inventory</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{COMPANY_INVENTORY}</h1>
       </div>
 
       {/* Tabs */}

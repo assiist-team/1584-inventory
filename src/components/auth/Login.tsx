@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../ui/Button'
+import { COMPANY_NAME } from '@/constants/company'
 
 interface LoginProps {
   onSuccess?: () => void
@@ -26,10 +27,10 @@ export default function Login({ onSuccess }: LoginProps) {
       <div className="max-w-md w-full">
         <div className="-mt-8">
           <div className="mx-auto h-56 w-56 flex items-center justify-center">
-            <img src="/logo.png" alt="1584 Design Projects Logo" className="h-full w-full object-contain" />
+            <img src="/logo.png" alt={`${COMPANY_NAME} Projects Logo`} className="h-full w-full object-contain" />
           </div>
           <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            1584 Design Projects
+            {COMPANY_NAME} Projects
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Sign in to access your inventory and transaction management system

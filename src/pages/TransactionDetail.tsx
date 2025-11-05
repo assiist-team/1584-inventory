@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/ToastContext'
 import TransactionItemForm from '@/components/TransactionItemForm'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -32,10 +33,10 @@ const removeUnwantedIcons = () => {
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
   if (transaction.transaction_id?.startsWith('INV_SALE_')) {
-    return '1584 Inventory Sale'
+    return COMPANY_INVENTORY_SALE
   }
   if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
-    return '1584 Inventory Purchase'
+    return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
   return transaction.source
@@ -676,7 +677,7 @@ export default function TransactionDetail() {
               <div>
                 <dt className="text-sm font-medium text-gray-500">Reimbursement Type</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {transaction.reimbursement_type === 'Client Owes 1584' ? 'Client Owes 1584' : '1584 Owes Client'}
+                  {transaction.reimbursement_type === CLIENT_OWES_COMPANY ? CLIENT_OWES_COMPANY : COMPANY_OWES_CLIENT}
                 </dd>
               </div>
             )}

@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../ui/Button'
 import { LogOut, Settings, Package, FolderOpen } from 'lucide-react'
+import { COMPANY_NAME } from '@/constants/company'
 
 export default function Header() {
   const { user, signOut, loading } = useAuth()
@@ -18,7 +19,7 @@ export default function Header() {
           {/* Left side - Logo only */}
           <div className="flex items-center">
             <Link to="/" className="text-xl font-bold text-gray-900">
-              1584 Design
+              {COMPANY_NAME}
             </Link>
           </div>
 
