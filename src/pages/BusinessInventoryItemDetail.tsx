@@ -7,10 +7,12 @@ import { formatDate } from '@/utils/dateUtils'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { ImageUploadService } from '@/services/imageService'
 import { useDuplication } from '@/hooks/useDuplication'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { currentAccountId } = useAccount()
   const [item, setItem] = useState<Item | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -40,13 +42,14 @@ export default function BusinessInventoryItemDetail() {
       }
     },
     duplicationService: async (itemId: string) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
       // Since we're using the unified service, we need to create a duplicate item
-      const originalItem = await unifiedItemsService.getItemById(itemId)
+      const originalItem = await unifiedItemsService.getItemById(currentAccountId, itemId)
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
       const { item_id, date_created, last_updated, ...itemData } = originalItem
-      return await unifiedItemsService.createItem({
+      return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
         inventory_status: 'available',
         project_id: null,
@@ -62,11 +65,11 @@ export default function BusinessInventoryItemDetail() {
   }
 
   useEffect(() => {
-    if (id) {
+    if (id && currentAccountId) {
       loadItem()
       loadProjects()
     }
-  }, [id])
+  }, [id, currentAccountId])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -86,8 +89,9 @@ export default function BusinessInventoryItemDetail() {
   }, [showProjectDropdown])
 
   const loadProjects = async () => {
+    if (!currentAccountId) return
     try {
-      const projectsData = await projectService.getProjects()
+      const projectsData = await projectService.getProjects(currentAccountId)
       setProjects(projectsData)
     } catch (error) {
       console.error('Error loading projects:', error)
@@ -96,9 +100,10 @@ export default function BusinessInventoryItemDetail() {
 
   // Subscribe to real-time updates
   useEffect(() => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
     const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
+      currentAccountId,
       (items) => {
         const updatedItem = items.find(i => i.item_id === id)
         if (updatedItem) {
@@ -108,13 +113,13 @@ export default function BusinessInventoryItemDetail() {
     )
 
     return unsubscribe
-  }, [id])
+  }, [id, currentAccountId])
 
   const loadItem = async () => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
     try {
-      const itemData = await unifiedItemsService.getItemById(id)
+      const itemData = await unifiedItemsService.getItemById(currentAccountId, id)
       setItem(itemData)
     } catch (error) {
       console.error('Error loading item:', error)
@@ -125,11 +130,11 @@ export default function BusinessInventoryItemDetail() {
 
 
   const handleDelete = async () => {
-    if (!id || !item) return
+    if (!id || !item || !currentAccountId) return
 
     if (window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
       try {
-        await unifiedItemsService.deleteItem(id)
+        await unifiedItemsService.deleteItem(currentAccountId, id)
         navigate('/business-inventory')
       } catch (error) {
         console.error('Error deleting item:', error)
@@ -159,11 +164,12 @@ export default function BusinessInventoryItemDetail() {
   }
 
   const handleAllocationSubmit = async () => {
-    if (!id || !allocationForm.projectId) return
+    if (!id || !allocationForm.projectId || !currentAccountId) return
 
     setIsUpdating(true)
     try {
       await unifiedItemsService.allocateItemToProject(
+        currentAccountId,
         id!,
         allocationForm.projectId,
         undefined,
@@ -241,10 +247,11 @@ export default function BusinessInventoryItemDetail() {
     }
 
     // Update the item with the new image
+    if (!currentAccountId) return
     const currentImages = item.images || []
     const updatedImages = [...currentImages, newImage]
 
-    await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
+    await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
 
     // Show success notification on the last file
     if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
@@ -254,12 +261,12 @@ export default function BusinessInventoryItemDetail() {
   }
 
   const handleRemoveImage = async (imageUrl: string) => {
-    if (!item?.item_id) return
+    if (!item?.item_id || !currentAccountId) return
 
     try {
       // Update in database
       const updatedImages = item.images?.filter(img => img.url !== imageUrl) || []
-      await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
+      await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
 
       // Update local state
       setItem({ ...item, images: updatedImages })
@@ -270,7 +277,7 @@ export default function BusinessInventoryItemDetail() {
   }
 
   const handleSetPrimaryImage = async (imageUrl: string) => {
-    if (!item?.item_id) return
+    if (!item?.item_id || !currentAccountId) return
 
     try {
       // Update in database
@@ -278,7 +285,7 @@ export default function BusinessInventoryItemDetail() {
         ...img,
         isPrimary: img.url === imageUrl
       })) || []
-      await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
+      await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
 
       // Update local state
       setItem({ ...item, images: updatedImages })

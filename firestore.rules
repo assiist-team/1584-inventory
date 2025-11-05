@@ -2,118 +2,148 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Helper functions
-    function isNotAnonymous() {
-      return request.auth != null && request.auth.uid != null;
+    function isAuthenticated() {
+      return request.auth != null;
     }
-
-    function getUserRole() {
-      return request.auth != null && request.auth.uid != null &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ?
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+    
+    function getUserAccountId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountId;
     }
-
-    function hasRole() {
-      return getUserRole() != null;
+    
+    function isSystemOwner() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
-
-    function isOwner() {
-      return getUserRole() == 'owner';
+    
+    function isAccountMember(accountId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/accounts/$(accountId)/members/$(request.auth.uid));
     }
-
-    function isAdmin() {
-      return getUserRole() == 'admin' || isOwner();
+    
+    function getUserRoleInAccount(accountId) {
+      return get(/databases/$(database)/documents/accounts/$(accountId)/members/$(request.auth.uid)).data.role;
     }
-
-    function isDesigner() {
-      return getUserRole() == 'designer' || isAdmin();
+    
+    function isAccountAdmin(accountId) {
+      return isSystemOwner() || 
+             (isAccountMember(accountId) && getUserRoleInAccount(accountId) == 'admin');
     }
-
-
-    // Check if user is authenticated (simplified - no role checking for new users)
-    function isAuthenticatedUser() {
-      return isNotAnonymous();
+    
+    // Accounts collection
+    match /accounts/{accountId} {
+      allow read: if isAccountMember(accountId) || isSystemOwner();
+      allow create: if isSystemOwner();
+      allow update, delete: if isAccountAdmin(accountId);
+      
+      // Account members
+      match /members/{userId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow write: if isAccountAdmin(accountId);
+      }
+      
+      // Business profile
+      match /businessProfile/profile {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow write: if isAccountAdmin(accountId);
+      }
+      
+      // Projects
+      match /projects/{projectId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow create: if isAccountMember(accountId);
+        allow update, delete: if isAccountMember(accountId);
+      }
+      
+      // Items
+      match /items/{itemId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow create: if isAccountMember(accountId);
+        allow update, delete: if isAccountMember(accountId);
+      }
+      
+      // Transactions
+      match /transactions/{transactionId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow create: if isAccountMember(accountId);
+        allow update, delete: if isAccountMember(accountId);
+        
+        // Allow inventory allocation maintenance without full overwrite
+        allow update: if isAccountMember(accountId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'item_ids','last_updated','amount','status','payment_method','transaction_date','notes'
+          ]);
+      }
+      
+      // Settings (tax presets)
+      match /settings/{settingId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow write: if isAccountAdmin(accountId);
+      }
+      
+      // Audit logs
+      match /audit_logs/{auditId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow create: if isAccountMember(accountId);
+      }
+      
+      match /transaction_audit_logs/{auditId} {
+        allow read: if isAccountMember(accountId) || isSystemOwner();
+        allow create: if isAccountMember(accountId);
+      }
     }
-
-    // Users can read and write their own user document (requires proper authentication, not anonymous)
+    
+    // Users collection (top-level)
     match /users/{userId} {
-      allow read, write: if isNotAnonymous() && request.auth.uid == userId;
-      allow read: if isNotAnonymous() && isAdmin(); // Admins can read all user documents
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if request.auth.uid == userId || isSystemOwner();
     }
-
-    // Invitations - only admins can manage invitations
+    
+    // Invitations collection (top-level)
     match /invitations/{invitationId} {
-      allow read, write: if isNotAnonymous() && isAdmin();
+      allow read: if isAuthenticated();
+      allow create: if isAccountAdmin(getUserAccountId());
+      allow update: if isAuthenticated();
     }
-
-    // Projects - authenticated users can access (role-based for existing users)
+    
+    // Legacy collections (for backward compatibility during migration)
     match /projects/{projectId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
-      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
+      allow read, write, delete: if isAuthenticated();
     }
-
-    // Items - authenticated users can access (unified collection)
+    
     match /items/{itemId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
-      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
+      allow read, write, delete: if isAuthenticated();
     }
-
-    // Transactions - authenticated users can access (top-level collection)
+    
     match /transactions/{transactionId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
-      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
-
-      // Allow inventory allocation maintenance without full overwrite
-      allow update: if isAuthenticatedUser() && (isDesigner() || !hasRole()) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'item_ids','last_updated','amount','status','payment_method','transaction_date','notes'
-        ]);
+      allow read, write, delete: if isAuthenticated();
     }
-
-    // Legacy Transactions - authenticated users can access (for backward compatibility)
-    match /projects/{projectId}/transactions/{transactionId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
-      allow delete: if isAuthenticatedUser() && (isAdmin() || !hasRole());
-
-      // Allow arrayUnion/arrayRemove operations for item_ids management
-      // This is needed for inventory allocation flows
-      allow update: if isAuthenticatedUser() && (isDesigner() || !hasRole()) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['item_ids', 'last_updated', 'amount', 'status', 'payment_method', 'transaction_date']);
-    }
-
-    // Audit logs - authenticated users can write audit events
-    match /audit_logs/{auditId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
-    }
-
-    // Transaction audit logs - authenticated users can write transaction audit events
-    match /transaction_audit_logs/{auditId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
-    }
-
-    // Legacy business_inventory collection (for backwards compatibility)
+    
     match /business_inventory/{itemId} {
-      allow read, write, delete: if isAuthenticatedUser();
+      allow read, write, delete: if isAuthenticated();
     }
-
-    // Legacy project items subcollections (for backwards compatibility)
+    
     match /projects/{projectId}/items/{itemId} {
-      allow read, write, delete: if isAuthenticatedUser();
+      allow read, write, delete: if isAuthenticated();
     }
-
-    // Settings - authenticated users can read (needed for tax presets), designers/admins can write
+    
+    match /projects/{projectId}/transactions/{transactionId} {
+      allow read, write, delete: if isAuthenticated();
+    }
+    
     match /settings/{settingId} {
-      allow read: if isAuthenticatedUser();
-      allow write: if isAuthenticatedUser() && (isDesigner() || !hasRole());
+      allow read, write: if isAuthenticated();
     }
-
+    
+    match /audit_logs/{auditId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /transaction_audit_logs/{auditId} {
+      allow read, write: if isAuthenticated();
+    }
+    
     // No anonymous access allowed for any other documents
-    // All access requires proper user authentication
     match /{document=**} {
       allow read, write: if false; // Block all access by default
     }

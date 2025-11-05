@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAccount } from '../../contexts/AccountContext'
 import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
 import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore'
@@ -13,6 +14,7 @@ interface UserManagementProps {
 
 export default function UserManagement({ className }: UserManagementProps) {
   const { user: currentUser, hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -63,7 +65,11 @@ export default function UserManagement({ className }: UserManagementProps) {
       setError('')
 
       // Create invitation in Firestore
-      await createUserInvitation(inviteEmail.trim(), inviteRole, currentUser?.id || '')
+      if (!currentAccountId) {
+        setError('Account ID is required')
+        return
+      }
+      await createUserInvitation(inviteEmail.trim(), inviteRole, currentUser?.id || '', currentAccountId)
 
       // Show success message
       alert(`Invitation sent to ${inviteEmail} with ${inviteRole} role. They can now sign up with Google and will be automatically assigned the ${inviteRole} role.`)

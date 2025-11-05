@@ -5,6 +5,7 @@ import { Transaction } from '@/types'
 import { transactionService } from '@/services/inventoryService'
 import type { Transaction as TransactionType } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+import { useAccount } from '@/contexts/AccountContext'
 
 // Canonical transaction title for display only
 const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
@@ -34,6 +35,7 @@ interface TransactionsListProps {
 
 export default function TransactionsList({ projectId: propProjectId }: TransactionsListProps) {
   const { id: routeProjectId } = useParams<{ id: string }>()
+  const { currentAccountId } = useAccount()
   // Use prop if provided, otherwise fall back to route param
   const projectId = propProjectId || routeProjectId
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -46,13 +48,13 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
 
   useEffect(() => {
     const loadTransactions = async () => {
-      if (!projectId) {
+      if (!projectId || !currentAccountId) {
         setIsLoading(false)
         return
       }
 
       try {
-        const data = await transactionService.getTransactions(projectId)
+        const data = await transactionService.getTransactions(currentAccountId, projectId)
         setTransactions(data)
       } catch (error) {
         console.error('Error loading transactions:', error)
@@ -63,18 +65,18 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     }
 
     loadTransactions()
-  }, [projectId])
+  }, [projectId, currentAccountId])
 
   // Subscribe to real-time updates
   useEffect(() => {
-    if (!projectId) return
+    if (!projectId || !currentAccountId) return
 
-    const unsubscribe = transactionService.subscribeToTransactions(projectId, (updatedTransactions) => {
+    const unsubscribe = transactionService.subscribeToTransactions(currentAccountId, projectId, (updatedTransactions) => {
       setTransactions(updatedTransactions)
     })
 
     return unsubscribe
-  }, [projectId])
+  }, [projectId, currentAccountId])
 
   // Filter transactions based on search and filter mode
   const filteredTransactions = useMemo(() => {

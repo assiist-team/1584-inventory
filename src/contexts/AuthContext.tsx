@@ -11,6 +11,7 @@ import {
   auth
 } from '../services/firebase'
 import { User, UserRole } from '../types'
+import { accountService } from '../services/accountService'
 
 interface AuthContextType {
   firebaseUser: FirebaseUser | null
@@ -20,6 +21,7 @@ interface AuthContextType {
   signOut: () => Promise<void>
   isAuthenticated: boolean
   hasRole: (role: UserRole) => boolean
+  isOwner: () => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -174,6 +176,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return result
   }
 
+  const isOwner = (): boolean => {
+    return user?.role === 'owner' || false
+  }
+
   const value: AuthContextType = {
     firebaseUser,
     user,
@@ -181,7 +187,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     signIn,
     signOut,
     isAuthenticated: !!firebaseUser,
-    hasRole
+    hasRole,
+    isOwner
   }
 
   return (

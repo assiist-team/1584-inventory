@@ -1,49 +1,39 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Helper functions
+    
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    function isNotAnonymous() {
-      return request.auth != null && request.auth.uid != null;
+    
+    function getUserAccountId() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.accountId;
     }
-
-    function getUserRole() {
-      return request.auth != null && request.auth.uid != null ?
-        firestore.get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', null) : null;
+    
+    function isSystemOwner() {
+      return isAuthenticated() && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
-
-    function hasRole() {
-      return getUserRole() != null;
+    
+    function isAccountAdmin(accountId) {
+      return isSystemOwner() || 
+             (firestore.exists(/databases/(default)/documents/accounts/$(accountId)/members/$(request.auth.uid)) &&
+              firestore.get(/databases/(default)/documents/accounts/$(accountId)/members/$(request.auth.uid)).data.role == 'admin');
     }
-
-    function isOwner() {
-      return getUserRole() == 'owner';
+    
+    // Business logo uploads
+    match /accounts/{accountId}/business_profile/logo/{fileName} {
+      allow read: if true; // Public read for logos
+      allow write: if isAuthenticated() && isAccountAdmin(accountId);
     }
-
-    function isAdmin() {
-      return getUserRole() == 'admin' || isOwner();
-    }
-
-    function isDesigner() {
-      return getUserRole() == 'designer' || isAdmin();
-    }
-
-    function isViewer() {
-      return getUserRole() == 'viewer' || isDesigner();
-    }
-
-    // Allow authenticated users to read files (for displaying uploaded images)
-    allow read: if isNotAnonymous();
-
-    // Allow authenticated users to upload to project-specific paths
+    
+    // Existing image paths (maintain backward compatibility)
     match /{projectName}/{allPaths=**} {
-      allow read, write: if isNotAnonymous();
+      allow read, write: if isAuthenticated();
     }
-
-    // Fallback: Allow authenticated users to write
-    allow write: if isNotAnonymous();
+    
+    // Fallback: Allow authenticated users to read and write
+    allow read: if isAuthenticated();
+    allow write: if isAuthenticated();
   }
 }

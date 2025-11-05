@@ -10,10 +10,12 @@ import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function ItemDetail() {
   const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
   const navigate = useNavigate()
+  const { currentAccountId } = useAccount()
   const [searchParams] = useSearchParams()
   const [item, setItem] = useState<Item | null>(null)
   const [projectName, setProjectName] = useState<string>('')
@@ -45,7 +47,8 @@ export default function ItemDetail() {
         setItem(items[0])
       }
     },
-    projectId
+    projectId,
+    accountId: currentAccountId || undefined
   })
 
   // Determine back navigation destination using navigation context
@@ -67,9 +70,11 @@ export default function ItemDetail() {
 
       if (actualItemId) {
         try {
+          if (!currentAccountId) return
+          
           if (isBusinessInventoryItem) {
             console.log('📦 Fetching business inventory item (no project context)...')
-            const fetchedItem = await unifiedItemsService.getItemById(actualItemId)
+            const fetchedItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
 
             if (fetchedItem) {
               console.log('✅ Business inventory item loaded successfully:', fetchedItem.item_id)
@@ -82,8 +87,8 @@ export default function ItemDetail() {
           } else if (projectId) {
             console.log('📡 Fetching item and project data...')
             const [fetchedItem, project] = await Promise.all([
-              unifiedItemsService.getItemById(actualItemId),
-              projectService.getProject(projectId)
+              unifiedItemsService.getItemById(currentAccountId, actualItemId),
+              projectService.getProject(currentAccountId, projectId)
             ])
 
             if (fetchedItem) {
@@ -113,16 +118,17 @@ export default function ItemDetail() {
     }
 
     fetchItem()
-  }, [actualItemId, id, searchParams])
+  }, [actualItemId, id, searchParams, currentAccountId])
 
   // Set up real-time listener for item updates
   useEffect(() => {
     const currentProjectId = id || searchParams.get('project')
-    if (!currentProjectId || !actualItemId) return
+    if (!currentProjectId || !actualItemId || !currentAccountId) return
 
     console.log('Setting up real-time listener for item:', actualItemId)
 
     const unsubscribe = unifiedItemsService.subscribeToItemsByProject(
+      currentAccountId,
       currentProjectId,
       (items) => {
         console.log('Real-time items update:', items.length, 'items')
@@ -138,7 +144,7 @@ export default function ItemDetail() {
       console.log('Cleaning up real-time listener for item:', actualItemId)
       unsubscribe()
     }
-  }, [searchParams, actualItemId, id])
+  }, [searchParams, actualItemId, id, currentAccountId])
 
   // Close disposition menu when clicking outside
   useEffect(() => {
@@ -176,10 +182,10 @@ export default function ItemDetail() {
   }, [])
 
   const toggleBookmark = async () => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     try {
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
         bookmark: !item.bookmark
       })
       setItem({ ...item, bookmark: !item.bookmark })
@@ -191,7 +197,7 @@ export default function ItemDetail() {
   const updateDisposition = async (newDisposition: string) => {
     console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.item_id)
 
-    if (!item) {
+    if (!item || !currentAccountId) {
       console.error('❌ No item available for disposition update')
       return
     }
@@ -200,7 +206,7 @@ export default function ItemDetail() {
 
     try {
       // Update the disposition in the database first
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
         disposition: newDisposition
       })
       console.log('💾 Database updated successfully')
@@ -214,20 +220,21 @@ export default function ItemDetail() {
         console.log('🚀 Starting deallocation process for item:', item.item_id)
         try {
           await integrationService.handleItemDeallocation(
+            currentAccountId,
             item.item_id,
             item.project_id || '',
             newDisposition
           )
           console.log('✅ Deallocation completed successfully')
           // Refresh the item data after deallocation
-          const updatedItem = await unifiedItemsService.getItemById(item.item_id)
+          const updatedItem = await unifiedItemsService.getItemById(currentAccountId, item.item_id)
           if (updatedItem) {
             setItem(updatedItem)
           }
         } catch (deallocationError) {
           console.error('❌ Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
-          await unifiedItemsService.updateItem(item.item_id, {
+          await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
             disposition: item.disposition // Revert to previous disposition
           })
           setItem({ ...item, disposition: item.disposition })
@@ -264,14 +271,14 @@ export default function ItemDetail() {
   }
 
   const handleDeleteItem = async () => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     if (!confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
       return
     }
 
     try {
-      await unifiedItemsService.deleteItem(item.item_id)
+      await unifiedItemsService.deleteItem(currentAccountId, item.item_id)
       navigate(isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Failed to delete item:', error)
@@ -325,9 +332,9 @@ export default function ItemDetail() {
       console.log('After update - updatedImages length:', updatedImages.length)
       console.log('New images URLs:', newImages.map(img => img.url))
 
-      if (projectId) {
+      if (projectId && currentAccountId) {
         console.log('Updating item in database with multiple new images')
-        await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
+        await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
       }
 
       // Update local state
@@ -380,11 +387,11 @@ export default function ItemDetail() {
 
 
   const handleRemoveImage = async (imageUrl: string) => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     try {
       // Remove from database
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
         images: item.images?.filter(img => img.url !== imageUrl) || []
       })
 
@@ -400,11 +407,11 @@ export default function ItemDetail() {
   }
 
   const handleSetPrimaryImage = async (imageUrl: string) => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     try {
       // Update in database
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
         images: item.images?.map(img => ({
           ...img,
           isPrimary: img.url === imageUrl

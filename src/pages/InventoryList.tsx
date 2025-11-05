@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { useAccount } from '@/contexts/AccountContext'
 
 interface InventoryListItem {
   item_id: string
@@ -36,6 +37,7 @@ interface InventoryListProps {
 }
 
 export default function InventoryList({ projectId, projectName }: InventoryListProps) {
+  const { currentAccountId } = useAccount()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<InventoryListItem[]>([])
@@ -50,11 +52,12 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   // Fetch real inventory data from Firestore
   useEffect(() => {
     const fetchItems = async () => {
+      if (!currentAccountId) return
       try {
         setLoading(true)
         setError(null)
         console.log('Fetching items for project:', projectId)
-        const realItems = await unifiedItemsService.getItemsByProject(projectId)
+        const realItems = await unifiedItemsService.getItemsByProject(currentAccountId, projectId)
         console.log('Fetched items:', realItems.length, realItems)
         setItems(realItems)
       } catch (error) {
@@ -65,19 +68,21 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       }
     }
 
-    fetchItems()
+    if (currentAccountId) {
+      fetchItems()
 
-    // Subscribe to real-time updates
-    const unsubscribe = unifiedItemsService.subscribeToItemsByProject(projectId, (updatedItems) => {
-      console.log('Real-time items update:', updatedItems.length, updatedItems)
-      setItems(updatedItems)
-    })
+      // Subscribe to real-time updates
+      const unsubscribe = unifiedItemsService.subscribeToItemsByProject(currentAccountId, projectId, (updatedItems) => {
+        console.log('Real-time items update:', updatedItems.length, updatedItems)
+        setItems(updatedItems)
+      })
 
-    // Cleanup subscription on unmount
-    return () => {
-      unsubscribe()
+      // Cleanup subscription on unmount
+      return () => {
+        unsubscribe()
+      }
     }
-  }, [projectId])
+  }, [projectId, currentAccountId])
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
@@ -128,7 +133,10 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const { toggleBookmark } = useBookmark<InventoryListItem>({
     items,
     setItems,
-    updateItemService: (itemId, updates) => unifiedItemsService.updateItem(itemId, updates),
+    updateItemService: (itemId, updates) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
+      return unifiedItemsService.updateItem(currentAccountId, itemId, updates)
+    },
     projectId
   })
 
@@ -155,7 +163,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       console.log('📝 Updating disposition from', item.disposition, 'to', newDisposition)
 
       // Update in Firestore
-      await unifiedItemsService.updateItem(itemId, { disposition: newDisposition })
+      if (!currentAccountId) throw new Error('Account ID is required')
+      await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: newDisposition })
       console.log('💾 Database updated successfully')
 
       // If disposition is set to 'inventory', trigger deallocation process
@@ -163,6 +172,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         console.log('🚀 Starting deallocation process for item:', itemId)
         try {
           await integrationService.handleItemDeallocation(
+            currentAccountId,
             itemId,
             item.project_id || '',
             newDisposition
@@ -173,7 +183,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         } catch (deallocationError) {
           console.error('❌ Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
-          await unifiedItemsService.updateItem(itemId, {
+          await unifiedItemsService.updateItem(currentAccountId, itemId, {
             disposition: item.disposition // Revert to previous disposition
           })
           setError('Failed to move item to inventory. Please try again.')
@@ -270,7 +280,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
 
     // Update the item with the new image
-    await unifiedItemsService.updateItem(itemId, { images: [newImage] })
+    if (!currentAccountId) throw new Error('Account ID is required')
+    await unifiedItemsService.updateItem(currentAccountId, itemId, { images: [newImage] })
     // The real-time listener will handle the UI update
 
     // Show success notification on the last file
@@ -289,9 +300,13 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       return
     }
 
+    if (!currentAccountId) {
+      setError('Account ID is required')
+      return
+    }
     try {
       const deletePromises = Array.from(selectedItems).map(itemId =>
-        unifiedItemsService.deleteItem(itemId)
+        unifiedItemsService.deleteItem(currentAccountId, itemId)
       )
 
       await Promise.all(deletePromises)

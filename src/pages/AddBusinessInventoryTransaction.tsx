@@ -6,10 +6,12 @@ import { transactionService, projectService } from '@/services/inventoryService'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function AddBusinessInventoryTransaction() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { currentAccountId } = useAccount()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [formData, setFormData] = useState({
@@ -61,28 +63,30 @@ export default function AddBusinessInventoryTransaction() {
   // Load projects on mount
   useEffect(() => {
     const loadProjects = async () => {
+      if (!currentAccountId) return
       try {
-        const projectsData = await projectService.getProjects()
+        const projectsData = await projectService.getProjects(currentAccountId)
         setProjects(projectsData)
       } catch (error) {
         console.error('Error loading projects:', error)
       }
     }
     loadProjects()
-  }, [])
+  }, [currentAccountId])
 
   // Load tax presets on mount
   useEffect(() => {
     const loadPresets = async () => {
+      if (!currentAccountId) return
       try {
-        const presets = await getTaxPresets()
+        const presets = await getTaxPresets(currentAccountId)
         setTaxPresets(presets)
       } catch (error) {
         console.error('Error loading tax presets:', error)
       }
     }
     loadPresets()
-  }, [])
+  }, [currentAccountId])
 
   // Update selected preset rate when preset changes
   useEffect(() => {
@@ -174,7 +178,12 @@ export default function AddBusinessInventoryTransaction() {
         subtotal: taxRatePreset === 'Other' ? subtotal : ''
       }
 
-      await transactionService.createTransaction(projectId, newTransaction)
+      if (!currentAccountId) {
+        setFormErrors({ general: 'Account ID is required' })
+        setIsSubmitting(false)
+        return
+      }
+      await transactionService.createTransaction(currentAccountId, projectId, newTransaction, [])
       navigate(`/business-inventory`)
     } catch (error) {
       console.error('Error creating transaction:', error)

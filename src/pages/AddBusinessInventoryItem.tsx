@@ -1,13 +1,14 @@
 import { ArrowLeft, Save, X, Shield } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useState, FormEvent, useEffect, useMemo, useRef } from 'react'
-import { businessInventoryService, transactionService } from '@/services/inventoryService'
+import { unifiedItemsService, transactionService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
 import { Transaction, ItemImage } from '@/types'
 import { Select } from '@/components/ui/Select'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { useAuth } from '../contexts/AuthContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
@@ -31,6 +32,7 @@ export default function AddBusinessInventoryItem() {
   const navigate = useNavigate()
   const location = useLocation()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
   const { showError } = useToast()
 
   // Navigation context logic
@@ -105,13 +107,14 @@ export default function AddBusinessInventoryItem() {
   // Fetch transactions when component mounts
   useEffect(() => {
     const fetchTransactions = async () => {
+      if (!currentAccountId) return
       setLoadingTransactions(true)
       try {
         // Get inventory-related transactions from top-level collection
         const allTransactions: Transaction[] = []
 
         // Get inventory-related transactions (reimbursement_type in ['Client Owes', 'We Owe'])
-        const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions()
+        const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions(currentAccountId)
         allTransactions.push(...inventoryRelatedTransactions)
 
         // Sort by creation date, newest first
@@ -125,7 +128,7 @@ export default function AddBusinessInventoryItem() {
     }
 
     fetchTransactions()
-  }, [])
+  }, [currentAccountId])
 
   // Initialize custom states based on initial form data
   useEffect(() => {
@@ -179,7 +182,11 @@ export default function AddBusinessInventoryItem() {
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
-      const itemId = await businessInventoryService.createBusinessInventoryItem(itemData)
+      if (!currentAccountId) {
+        showError('Account ID is required')
+        return
+      }
+      const itemId = await unifiedItemsService.createItem(currentAccountId, itemData)
       navigate(`/business-inventory/${itemId}`)
     } catch (error) {
       console.error('Error creating item:', error)

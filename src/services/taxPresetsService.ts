@@ -1,13 +1,13 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from './firebase'
-import { DEFAULT_TAX_PRESETS, TAX_PRESETS_DOC_PATH, TaxPreset } from '@/constants/taxPresets'
+import { DEFAULT_TAX_PRESETS, TaxPreset } from '@/constants/taxPresets'
 
 /**
- * Get tax presets from Firestore, falling back to defaults if not found
+ * Get tax presets from Firestore for an account, falling back to defaults if not found
  */
-export async function getTaxPresets(): Promise<TaxPreset[]> {
+export async function getTaxPresets(accountId: string): Promise<TaxPreset[]> {
   try {
-    const presetsDocRef = doc(db, TAX_PRESETS_DOC_PATH)
+    const presetsDocRef = doc(db, 'accounts', accountId, 'settings', 'taxPresets')
     const presetsDoc = await getDoc(presetsDocRef)
 
     if (presetsDoc.exists()) {
@@ -18,7 +18,7 @@ export async function getTaxPresets(): Promise<TaxPreset[]> {
     }
 
     // If no presets found in Firestore, initialize with defaults
-    await updateTaxPresets(DEFAULT_TAX_PRESETS)
+    await updateTaxPresets(accountId, DEFAULT_TAX_PRESETS)
     return DEFAULT_TAX_PRESETS
   } catch (error) {
     console.error('Error fetching tax presets from Firestore:', error)
@@ -28,10 +28,11 @@ export async function getTaxPresets(): Promise<TaxPreset[]> {
 }
 
 /**
- * Update tax presets in Firestore
+ * Update tax presets in Firestore for an account
+ * @param accountId Account ID
  * @param presets Array of tax presets to save
  */
-export async function updateTaxPresets(presets: TaxPreset[]): Promise<void> {
+export async function updateTaxPresets(accountId: string, presets: TaxPreset[]): Promise<void> {
   try {
     // Validate presets
     if (!Array.isArray(presets) || presets.length === 0) {
@@ -58,7 +59,7 @@ export async function updateTaxPresets(presets: TaxPreset[]): Promise<void> {
       throw new Error('Preset IDs must be unique')
     }
 
-    const presetsDocRef = doc(db, TAX_PRESETS_DOC_PATH)
+    const presetsDocRef = doc(db, 'accounts', accountId, 'settings', 'taxPresets')
     await setDoc(presetsDocRef, {
       presets,
       updatedAt: new Date().toISOString()
@@ -72,10 +73,10 @@ export async function updateTaxPresets(presets: TaxPreset[]): Promise<void> {
 }
 
 /**
- * Get a specific preset by ID
+ * Get a specific preset by ID for an account
  */
-export async function getTaxPresetById(presetId: string): Promise<TaxPreset | null> {
-  const presets = await getTaxPresets()
+export async function getTaxPresetById(accountId: string, presetId: string): Promise<TaxPreset | null> {
+  const presets = await getTaxPresets(accountId)
   return presets.find(p => p.id === presetId) || null
 }
 

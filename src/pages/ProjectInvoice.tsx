@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/Button'
 import type { Item, Project, Transaction } from '@/types'
 import { formatDate } from '@/utils/dateUtils'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
+import { useBusinessProfile } from '@/contexts/BusinessProfileContext'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT, COMPANY_PROJECT_PORTAL_LOGO_ALT } from '@/constants/company'
 
 type InvoiceItemLine = {
@@ -20,7 +22,6 @@ type InvoiceTransactionLine = {
 }
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-const INVOICE_LOGO_URL = 'https://storage.googleapis.com/msgsndr/zTjqcEq3Ndj90wvhfc47/media/684c87bb082624ba07154dd6.png'
 
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
@@ -40,6 +41,8 @@ function toNumber(value: string | number | null | undefined): number {
 export default function ProjectInvoice() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { currentAccountId } = useAccount()
+  const { businessName, businessLogoUrl } = useBusinessProfile()
 
   const [project, setProject] = useState<Project | null>(null)
   const [clientOwesLines, setClientOwesLines] = useState<InvoiceTransactionLine[]>([])
@@ -51,7 +54,8 @@ export default function ProjectInvoice() {
 
   useEffect(() => {
     const load = async () => {
-      if (!projectId) {
+      if (!projectId || !currentAccountId) {
+        if (!currentAccountId) return // Wait for account to load
         navigate('/projects')
         return
       }
@@ -60,8 +64,8 @@ export default function ProjectInvoice() {
       setError(null)
       try {
         const [proj, txs] = await Promise.all([
-          projectService.getProject(projectId),
-          transactionService.getTransactions(projectId)
+          projectService.getProject(currentAccountId, projectId),
+          transactionService.getTransactions(currentAccountId, projectId)
         ])
 
         if (!proj) {
@@ -78,7 +82,7 @@ export default function ProjectInvoice() {
         // Sort by transaction_date ascending within each group later
         // Fetch items for each transaction in parallel
         const lines = await Promise.all(invoiceable.map(async (tx): Promise<InvoiceTransactionLine> => {
-          const items: Item[] = await unifiedItemsService.getItemsForTransaction(projectId, tx.transaction_id)
+          const items: Item[] = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, tx.transaction_id)
 
           const itemLines: InvoiceItemLine[] = items.map((it) => {
             const hasPrice = !!it.project_price && it.project_price.trim() !== ''
@@ -113,7 +117,7 @@ export default function ProjectInvoice() {
     }
 
     load()
-  }, [projectId, navigate])
+  }, [projectId, currentAccountId, navigate])
 
   const clientOwesSubtotal = useMemo(() => clientOwesLines.reduce((sum, l) => sum + l.lineTotal, 0), [clientOwesLines])
   const creditsSubtotal = useMemo(() => creditLines.reduce((sum, l) => sum + l.lineTotal, 0), [creditLines])
@@ -162,11 +166,13 @@ export default function ProjectInvoice() {
       {/* Header */}
       <div className="border-b pb-4 mb-6">
         <div className="flex items-start gap-4">
-          <img
-            src={INVOICE_LOGO_URL}
-            alt={COMPANY_PROJECT_PORTAL_LOGO_ALT}
-            className="h-24 w-auto object-contain"
-          />
+          {businessLogoUrl && (
+            <img
+              src={businessLogoUrl}
+              alt={businessName}
+              className="h-24 w-auto object-contain"
+            />
+          )}
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Invoice</h1>
             <div className="mt-1 text-sm text-gray-600">

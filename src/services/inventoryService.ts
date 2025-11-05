@@ -27,6 +27,7 @@ import type { Item, Project, FilterOptions, PaginationOptions, Transaction, Tran
 export const auditService = {
   // Log allocation/de-allocation events
   async logAllocationEvent(
+    accountId: string,
     eventType: 'allocation' | 'deallocation' | 'return',
     itemId: string,
     projectId: string | null,
@@ -46,7 +47,7 @@ export const auditService = {
         details = transactionIdOrDetails || {}
       }
 
-      const auditRef = collection(db, 'audit_logs')
+      const auditRef = collection(db, 'accounts', accountId, 'audit_logs')
       await addDoc(auditRef, {
         event_type: eventType,
         item_id: itemId,
@@ -65,13 +66,14 @@ export const auditService = {
 
   // Log transaction state changes
   async logTransactionStateChange(
+    accountId: string,
     transactionId: string,
     changeType: 'created' | 'updated' | 'deleted',
     oldState?: any,
     newState?: any
   ): Promise<void> {
     try {
-      const auditRef = collection(db, 'transaction_audit_logs')
+      const auditRef = collection(db, 'accounts', accountId, 'transaction_audit_logs')
       await addDoc(auditRef, {
         transaction_id: transactionId,
         change_type: changeType,
@@ -90,12 +92,12 @@ export const auditService = {
 
 // Project Services
 export const projectService = {
-  // Get all projects for current user
-  async getProjects(): Promise<Project[]> {
+  // Get all projects for current account
+  async getProjects(accountId: string): Promise<Project[]> {
     // Ensure authentication before Firestore operations
     await ensureAuthenticatedForStorage()
 
-    const projectsRef = collection(db, 'projects')
+    const projectsRef = collection(db, 'accounts', accountId, 'projects')
     const q = query(projectsRef, orderBy('updatedAt', 'desc'))
 
     const querySnapshot = await getDocs(q)
@@ -109,11 +111,11 @@ export const projectService = {
   },
 
   // Get single project
-  async getProject(projectId: string): Promise<Project | null> {
+  async getProject(accountId: string, projectId: string): Promise<Project | null> {
     // Ensure authentication before Firestore operations
     await ensureAuthenticatedForStorage()
 
-    const projectRef = doc(db, 'projects', projectId)
+    const projectRef = doc(db, 'accounts', accountId, 'projects', projectId)
     const projectSnap = await getDoc(projectRef)
 
     if (projectSnap.exists()) {
@@ -127,8 +129,8 @@ export const projectService = {
   },
 
   // Create new project
-  async createProject(projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const projectsRef = collection(db, 'projects')
+  async createProject(accountId: string, projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+    const projectsRef = collection(db, 'accounts', accountId, 'projects')
     const now = new Date()
 
     const newProject = {
@@ -142,8 +144,8 @@ export const projectService = {
   },
 
   // Update project
-  async updateProject(projectId: string, updates: Partial<Project>): Promise<void> {
-    const projectRef = doc(db, 'projects', projectId)
+  async updateProject(accountId: string, projectId: string, updates: Partial<Project>): Promise<void> {
+    const projectRef = doc(db, 'accounts', accountId, 'projects', projectId)
     await updateDoc(projectRef, {
       ...updates,
       updatedAt: new Date()
@@ -151,14 +153,14 @@ export const projectService = {
   },
 
   // Delete project
-  async deleteProject(projectId: string): Promise<void> {
-    const projectRef = doc(db, 'projects', projectId)
+  async deleteProject(accountId: string, projectId: string): Promise<void> {
+    const projectRef = doc(db, 'accounts', accountId, 'projects', projectId)
     await deleteDoc(projectRef)
   },
 
   // Subscribe to projects
-  subscribeToProjects(callback: (projects: Project[]) => void) {
-    const projectsRef = collection(db, 'projects')
+  subscribeToProjects(accountId: string, callback: (projects: Project[]) => void) {
+    const projectsRef = collection(db, 'accounts', accountId, 'projects')
     const q = query(projectsRef, orderBy('updatedAt', 'desc'))
 
     return onSnapshot(q, (snapshot) => {
@@ -179,9 +181,9 @@ export const projectService = {
 
 // Transaction Services
 export const transactionService = {
-  // Get transactions for a project (top-level collection)
-  async getTransactions(projectId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'transactions')
+  // Get transactions for a project (account-scoped)
+  async getTransactions(accountId: string, projectId: string): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
     const q = query(
       transactionsRef,
       where('project_id', '==', projectId),
@@ -206,9 +208,9 @@ export const transactionService = {
     })
   },
 
-  // Get single transaction (top-level only - post-migration)
-  async getTransaction(_projectId: string, transactionId: string): Promise<Transaction | null> {
-    const transactionRef = doc(db, 'transactions', transactionId)
+  // Get single transaction (account-scoped)
+  async getTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Transaction | null> {
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (transactionSnap.exists()) {
@@ -236,9 +238,9 @@ export const transactionService = {
     return null
   },
 
-  // Get transaction by ID across all projects (for business inventory) - top-level only
-  async getTransactionById(transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
-    const transactionRef = doc(db, 'transactions', transactionId)
+  // Get transaction by ID across all projects (for business inventory) - account-scoped
+  async getTransactionById(accountId: string, transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (transactionSnap.exists()) {
@@ -262,14 +264,15 @@ export const transactionService = {
     return { transaction: null, projectId: null }
   },
 
-  // Create new transaction (top-level collection)
+  // Create new transaction (account-scoped)
   async createTransaction(
+    accountId: string,
     projectId: string | null | undefined,
     transactionData: Omit<Transaction, 'transaction_id' | 'created_at'>,
     items?: TransactionItemFormData[]
   ): Promise<string> {
     try {
-      const transactionsRef = collection(db, 'transactions')
+      const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
       const now = new Date()
 
       const newTransaction = {
@@ -303,7 +306,7 @@ export const transactionService = {
           txToSave.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
         } else {
           // Look up preset by ID
-          const preset = await getTaxPresetById(txToSave.tax_rate_preset)
+          const preset = await getTaxPresetById(accountId, txToSave.tax_rate_preset)
           if (!preset) {
             throw new Error(`Tax preset with ID '${txToSave.tax_rate_preset}' not found.`)
           }
@@ -325,6 +328,7 @@ export const transactionService = {
         // Propagate tax_rate_pct to created items if present on transaction
         const itemsToCreate = items.map(i => ({ ...i }))
         const createdItemIds = await unifiedItemsService.createTransactionItems(
+          accountId,
           projectId || '',
           transactionId,
           transactionData.transaction_date,
@@ -344,9 +348,9 @@ export const transactionService = {
     }
   },
 
-  // Update transaction (top-level collection)
-  async updateTransaction(_projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
-    const transactionRef = doc(db, 'transactions', transactionId)
+  // Update transaction (account-scoped)
+  async updateTransaction(accountId: string, _projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
 
     // Apply business rules for reimbursement type and status
     const finalUpdates: any = { ...updates }
@@ -392,7 +396,7 @@ export const transactionService = {
       } else {
         // Look up preset by ID
         try {
-          const preset = await getTaxPresetById(processedUpdates.tax_rate_preset)
+          const preset = await getTaxPresetById(accountId, processedUpdates.tax_rate_preset)
           if (preset) {
             processedUpdates.tax_rate_pct = preset.rate
             // Remove subtotal when using presets
@@ -413,11 +417,11 @@ export const transactionService = {
     // If tax_rate_pct is set in updates, propagate to items
     if (processedUpdates.tax_rate_pct !== undefined) {
       try {
-        const items = await unifiedItemsService.getItemsForTransaction(_projectId, transactionId)
+        const items = await unifiedItemsService.getItemsForTransaction(accountId, _projectId, transactionId)
         if (items && items.length > 0) {
           const batch = writeBatch(db)
           items.forEach(item => {
-            const itemRef = doc(db, 'items', item.item_id)
+            const itemRef = doc(db, 'accounts', accountId, 'items', item.item_id)
             batch.update(itemRef, { tax_rate_pct: processedUpdates.tax_rate_pct, last_updated: new Date().toISOString() })
           })
           await batch.commit()
@@ -428,15 +432,15 @@ export const transactionService = {
     }
   },
 
-  // Delete transaction (top-level collection)
-  async deleteTransaction(_projectId: string, transactionId: string): Promise<void> {
-    const transactionRef = doc(db, 'transactions', transactionId)
+  // Delete transaction (account-scoped)
+  async deleteTransaction(accountId: string, _projectId: string, transactionId: string): Promise<void> {
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
     await deleteDoc(transactionRef)
   },
 
-  // Subscribe to transactions (top-level collection)
-  subscribeToTransactions(_projectId: string, callback: (transactions: Transaction[]) => void) {
-    const transactionsRef = collection(db, 'transactions')
+  // Subscribe to transactions (account-scoped)
+  subscribeToTransactions(accountId: string, _projectId: string, callback: (transactions: Transaction[]) => void) {
+    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
     const q = query(
       transactionsRef,
       where('project_id', '==', _projectId),
@@ -463,13 +467,14 @@ export const transactionService = {
     })
   },
 
-  // Subscribe to single transaction for real-time updates (top-level collection)
+  // Subscribe to single transaction for real-time updates (account-scoped)
   subscribeToTransaction(
+    accountId: string,
     _projectId: string,
     transactionId: string,
     callback: (transaction: Transaction | null) => void
   ) {
-    const transactionRef = doc(db, 'transactions', transactionId)
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
 
     return onSnapshot(transactionRef, (doc) => {
       if (doc.exists()) {
@@ -498,11 +503,12 @@ export const transactionService = {
     })
   },
 
-  // Get pending transactions for a project
-  async getPendingTransactions(projectId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
+  // Get pending transactions for a project (account-scoped)
+  async getPendingTransactions(accountId: string, projectId: string): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
     const q = query(
       transactionsRef,
+      where('project_id', '==', projectId),
       where('status', '==', 'pending'),
       orderBy('created_at', 'desc')
     )
@@ -525,14 +531,15 @@ export const transactionService = {
     })
   },
 
-  // Update transaction status (for completing/cancelling pending transactions)
+  // Update transaction status (for completing/cancelling pending transactions) (account-scoped)
   async updateTransactionStatus(
+    accountId: string,
     projectId: string,
     transactionId: string,
     status: 'pending' | 'completed' | 'canceled',
     updates?: Partial<Transaction>
   ): Promise<void> {
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
 
     const updateData: any = {
       status: status,
@@ -550,9 +557,9 @@ export const transactionService = {
     await updateDoc(transactionRef, updateData)
   },
 
-  // Utility queries for Business Inventory and reporting (top-level collection)
-  async getInventoryRelatedTransactions(): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'transactions')
+  // Utility queries for Business Inventory and reporting (account-scoped)
+  async getInventoryRelatedTransactions(accountId: string): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
     const q = query(
       transactionsRef,
       where('reimbursement_type', 'in', [CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT]),
@@ -577,9 +584,9 @@ export const transactionService = {
     })
   },
 
-  // Get business inventory transactions (project_id == null)
-  async getBusinessInventoryTransactions(): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'transactions')
+  // Get business inventory transactions (project_id == null) (account-scoped)
+  async getBusinessInventoryTransactions(accountId: string): Promise<Transaction[]> {
+    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
     const q = query(
       transactionsRef,
       where('project_id', '==', null),
@@ -607,15 +614,16 @@ export const transactionService = {
 
 // Unified Items Collection Services (NEW)
 export const unifiedItemsService = {
-  // Get items for a project (project_id == projectId)
+  // Get items for a project (project_id == projectId) (account-scoped)
   async getItemsByProject(
+    accountId: string,
     projectId: string,
     filters?: FilterOptions,
     pagination?: PaginationOptions
   ): Promise<Item[]> {
     await ensureAuthenticatedForStorage()
 
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     let q = query(itemsRef, where('project_id', '==', projectId))
 
     // Apply filters
@@ -681,13 +689,14 @@ export const unifiedItemsService = {
     return items
   },
 
-  // Subscribe to items for a project
+  // Subscribe to items for a project (account-scoped)
   subscribeToItemsByProject(
+    accountId: string,
     projectId: string,
     callback: (items: Item[]) => void,
     filters?: FilterOptions
   ) {
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     let q = query(itemsRef, where('project_id', '==', projectId), orderBy('last_updated', 'desc'))
 
     if (filters?.status) {
@@ -728,14 +737,15 @@ export const unifiedItemsService = {
     })
   },
 
-  // Get business inventory items (project_id == null)
+  // Get business inventory items (project_id == null) (account-scoped)
   async getBusinessInventoryItems(
+    accountId: string,
     filters?: { status?: string; searchQuery?: string },
     pagination?: PaginationOptions
   ): Promise<Item[]> {
     await ensureAuthenticatedForStorage()
 
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     let q = query(itemsRef, where('project_id', '==', null))
 
     // Apply filters
@@ -774,12 +784,13 @@ export const unifiedItemsService = {
     return items
   },
 
-  // Subscribe to business inventory items
+  // Subscribe to business inventory items (account-scoped)
   subscribeToBusinessInventory(
+    accountId: string,
     callback: (items: Item[]) => void,
     filters?: { status?: string; searchQuery?: string }
   ) {
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     let q = query(itemsRef, where('project_id', '==', null), orderBy('last_updated', 'desc'))
 
     if (filters?.status) {
@@ -807,11 +818,11 @@ export const unifiedItemsService = {
     })
   },
 
-  // Create new item
-  async createItem(itemData: Omit<Item, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
+  // Create new item (account-scoped)
+  async createItem(accountId: string, itemData: Omit<Item, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
     await ensureAuthenticatedForStorage()
 
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     const now = new Date()
 
     const newItem: any = {
@@ -825,7 +836,7 @@ export const unifiedItemsService = {
     // attempt to read the transaction and inherit its tax_rate_pct.
     try {
       if (newItem.transaction_id && newItem.tax_rate_pct === undefined) {
-        const txRef = doc(db, 'transactions', newItem.transaction_id)
+        const txRef = doc(db, 'accounts', accountId, 'transactions', newItem.transaction_id)
         const txSnap = await getDoc(txRef)
         if (txSnap.exists()) {
           const txData: any = txSnap.data()
@@ -842,11 +853,11 @@ export const unifiedItemsService = {
     return docRef.id
   },
 
-  // Update item
-  async updateItem(itemId: string, updates: Partial<Item>): Promise<void> {
+  // Update item (account-scoped)
+  async updateItem(accountId: string, itemId: string, updates: Partial<Item>): Promise<void> {
     await ensureAuthenticatedForStorage()
 
-    const itemRef = doc(db, 'items', itemId)
+    const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
 
     const firebaseUpdates: any = {
       last_updated: new Date().toISOString()
@@ -879,7 +890,7 @@ export const unifiedItemsService = {
       if (willSetTransaction && missingTax) {
         const txId = updates.transaction_id as string
         if (txId) {
-          const txRef = doc(db, 'transactions', txId)
+          const txRef = doc(db, 'accounts', accountId, 'transactions', txId)
           const txSnap = await getDoc(txRef)
           if (txSnap.exists()) {
             const txData: any = txSnap.data()
@@ -896,19 +907,19 @@ export const unifiedItemsService = {
     await updateDoc(itemRef, firebaseUpdates)
   },
 
-  // Delete item
-  async deleteItem(itemId: string): Promise<void> {
+  // Delete item (account-scoped)
+  async deleteItem(accountId: string, itemId: string): Promise<void> {
     await ensureAuthenticatedForStorage()
 
-    const itemRef = doc(db, 'items', itemId)
+    const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
     await deleteDoc(itemRef)
   },
 
-  // Get items for a transaction (by transaction_id)
-  async getItemsForTransaction(_projectId: string, transactionId: string): Promise<Item[]> {
+  // Get items for a transaction (by transaction_id) (account-scoped)
+  async getItemsForTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Item[]> {
     await ensureAuthenticatedForStorage()
 
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     const q = query(
       itemsRef,
       where('transaction_id', '==', transactionId),
@@ -923,8 +934,9 @@ export const unifiedItemsService = {
     } as Item))
   },
 
-  // Allocate single item to project (follows ALLOCATION_TRANSACTION_LOGIC.md deterministic flows)
+  // Allocate single item to project (follows ALLOCATION_TRANSACTION_LOGIC.md deterministic flows) (account-scoped)
   async allocateItemToProject(
+    accountId: string,
     itemId: string,
     projectId: string,
     amount?: string,
@@ -934,7 +946,7 @@ export const unifiedItemsService = {
     await ensureAuthenticatedForStorage()
 
     // Get the item to determine current state and calculate amount
-    const item = await this.getItemById(itemId)
+    const item = await this.getItemById(accountId, itemId)
     if (!item) {
       throw new Error('Item not found')
     }
@@ -952,7 +964,7 @@ export const unifiedItemsService = {
 
     // Log allocation start (catch errors to prevent cascading failures)
     try {
-      await (auditService.logAllocationEvent as any)('allocation', itemId, item.project_id, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, item.project_id, currentTransactionId, {
         action: 'allocation_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -971,11 +983,11 @@ export const unifiedItemsService = {
       if (currentProjectId === projectId) {
         // A.1: Remove item from Sale and move to Inventory (delete Sale if empty)
         console.log('📋 Scenario A.1: Item in Sale, allocating to same project → move to inventory')
-        return await this.handleSaleToInventoryMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
+        return await this.handleSaleToInventoryMove(accountId, itemId, currentTransactionId, projectId, finalAmount, notes, space)
       } else {
         // A.2: Allocate to different project - remove from Sale, add to Purchase (Project Y)
         console.log('📋 Scenario A.2: Item in Sale, allocating to different project')
-        return await this.handleSaleToDifferentProjectMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
+        return await this.handleSaleToDifferentProjectMove(accountId, itemId, currentTransactionId, projectId, finalAmount, notes, space)
       }
     }
 
@@ -986,11 +998,11 @@ export const unifiedItemsService = {
       if (currentProjectId === projectId) {
         // B.1: Allocate to same project - remove from Purchase, update amount, delete if empty
         console.log('📋 Scenario B.1: Item in Purchase, allocating to same project')
-        return await this.handlePurchaseToInventoryMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
+        return await this.handlePurchaseToInventoryMove(accountId, itemId, currentTransactionId, projectId, finalAmount, notes, space)
       } else {
         // B.2: Allocate to different project - remove from Purchase, add to Sale (Project Y)
         console.log('📋 Scenario B.2: Item in Purchase, allocating to different project')
-        return await this.handlePurchaseToDifferentProjectMove(itemId, currentTransactionId, projectId, finalAmount, notes, space)
+        return await this.handlePurchaseToDifferentProjectMove(accountId, itemId, currentTransactionId, projectId, finalAmount, notes, space)
       }
     }
 
@@ -1002,16 +1014,17 @@ export const unifiedItemsService = {
     // inventory -> purchase flow.
     if (!currentTransactionId) {
       console.log('📋 Scenario C: Item in inventory, allocating to project')
-      return await this.handleInventoryToPurchaseMove(itemId, projectId, finalAmount, notes, space)
+      return await this.handleInventoryToPurchaseMove(accountId, itemId, projectId, finalAmount, notes, space)
     }
 
     // Fallback: Unknown scenario, treat as new allocation
     console.log('📋 Fallback: Unknown scenario, treating as new allocation')
-    return await this.handleInventoryToPurchaseMove(itemId, projectId, finalAmount, notes)
+    return await this.handleInventoryToPurchaseMove(accountId, itemId, projectId, finalAmount, notes, space)
   },
 
   // Helper: Handle A.1 - Remove item from Sale (same project)
   async handleSaleToPurchaseMove(
+    accountId: string,
     itemId: string,
     currentTransactionId: string,
     projectId: string,
@@ -1022,13 +1035,13 @@ export const unifiedItemsService = {
     const purchaseTransactionId = `INV_PURCHASE_${projectId}`
 
     // Remove item from existing Sale transaction
-    await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
 
     // Add item to Purchase transaction (create if none)
-    await this.addItemToTransaction(itemId, purchaseTransactionId, finalAmount, 'Purchase', 'Inventory allocation', notes)
+    await this.addItemToTransaction(accountId, itemId, purchaseTransactionId, finalAmount, 'Purchase', 'Inventory allocation', notes)
 
     // Update item status
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: projectId,
       inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
@@ -1040,7 +1053,7 @@ export const unifiedItemsService = {
 
     // Log successful allocation (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('allocation', itemId, projectId, purchaseTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, projectId, purchaseTransactionId, {
         action: 'allocation_completed',
         scenario: 'A.1',
         from_transaction: currentTransactionId,
@@ -1056,6 +1069,7 @@ export const unifiedItemsService = {
 
   // Helper: Handle A.1 (authoritative) - Remove item from Sale and move to Inventory (same project)
   async handleSaleToInventoryMove(
+    accountId: string,
     itemId: string,
     currentTransactionId: string,
     _projectId: string,
@@ -1064,13 +1078,13 @@ export const unifiedItemsService = {
     space?: string
   ): Promise<string> {
     // Remove item from existing Sale transaction
-    await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
 
     // Update item status to inventory
     // Per A.1: allocate back to the same project without creating an INV_PURCHASE
     // i.e. set the item's project and mark as allocated, but do not attach a
     // purchase transaction.
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: _projectId,
       inventory_status: 'allocated',
       transaction_id: null,
@@ -1082,7 +1096,7 @@ export const unifiedItemsService = {
 
     // Log successful move (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('allocation', itemId, _projectId, null, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, _projectId, null, {
         action: 'allocation_completed',
         scenario: 'A.1',
         from_transaction: currentTransactionId,
@@ -1099,6 +1113,7 @@ export const unifiedItemsService = {
 
   // Helper: Handle A.2 - Remove item from Sale, add to Purchase (different project)
   async handleSaleToDifferentProjectMove(
+    accountId: string,
     itemId: string,
     currentTransactionId: string,
     newProjectId: string,
@@ -1109,13 +1124,13 @@ export const unifiedItemsService = {
     const purchaseTransactionId = `INV_PURCHASE_${newProjectId}`
 
     // Remove item from existing Sale transaction
-    await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
 
     // Add item to Purchase transaction for new project (create if none)
-    await this.addItemToTransaction(itemId, purchaseTransactionId, finalAmount, 'Purchase', 'Inventory allocation', notes)
+    await this.addItemToTransaction(accountId, itemId, purchaseTransactionId, finalAmount, 'Purchase', 'Inventory allocation', notes)
 
     // Update item status
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: newProjectId,
       inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
@@ -1127,7 +1142,7 @@ export const unifiedItemsService = {
 
     // Log successful allocation (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('allocation', itemId, newProjectId, purchaseTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, newProjectId, purchaseTransactionId, {
         action: 'allocation_completed',
         scenario: 'A.2',
         from_transaction: currentTransactionId,
@@ -1143,6 +1158,7 @@ export const unifiedItemsService = {
 
   // Helper: Handle B.1 - Remove item from Purchase (same project)
   async handlePurchaseToInventoryMove(
+    accountId: string,
     itemId: string,
     currentTransactionId: string,
     _projectId: string,
@@ -1151,10 +1167,10 @@ export const unifiedItemsService = {
     space?: string
   ): Promise<string> {
     // Remove item from existing Purchase transaction
-    await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
 
     // Update item status to inventory
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: null,
       inventory_status: 'available',
       disposition: 'inventory',
@@ -1166,7 +1182,7 @@ export const unifiedItemsService = {
 
     // Log successful deallocation (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('deallocation', itemId, null, 'inventory', {
+      await auditService.logAllocationEvent(accountId, 'deallocation', itemId, null, 'inventory', {
         action: 'deallocation_completed',
         scenario: 'B.1',
         from_transaction: currentTransactionId,
@@ -1182,6 +1198,7 @@ export const unifiedItemsService = {
 
   // Helper: Handle B.2 - Remove item from Purchase, add to Sale (different project)
   async handlePurchaseToDifferentProjectMove(
+    accountId: string,
     itemId: string,
     currentTransactionId: string,
     newProjectId: string,
@@ -1192,13 +1209,13 @@ export const unifiedItemsService = {
     const saleTransactionId = `INV_SALE_${newProjectId}`
 
     // Remove item from existing Purchase transaction
-    await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
 
     // Add item to Sale transaction for new project (create if none)
-    await this.addItemToTransaction(itemId, saleTransactionId, finalAmount, 'To Inventory', 'Inventory sale', notes)
+    await this.addItemToTransaction(accountId, itemId, saleTransactionId, finalAmount, 'To Inventory', 'Inventory sale', notes)
 
     // Update item status
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: null,
       inventory_status: 'available',
       transaction_id: saleTransactionId,
@@ -1210,7 +1227,7 @@ export const unifiedItemsService = {
 
     // Log successful allocation (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('allocation', itemId, null, saleTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, null, saleTransactionId, {
         action: 'allocation_completed',
         scenario: 'B.2',
         from_transaction: currentTransactionId,
@@ -1226,6 +1243,7 @@ export const unifiedItemsService = {
 
   // Helper: Handle C - Add item to Purchase (new allocation)
   async handleInventoryToPurchaseMove(
+    accountId: string,
     itemId: string,
     projectId: string,
     finalAmount: string,
@@ -1235,10 +1253,10 @@ export const unifiedItemsService = {
     const purchaseTransactionId = `INV_PURCHASE_${projectId}`
 
     // Add item to Purchase transaction (create if none)
-    await this.addItemToTransaction(itemId, purchaseTransactionId, finalAmount, 'Purchase', 'Inventory allocation', notes)
+    await this.addItemToTransaction(accountId, itemId, purchaseTransactionId, finalAmount, 'Purchase', 'Inventory allocation', notes)
 
     // Update item status
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: projectId,
       inventory_status: 'allocated',
       transaction_id: purchaseTransactionId,
@@ -1250,7 +1268,7 @@ export const unifiedItemsService = {
 
     // Log successful allocation (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('allocation', itemId, projectId, purchaseTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, projectId, purchaseTransactionId, {
         action: 'allocation_completed',
         scenario: 'C',
         from_status: 'inventory',
@@ -1265,8 +1283,8 @@ export const unifiedItemsService = {
   },
 
   // Helper: Remove item from transaction and update amounts
-  async removeItemFromTransaction(itemId: string, transactionId: string, _itemAmount: string): Promise<void> {
-    const transactionRef = doc(db, 'transactions', transactionId)
+  async removeItemFromTransaction(accountId: string, itemId: string, transactionId: string, _itemAmount: string): Promise<void> {
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (!transactionSnap.exists()) {
@@ -1286,7 +1304,7 @@ export const unifiedItemsService = {
 
         // Log transaction deletion (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(transactionId, 'deleted', existingData, null)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'deleted', existingData, null)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction deletion:', auditError)
         }
@@ -1297,7 +1315,7 @@ export const unifiedItemsService = {
     } else {
       // Recalculate amount from remaining items
       try {
-        const itemsRef = collection(db, 'items')
+        const itemsRef = collection(db, 'accounts', accountId, 'items')
         const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
         const itemsSnapshot = await getDocs(itemsQuery)
 
@@ -1319,7 +1337,7 @@ export const unifiedItemsService = {
 
         // Log transaction update (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(transactionId, 'updated', existingData, updateData)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'updated', existingData, updateData)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction update:', auditError)
         }
@@ -1332,6 +1350,7 @@ export const unifiedItemsService = {
 
   // Helper: Add item to transaction (create if none exists)
   async addItemToTransaction(
+    accountId: string,
     itemId: string,
     transactionId: string,
     amount: string,
@@ -1339,7 +1358,7 @@ export const unifiedItemsService = {
     triggerEvent: string,
     notes?: string
   ): Promise<void> {
-    const transactionRef = doc(db, 'transactions', transactionId)
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (transactionSnap.exists()) {
@@ -1350,7 +1369,7 @@ export const unifiedItemsService = {
         const updatedItemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
 
         // Get all items to recalculate amount
-        const itemsRef = collection(db, 'items')
+        const itemsRef = collection(db, 'accounts', accountId, 'items')
         const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
         const itemsSnapshot = await getDocs(itemsQuery)
 
@@ -1372,7 +1391,7 @@ export const unifiedItemsService = {
 
         // Log transaction update (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(transactionId, 'updated', existingData, updateData)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'updated', existingData, updateData)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction update:', auditError)
         }
@@ -1381,7 +1400,7 @@ export const unifiedItemsService = {
         try {
           const txTax = existingData.tax_rate_pct
           if (txTax !== undefined && txTax !== null) {
-            const itemRef = doc(db, 'items', itemId)
+            const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
             await updateDoc(itemRef, { tax_rate_pct: txTax, last_updated: new Date().toISOString() })
           }
         } catch (e) {
@@ -1394,11 +1413,12 @@ export const unifiedItemsService = {
     } else {
       // Create new transaction
       try {
-        const project = await projectService.getProject(transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''))
+        const projectId = transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', '')
+        const project = await projectService.getProject(accountId, projectId)
         const projectName = project?.name || 'Other'
 
         const transactionData = {
-          project_id: transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', ''),
+          project_id: projectId,
           project_name: null,
           transaction_date: toDateOnlyString(new Date()),
           source: transactionType === 'Purchase' ? 'Inventory' : projectName,
@@ -1421,7 +1441,7 @@ export const unifiedItemsService = {
 
         // Log transaction creation (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(transactionId, 'created', null, transactionData)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'created', null, transactionData)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction creation:', auditError)
         }
@@ -1434,6 +1454,7 @@ export const unifiedItemsService = {
 
   // Batch allocate multiple items to project (updates INV_PURCHASE_<projectId> transaction)
   async batchAllocateItemsToProject(
+    accountId: string,
     itemIds: string[],
     projectId: string,
     allocationData: {
@@ -1446,7 +1467,7 @@ export const unifiedItemsService = {
 
     // Fetch the requested items by id (inspect transaction_id per-item to
     // implement A.1 vs A.2 decisions). Do NOT rely solely on project_id.
-    const itemsRef = collection(db, 'items')
+    const itemsRef = collection(db, 'accounts', accountId, 'items')
     const itemsQuery = query(itemsRef, where('__name__', 'in', itemIds))
     const itemsSnapshot = await getDocs(itemsQuery)
 
@@ -1471,8 +1492,8 @@ export const unifiedItemsService = {
           // A.1: Remove item from Sale and DO NOT add to Purchase. Assign back to
           // the same project (mark allocated) but do not create an INV_PURCHASE.
           console.log('📋 Batch A.1: Item in sale for target project — removing from sale and assigning to project', itemId)
-          await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
-          await this.updateItem(itemId, {
+          await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
+          await this.updateItem(accountId, itemId, {
             project_id: projectId,
             inventory_status: 'allocated',
             transaction_id: null,
@@ -1485,9 +1506,9 @@ export const unifiedItemsService = {
         } else {
           // A.2: Remove from Sale then add to Purchase for target project
           console.log('📋 Batch A.2: Item in sale for different project — moving to purchase for target project', itemId)
-          await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
-          await this.addItemToTransaction(itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
-          await this.updateItem(itemId, {
+          await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
+          await this.addItemToTransaction(accountId, itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
+          await this.updateItem(accountId, itemId, {
             project_id: projectId,
             inventory_status: 'allocated',
             transaction_id: canonicalTransactionId,
@@ -1502,8 +1523,8 @@ export const unifiedItemsService = {
       // Scenario C: Item in Inventory (no transaction_id) — add to Purchase
       if (!currentTransactionId) {
         console.log('📋 Batch C: Item in inventory — adding to purchase', itemId)
-        await this.addItemToTransaction(itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
-        await this.updateItem(itemId, {
+        await this.addItemToTransaction(accountId, itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
+        await this.updateItem(accountId, itemId, {
           project_id: projectId,
           inventory_status: 'allocated',
           transaction_id: canonicalTransactionId,
@@ -1516,8 +1537,8 @@ export const unifiedItemsService = {
 
       // Fallback: other transaction types — add to purchase and update item
       console.log('📋 Batch Fallback: Item in other transaction — adding to purchase', itemId, currentTransactionId)
-      await this.addItemToTransaction(itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
-      await this.updateItem(itemId, {
+      await this.addItemToTransaction(accountId, itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
+      await this.updateItem(accountId, itemId, {
         project_id: projectId,
         inventory_status: 'allocated',
         transaction_id: canonicalTransactionId,
@@ -1532,6 +1553,7 @@ export const unifiedItemsService = {
 
   // Return item from project (follows ALLOCATION_TRANSACTION_LOGIC.md deterministic flows)
   async returnItemFromProject(
+    accountId: string,
     itemId: string,
     projectId: string,
     amount?: string,
@@ -1540,7 +1562,7 @@ export const unifiedItemsService = {
     await ensureAuthenticatedForStorage()
 
     // Get the item to determine current state
-    const item = await this.getItemById(itemId)
+    const item = await this.getItemById(accountId, itemId)
     if (!item) {
       throw new Error('Item not found')
     }
@@ -1558,7 +1580,7 @@ export const unifiedItemsService = {
 
     // Log return start (catch errors to prevent cascading failures)
     try {
-      await (auditService.logAllocationEvent as any)('return', itemId, item.project_id, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'return', itemId, item.project_id, currentTransactionId, {
         action: 'return_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -1577,17 +1599,18 @@ export const unifiedItemsService = {
       if (currentProjectId === projectId) {
         // Returning from same project - remove from Purchase, move to inventory
         console.log('📋 Return Scenario: Item in Purchase, returning from same project')
-        return await this.handleReturnFromPurchase(itemId, currentTransactionId, projectId, finalAmount, notes)
+        return await this.handleReturnFromPurchase(accountId, itemId, currentTransactionId, projectId, finalAmount, notes)
       }
     }
 
     // If item is not in any transaction or is in inventory, this is a new return
     console.log('📋 Return Scenario: Item not in transaction or new return')
-    return await this.handleNewReturn(itemId, projectId, finalAmount, notes)
+    return await this.handleNewReturn(accountId, itemId, projectId, finalAmount, notes)
   },
 
   // Helper: Handle return from Purchase transaction (same project)
   async handleReturnFromPurchase(
+    accountId: string,
     itemId: string,
     currentTransactionId: string,
     _projectId: string,
@@ -1599,10 +1622,10 @@ export const unifiedItemsService = {
     // an INV_PURCHASE for the same project. Simply remove the item from the
     // purchase (the helper will delete the purchase if empty), then update the
     // item to reflect that it's back in business inventory.
-    await this.removeItemFromTransaction(itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
 
     // Update item status to inventory and clear transaction linkage for canonical state
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: null,
       inventory_status: 'available',
       transaction_id: null,
@@ -1614,7 +1637,7 @@ export const unifiedItemsService = {
 
     // Log successful return (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('return', itemId, null, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'return', itemId, null, currentTransactionId, {
         action: 'return_completed',
         scenario: 'return_from_purchase',
         from_transaction: currentTransactionId,
@@ -1631,6 +1654,7 @@ export const unifiedItemsService = {
 
   // Helper: Handle new return (item was already in inventory or no transaction)
   async handleNewReturn(
+    accountId: string,
     itemId: string,
     projectId: string,
     finalAmount: string,
@@ -1639,7 +1663,7 @@ export const unifiedItemsService = {
     // Get project name for source field
     let projectName = 'Other'
     try {
-      const project = await projectService.getProject(projectId)
+      const project = await projectService.getProject(accountId, projectId)
       projectName = project?.name || 'Other'
     } catch (error) {
       console.warn('Could not fetch project name for transaction source:', error)
@@ -1667,11 +1691,11 @@ export const unifiedItemsService = {
       last_updated: new Date().toISOString()
     }
 
-    const transactionRef = doc(db, 'transactions', saleTransactionId)
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', saleTransactionId)
     await setDoc(transactionRef, transactionData, { merge: true })
 
     // Update item status to inventory
-    await this.updateItem(itemId, {
+    await this.updateItem(accountId, itemId, {
       project_id: null,
       inventory_status: 'available',
       transaction_id: saleTransactionId,
@@ -1682,7 +1706,7 @@ export const unifiedItemsService = {
 
     // Log successful return (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent('return', itemId, null, saleTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'return', itemId, null, saleTransactionId, {
         action: 'return_completed',
         scenario: 'new_return',
         from_status: 'inventory',
@@ -1698,6 +1722,7 @@ export const unifiedItemsService = {
 
   // Complete pending transaction (marks as completed and clears transaction_id)
   async completePendingTransaction(
+    accountId: string,
     transactionType: 'sale' | 'buy',
     projectId: string,
     paymentMethod: string
@@ -1710,7 +1735,7 @@ export const unifiedItemsService = {
       : `INV_PURCHASE_${projectId}`
 
     // Get the transaction
-    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', canonicalTransactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (!transactionSnap.exists()) {
@@ -1731,7 +1756,7 @@ export const unifiedItemsService = {
     // Clear transaction_id from all linked items
     const batch = writeBatch(db)
     for (const itemId of itemIds) {
-      const itemRef = doc(db, 'items', itemId)
+      const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
       if (transactionType === 'sale') {
         // For sales, keep project_id but clear transaction_id and set status to sold
         batch.update(itemRef, {
@@ -1753,11 +1778,11 @@ export const unifiedItemsService = {
     await batch.commit()
   },
 
-  // Helper function to get item by ID
-  async getItemById(itemId: string): Promise<Item | null> {
+  // Helper function to get item by ID (account-scoped)
+  async getItemById(accountId: string, itemId: string): Promise<Item | null> {
     await ensureAuthenticatedForStorage()
 
-    const itemRef = doc(db, 'items', itemId)
+    const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
     const itemSnap = await getDoc(itemRef)
 
     if (itemSnap.exists()) {
@@ -1769,10 +1794,10 @@ export const unifiedItemsService = {
     return null
   },
 
-  // Duplicate an existing item (unified collection version)
-  async duplicateItem(projectId: string, originalItemId: string): Promise<string> {
+  // Duplicate an existing item (unified collection version) (account-scoped)
+  async duplicateItem(accountId: string, projectId: string, originalItemId: string): Promise<string> {
     // Get the original item first
-    const originalItem = await this.getItemById(originalItemId)
+    const originalItem = await this.getItemById(accountId, originalItemId)
     if (!originalItem) {
       throw new Error('Original item not found')
     }
@@ -1812,14 +1837,15 @@ export const unifiedItemsService = {
     })
 
     // Create the duplicated item
-    const itemRef = doc(db, 'items', newItemId)
+    const itemRef = doc(db, 'accounts', accountId, 'items', newItemId)
     await setDoc(itemRef, duplicatedItem)
 
     return newItemId
   },
 
-  // Create multiple items linked to a transaction (unified collection version)
+  // Create multiple items linked to a transaction (unified collection version) (account-scoped)
   async createTransactionItems(
+    accountId: string,
     projectId: string,
     transactionId: string,
     transaction_date: string,
@@ -1835,7 +1861,7 @@ export const unifiedItemsService = {
     let inheritedTax: number | undefined = undefined
     try {
       if ((taxRatePct === undefined || taxRatePct === null) && transactionId) {
-        const txRef = doc(db, 'transactions', transactionId)
+        const txRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
         const txSnap = await getDoc(txRef)
         if (txSnap.exists()) {
           const txData: any = txSnap.data()
@@ -1852,7 +1878,7 @@ export const unifiedItemsService = {
       const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
       createdItemIds.push(itemId)
 
-      const itemRef = doc(db, 'items', itemId)
+      const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
       const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
 
       const item: any = {
@@ -2387,6 +2413,7 @@ export const businessInventoryService = {
 export const deallocationService = {
   // Main entry point for handling inventory designation - simplified unified approach
   async handleInventoryDesignation(
+    accountId: string,
     itemId: string,
     projectId: string,
     disposition: string
@@ -2401,7 +2428,7 @@ export const deallocationService = {
     try {
       console.log('🔍 Getting item details for:', itemId)
       // Get the item details
-      const item = await unifiedItemsService.getItemById(itemId)
+      const item = await unifiedItemsService.getItemById(accountId, itemId)
       if (!item) {
         throw new Error('Item not found')
       }
@@ -2418,10 +2445,10 @@ export const deallocationService = {
           console.log('🔁 Detected purchase-reversion: removing from INV_PURCHASE and returning to inventory')
 
           // Remove item from the existing purchase (will delete if empty)
-          await unifiedItemsService.removeItemFromTransaction(item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
+          await unifiedItemsService.removeItemFromTransaction(accountId, item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
 
           // Update the item to reflect it's back in business inventory
-          await unifiedItemsService.updateItem(item.item_id, {
+          await unifiedItemsService.updateItem(accountId, item.item_id, {
             project_id: null,
             inventory_status: 'available',
             transaction_id: null,
@@ -2429,7 +2456,7 @@ export const deallocationService = {
           })
 
           try {
-            await auditService.logAllocationEvent('deallocation', itemId, null, item.transaction_id, {
+            await auditService.logAllocationEvent(accountId, 'deallocation', itemId, null, item.transaction_id, {
               action: 'deallocation_completed',
               scenario: 'purchase_reversion',
               from_transaction: item.transaction_id,
@@ -2450,7 +2477,7 @@ export const deallocationService = {
 
       // Log deallocation start (catch errors to prevent cascading failures)
       try {
-        await (auditService.logAllocationEvent as any)('deallocation', itemId, item.project_id, item.transaction_id, {
+        await auditService.logAllocationEvent(accountId, 'deallocation', itemId, item.project_id, item.transaction_id, {
           action: 'deallocation_started',
           target_status: 'inventory',
           current_transaction_id: item.transaction_id
@@ -2460,6 +2487,7 @@ export const deallocationService = {
       }
 
       const transactionId = await this.ensureSaleTransaction(
+        accountId,
         item,
         projectId,
         'Transaction for items purchased from project and moved to business inventory'
@@ -2467,7 +2495,7 @@ export const deallocationService = {
 
       console.log('📦 Moving item to business inventory...')
       // Update item to move to business inventory and link to transaction
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(accountId, item.item_id, {
         project_id: null,
         inventory_status: 'available',
         transaction_id: transactionId,
@@ -2477,7 +2505,7 @@ export const deallocationService = {
 
       // Log successful deallocation (catch errors to prevent cascading failures)
       try {
-        await auditService.logAllocationEvent('deallocation', itemId, null, transactionId, {
+        await auditService.logAllocationEvent(accountId, 'deallocation', itemId, null, transactionId, {
           action: 'deallocation_completed',
           from_project_id: item.project_id,
           to_transaction: transactionId,
@@ -2498,6 +2526,7 @@ export const deallocationService = {
 
   // Unified function to ensure a sale transaction exists for inventory designation (follows ALLOCATION_TRANSACTION_LOGIC.md)
   async ensureSaleTransaction(
+    accountId: string,
     item: Item,
     projectId: string,
     additionalNotes?: string
@@ -2507,7 +2536,7 @@ export const deallocationService = {
     // Get project name for source field
     let projectName = 'Other'
     try {
-      const project = await projectService.getProject(projectId)
+      const project = await projectService.getProject(accountId, projectId)
       projectName = project?.name || 'Other'
     } catch (error) {
       console.warn('Could not fetch project name for transaction source:', error)
@@ -2521,8 +2550,8 @@ export const deallocationService = {
         console.log('ℹ️ ensureSaleTransaction detected existing INV_PURCHASE for same project; performing purchase-reversion instead of creating INV_SALE')
 
         // Remove the item from the purchase and return to inventory
-        await unifiedItemsService.removeItemFromTransaction(item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
-        await unifiedItemsService.updateItem(item.item_id, {
+        await unifiedItemsService.removeItemFromTransaction(accountId, item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
+        await unifiedItemsService.updateItem(accountId, item.item_id, {
           project_id: null,
           inventory_status: 'available',
           transaction_id: null,
@@ -2537,8 +2566,8 @@ export const deallocationService = {
     const canonicalTransactionId = `INV_SALE_${projectId}`
     console.log('🔑 Canonical transaction ID:', canonicalTransactionId)
 
-    // Check if the canonical transaction already exists (top-level collection)
-    const transactionRef = doc(db, 'transactions', canonicalTransactionId)
+    // Check if the canonical transaction already exists (account-scoped)
+    const transactionRef = doc(db, 'accounts', accountId, 'transactions', canonicalTransactionId)
     const transactionSnap = await getDoc(transactionRef)
 
     if (transactionSnap.exists()) {
@@ -2549,7 +2578,7 @@ export const deallocationService = {
       const updatedItemIds = [...new Set([...existingItemIds, item.item_id])] // Avoid duplicates
 
       // Get all items to recalculate amount
-      const itemsRef = collection(db, 'items')
+      const itemsRef = collection(db, 'accounts', accountId, 'items')
       const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
       const itemsSnapshot = await getDocs(itemsQuery)
 
@@ -2607,41 +2636,45 @@ export const deallocationService = {
 export const integrationService = {
   // Allocate business inventory item to project (unified collection)
   async allocateBusinessInventoryToProject(
+    accountId: string,
     itemId: string,
     projectId: string,
     amount?: string,
     notes?: string
   ): Promise<string> {
-    return await unifiedItemsService.allocateItemToProject(itemId, projectId, amount, notes)
+    return await unifiedItemsService.allocateItemToProject(accountId, itemId, projectId, amount, notes)
   },
 
   // Return item from project to business inventory (unified collection)
   async returnItemToBusinessInventory(
+    accountId: string,
     itemId: string,
     _transactionId: string,
     projectId: string
   ): Promise<void> {
     // Use the canonical return method which creates/updates INV_BUY_<projectId> transaction
-    await unifiedItemsService.returnItemFromProject(itemId, projectId)
+    await unifiedItemsService.returnItemFromProject(accountId, itemId, projectId)
   },
 
   // Complete pending transaction and mark item as sold (unified collection)
   async completePendingTransaction(
+    accountId: string,
     _itemId: string,
     _transactionId: string,
     projectId: string,
     paymentMethod: string
   ): Promise<void> {
     // For sales, we need to complete the INV_SALE transaction
-    return await unifiedItemsService.completePendingTransaction('sale', projectId, paymentMethod)
+    return await unifiedItemsService.completePendingTransaction(accountId, 'sale', projectId, paymentMethod)
   },
 
   // Handle item deallocation (new method)
   async handleItemDeallocation(
+    accountId: string,
     itemId: string,
     projectId: string,
     disposition: string
   ): Promise<void> {
-    return await deallocationService.handleInventoryDesignation(itemId, projectId, disposition)
+    return await deallocationService.handleInventoryDesignation(accountId, itemId, projectId, disposition)
   }
 }

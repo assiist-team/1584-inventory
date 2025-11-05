@@ -4,27 +4,34 @@ import { Link } from 'react-router-dom'
 import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAccount } from '@/contexts/AccountContext'
 import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 
 export default function Projects() {
   const { user } = useAuth()
+  const { currentAccountId } = useAccount()
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Record<string, Transaction[]>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
 
   useEffect(() => {
-    loadProjectsData()
-  }, [])
+    if (currentAccountId) {
+      loadProjectsData()
+    }
+  }, [currentAccountId])
 
   const handleCreateProject = async (projectData: any) => {
     if (!user?.email) {
       throw new Error('User must be authenticated to create projects')
     }
+    if (!currentAccountId) {
+      throw new Error('Account ID is required to create projects')
+    }
 
     try {
-      await projectService.createProject({
+      await projectService.createProject(currentAccountId, {
         ...projectData,
         createdBy: user.email
       })
@@ -39,16 +46,18 @@ export default function Projects() {
   }
 
   const loadProjectsData = async () => {
+    if (!currentAccountId) return
+    
     setIsLoading(true)
     try {
-      const projectsData = await projectService.getProjects()
+      const projectsData = await projectService.getProjects(currentAccountId)
       setProjects(projectsData)
 
       // Load transactions for each project
       const transactionsData: Record<string, Transaction[]> = {}
       for (const project of projectsData) {
         try {
-          const projectTransactions = await transactionService.getTransactions(project.id)
+          const projectTransactions = await transactionService.getTransactions(currentAccountId, project.id)
           transactionsData[project.id] = projectTransactions
         } catch (error) {
           console.error(`Error loading transactions for project ${project.id}:`, error)

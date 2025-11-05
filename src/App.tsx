@@ -4,6 +4,8 @@ import Layout from './components/layout/Layout'
 import LoadingSpinner from './components/ui/LoadingSpinner'
 import { ToastProvider } from './components/ui/ToastContext'
 import { AuthProvider } from './contexts/AuthContext'
+import { AccountProvider } from './contexts/AccountContext'
+import { BusinessProfileProvider } from './contexts/BusinessProfileContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 
 function App() {
@@ -12,11 +14,13 @@ function App() {
 
   return (
     <AuthProvider>
-      <ToastProvider>
-        <ProtectedRoute>
-          <Layout>
-            <Suspense fallback={<LoadingSpinner />}>
-            <Routes>
+      <AccountProvider>
+        <BusinessProfileProvider>
+          <ToastProvider>
+            <ProtectedRoute>
+              <Layout>
+                <Suspense fallback={<LoadingSpinner />}>
+                <Routes>
               <Route path="/" element={<Projects />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/settings" element={<Settings />} />
@@ -43,6 +47,8 @@ function App() {
           </Layout>
         </ProtectedRoute>
       </ToastProvider>
+      </BusinessProfileProvider>
+      </AccountProvider>
     </AuthProvider>
   )
 }

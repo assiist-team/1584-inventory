@@ -10,6 +10,7 @@ import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
 import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { getTaxPresets } from '@/services/taxPresetsService'
@@ -18,6 +19,7 @@ export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
 
   // Check if user has permission to add transactions (DESIGNER role or higher)
   if (!hasRole(UserRole.DESIGNER)) {
@@ -47,9 +49,9 @@ export default function AddTransaction() {
   // Fetch project name
   useEffect(() => {
     const fetchProject = async () => {
-      if (projectId) {
+      if (projectId && currentAccountId) {
         try {
-          const project = await projectService.getProject(projectId)
+          const project = await projectService.getProject(currentAccountId, projectId)
           if (project) {
             setProjectName(project.name)
           }
@@ -60,7 +62,7 @@ export default function AddTransaction() {
     }
 
     fetchProject()
-  }, [projectId])
+  }, [projectId, currentAccountId])
 
   const [formData, setFormData] = useState<TransactionFormData>({
     transaction_date: (() => {
@@ -105,15 +107,16 @@ export default function AddTransaction() {
   // Load tax presets on mount
   useEffect(() => {
     const loadPresets = async () => {
+      if (!currentAccountId) return
       try {
-        const presets = await getTaxPresets()
+        const presets = await getTaxPresets(currentAccountId)
         setTaxPresets(presets)
       } catch (error) {
         console.error('Error loading tax presets:', error)
       }
     }
     loadPresets()
-  }, [])
+  }, [currentAccountId])
 
   // Update selected preset rate when preset changes
   useEffect(() => {
@@ -169,7 +172,7 @@ export default function AddTransaction() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm() || !projectId) return
+    if (!validateForm() || !projectId || !currentAccountId) return
 
     setIsSubmitting(true)
 
@@ -193,7 +196,7 @@ export default function AddTransaction() {
       console.log('Transaction items:', items)
 
       // Create transaction with items first to get the real transaction ID
-      const transactionId = await transactionService.createTransaction(projectId, transactionData, items)
+      const transactionId = await transactionService.createTransaction(currentAccountId, projectId, transactionData, items)
 
       // Now upload receipt images using the real transaction ID
       if (formData.receipt_images && formData.receipt_images.length > 0) {
@@ -216,7 +219,7 @@ export default function AddTransaction() {
           if (receiptImages && receiptImages.length > 0) {
             console.log('Updating transaction with receipt images...')
             try {
-              await transactionService.updateTransaction(projectId, transactionId, {
+              await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
                 receipt_images: receiptImages
               })
               console.log('Transaction updated successfully with receipt images')
@@ -275,7 +278,7 @@ export default function AddTransaction() {
           if (otherImages && otherImages.length > 0) {
             console.log('Updating transaction with other images...')
             try {
-              await transactionService.updateTransaction(projectId, transactionId, {
+              await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
                 other_images: otherImages
               })
               console.log('Transaction updated successfully with other images')
@@ -318,7 +321,7 @@ export default function AddTransaction() {
         try {
           console.log('Starting image upload process...')
           // Get the created items and extract their IDs
-          const createdItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+          const createdItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
           const createdItemIds = createdItems.map(item => item.item_id)
           console.log('Created item IDs:', createdItemIds)
 
@@ -378,7 +381,7 @@ export default function AddTransaction() {
 
               if (validImages.length > 0) {
                 // Update the item with the uploaded images
-                await unifiedItemsService.updateItem(itemId, { images: validImages })
+                await unifiedItemsService.updateItem(currentAccountId, itemId, { images: validImages })
                 console.log(`Successfully updated item ${itemId} with ${validImages.length} images`)
               }
             }

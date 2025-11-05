@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Item } from '@/types'
 import { unifiedItemsService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function EditBusinessInventoryItem() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { currentAccountId } = useAccount()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [item, setItem] = useState<Item | null>(null)
@@ -53,10 +56,10 @@ export default function EditBusinessInventoryItem() {
   }, [location.search])
 
   useEffect(() => {
-    if (id) {
+    if (id && currentAccountId) {
       loadItem()
     }
-  }, [id])
+  }, [id, currentAccountId])
 
   // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
   useEffect(() => {
@@ -66,10 +69,10 @@ export default function EditBusinessInventoryItem() {
   }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
 
   const loadItem = async () => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
     try {
-      const itemData = await unifiedItemsService.getItemById(id)
+      const itemData = await unifiedItemsService.getItemById(currentAccountId, id)
       if (itemData) {
         setItem(itemData)
         setFormData({
@@ -121,14 +124,14 @@ export default function EditBusinessInventoryItem() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!id || !validateForm()) {
+    if (!id || !validateForm() || !currentAccountId) {
       return
     }
 
     setIsSubmitting(true)
 
     try {
-      await unifiedItemsService.updateItem(id, formData)
+      await unifiedItemsService.updateItem(currentAccountId, id, formData)
       navigate(`/business-inventory/${id}`)
     } catch (error) {
       console.error('Error updating item:', error)

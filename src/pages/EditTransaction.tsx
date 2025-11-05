@@ -8,6 +8,7 @@ import { transactionService, projectService, unifiedItemsService } from '@/servi
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
 import { useAuth } from '../contexts/AuthContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { toDateOnlyString } from '@/utils/dateUtils'
@@ -17,6 +18,7 @@ export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
 
   // Check if user has permission to edit transactions (DESIGNER role or higher)
   if (!hasRole(UserRole.DESIGNER)) {
@@ -80,15 +82,16 @@ export default function EditTransaction() {
   // Load tax presets on mount
   useEffect(() => {
     const loadPresets = async () => {
+      if (!currentAccountId) return
       try {
-        const presets = await getTaxPresets()
+        const presets = await getTaxPresets(currentAccountId)
         setTaxPresets(presets)
       } catch (error) {
         console.error('Error loading tax presets:', error)
       }
     }
     loadPresets()
-  }, [])
+  }, [currentAccountId])
 
   // Update selected preset rate when preset changes
   useEffect(() => {
@@ -103,12 +106,12 @@ export default function EditTransaction() {
   // Load transaction and project data
   useEffect(() => {
     const loadTransaction = async () => {
-      if (!projectId || !transactionId) return
+      if (!projectId || !transactionId || !currentAccountId) return
 
       try {
         const [transaction, project] = await Promise.all([
-          transactionService.getTransaction(projectId, transactionId),
-          projectService.getProject(projectId)
+          transactionService.getTransaction(currentAccountId, projectId, transactionId),
+          projectService.getProject(currentAccountId, projectId)
         ])
 
         if (project) {
@@ -148,9 +151,9 @@ export default function EditTransaction() {
           setIsCustomSource(sourceIsCustom)
 
           // If legacy 'Other' was stored, immediately correct Firestore to the project name
-          if (legacyOther && project && projectId && transactionId) {
+          if (legacyOther && project && projectId && transactionId && currentAccountId) {
             try {
-              await transactionService.updateTransaction(projectId, transactionId, { source: project.name })
+              await transactionService.updateTransaction(currentAccountId, projectId, transactionId, { source: project.name })
             } catch (e) {
               console.warn('Failed to auto-correct source to project name:', e)
             }
@@ -164,7 +167,7 @@ export default function EditTransaction() {
 
           // Load transaction items
           try {
-            const transactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+            const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
             console.log('Loaded transaction items:', transactionItems)
 
             const transactionItemIds = transactionItems.map(item => item.item_id)
@@ -208,7 +211,7 @@ export default function EditTransaction() {
     }
 
     loadTransaction()
-  }, [projectId, transactionId])
+  }, [projectId, transactionId, currentAccountId])
 
   // Validation function
   const validateForm = (): boolean => {
@@ -241,7 +244,7 @@ export default function EditTransaction() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm() || !projectId || !transactionId) return
+    if (!validateForm() || !projectId || !transactionId || !currentAccountId) return
 
     setIsSubmitting(true)
 
@@ -286,7 +289,7 @@ export default function EditTransaction() {
 
         // Update existing items (classification is now robust, so no additional safety checks needed)
         for (const item of existingItems) {
-          await unifiedItemsService.updateItem(item.id, {
+          await unifiedItemsService.updateItem(currentAccountId, item.id, {
             description: item.description,
             purchase_price: item.purchase_price,
             sku: item.sku,
@@ -319,7 +322,7 @@ export default function EditTransaction() {
                 space: item.space || '',
                 disposition: 'keep'
               }
-              return await unifiedItemsService.createItem(itemData)
+              return await unifiedItemsService.createItem(currentAccountId, itemData)
             })
           )
           console.log('Created new items:', createdItemIds)
@@ -373,7 +376,7 @@ export default function EditTransaction() {
         ...(taxRatePreset ? { tax_rate_preset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
-      await transactionService.updateTransaction(projectId, transactionId, updateData)
+      await transactionService.updateTransaction(currentAccountId, projectId, transactionId, updateData)
       navigate(`/project/${projectId}/transaction/${transactionId}`)
     } catch (error) {
       console.error('Error updating transaction:', error)

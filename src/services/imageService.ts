@@ -109,6 +109,124 @@ export class ImageUploadService {
   }
 
   /**
+   * Upload a business logo to Firebase Storage
+   */
+  static async uploadBusinessLogo(
+    accountId: string,
+    file: File,
+    onProgress?: (progress: UploadProgress) => void,
+    retryCount: number = 0
+  ): Promise<ImageUploadResult> {
+    const MAX_RETRIES = 3
+
+    console.log(`Upload attempt ${retryCount + 1}/${MAX_RETRIES + 1}`)
+
+    // Ensure authentication is established before storage operations
+    await this.ensureAuthentication()
+
+    // Check storage availability
+    const isStorageAvailable = await this.checkStorageAvailability()
+    if (!isStorageAvailable) {
+      throw new Error('Storage service is not available. Please check your connection and try again.')
+    }
+
+    // Validate and potentially compress file for mobile
+    let processedFile = file
+    if (this.shouldCompressForMobile(file)) {
+      console.log('Compressing file for mobile upload...')
+      processedFile = await this.compressForMobile(file)
+    }
+
+    if (!this.validateImageFile(processedFile)) {
+      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP) under 10MB.')
+    }
+
+    // Generate unique filename: accounts/{accountId}/business_profile/logo/{timestamp}_{sanitizedFileName}
+    const timestamp = Date.now()
+    const sanitizedFileName = processedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const fileName = `accounts/${accountId}/business_profile/logo/${timestamp}_${sanitizedFileName}`
+
+    console.log('Uploading logo to path:', fileName, 'Size:', processedFile.size, 'Type:', processedFile.type)
+
+    // Create storage reference
+    const storageRef = ref(storage, fileName)
+
+    try {
+      // Upload with progress tracking using uploadBytesResumable
+      const uploadTask = uploadBytesResumable(storageRef, processedFile);
+
+      if (onProgress) {
+        uploadTask.on('state_changed',
+          (snapshot) => {
+            const progress = {
+              loaded: snapshot.bytesTransferred,
+              total: snapshot.totalBytes,
+              percentage: (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+            }
+            onProgress(progress)
+          },
+          (error) => {
+            console.error('Upload error:', error)
+            if (error.code === 'storage/retry-limit-exceeded' && retryCount < MAX_RETRIES) {
+              console.log(`Retrying upload (${retryCount + 1}/${MAX_RETRIES})...`)
+              // Retry with exponential backoff
+              setTimeout(() => {
+                this.uploadBusinessLogo(accountId, processedFile, onProgress, retryCount + 1)
+              }, Math.pow(2, retryCount) * 1000)
+            } else {
+              throw new Error('Failed to upload image. Please try again.')
+            }
+          }
+        )
+      }
+
+      // Wait for upload to complete with timeout
+      const snapshot = await Promise.race([
+        uploadTask,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Upload timeout after 60 seconds')), 60000)
+        )
+      ]) as any
+
+      // Get download URL for authenticated users
+      const downloadURL = await getDownloadURL(snapshot.ref)
+
+      console.log('Logo upload successful:', downloadURL)
+
+      return {
+        url: downloadURL,
+        fileName: processedFile.name,
+        size: processedFile.size,
+        mimeType: processedFile.type
+      }
+    } catch (error: any) {
+      console.error('Error uploading logo:', error)
+
+      // Handle specific Firebase errors
+      if (error.code === 'storage/retry-limit-exceeded' && retryCount < MAX_RETRIES) {
+        console.log(`Retrying upload due to retry limit exceeded (${retryCount + 1}/${MAX_RETRIES})...`)
+        // Wait a bit longer for retry
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 2000))
+        return this.uploadBusinessLogo(accountId, processedFile, onProgress, retryCount + 1)
+      }
+
+      if (error.message?.includes('timeout') || error.message?.includes('Upload timeout')) {
+        if (retryCount < MAX_RETRIES) {
+          console.log('Upload timed out, retrying with smaller file...')
+          const compressedFile = await this.compressForMobile(processedFile)
+          return this.uploadBusinessLogo(accountId, compressedFile, onProgress, retryCount + 1)
+        } else {
+          throw new Error('Upload timed out. Please try again with a smaller image or check your connection.')
+        }
+      }
+
+      // Use enhanced error handling
+      const friendlyMessage = getUserFriendlyErrorMessage(error)
+      throw new ImageUploadError(friendlyMessage, error.code, error)
+    }
+  }
+
+  /**
    * Internal upload method with the new storage structure
    */
   private static async uploadImageInternal(

@@ -9,20 +9,54 @@ export interface TaxPreset {
   rate: number; // percentage, e.g., 8.375
 }
 
+export interface Account {
+  id: string;
+  name: string;
+  createdAt: Date;
+  createdBy: string;
+}
+
+export interface AccountMembership {
+  userId: string;
+  accountId: string;
+  role: 'admin' | 'user';
+  joinedAt: Date;
+}
+
+export interface BusinessProfile {
+  name: string;
+  logoUrl: string | null;
+  updatedAt: Date;
+  updatedBy: string;
+  accountId: string;
+}
+
 export interface User {
   id: string;
   email: string;
   displayName: string;
-  role: UserRole;
+  accountId: string; // Links user to account
+  role?: 'owner' | null; // System-level owner (optional)
   createdAt: Date;
   lastLogin: Date;
 }
 
 export enum UserRole {
-  OWNER = 'owner',
-  ADMIN = 'admin',
-  DESIGNER = 'designer',
-  VIEWER = 'viewer'
+  OWNER = 'owner',    // System-level super admin
+  ADMIN = 'admin',    // Account-level admin
+  USER = 'user'       // Account-level user
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  accountId: string;
+  role: 'admin' | 'user';
+  invitedBy: string;
+  status: 'pending' | 'accepted' | 'expired';
+  createdAt: Date;
+  expiresAt: Date;
+  acceptedAt?: Date;
 }
 
 export interface Project {

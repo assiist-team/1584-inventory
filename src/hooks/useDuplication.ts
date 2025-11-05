@@ -5,6 +5,7 @@ interface UseDuplicationOptions<T extends { item_id: string }> {
   items: T[]
   setItems?: (items: T[] | ((prev: T[]) => T[])) => void
   projectId?: string | undefined
+  accountId?: string | undefined
   duplicationService?: (itemId: string) => Promise<string>
 }
 
@@ -12,6 +13,7 @@ export function useDuplication<T extends { item_id: string }>({
   items,
   setItems: _setItems,
   projectId,
+  accountId,
   duplicationService
 }: UseDuplicationOptions<T>) {
   const { showSuccess, showError } = useToast()
@@ -29,10 +31,10 @@ export function useDuplication<T extends { item_id: string }>({
       if (duplicationService) {
         // Use custom duplication service (e.g., for business inventory)
         newItemId = await duplicationService(itemId)
-      } else if (projectId) {
+      } else if (projectId && accountId) {
         // Use default project item duplication service (unified collection)
         const { unifiedItemsService } = await import('@/services/inventoryService')
-        newItemId = await unifiedItemsService.duplicateItem(projectId, itemId)
+        newItemId = await unifiedItemsService.duplicateItem(accountId, projectId, itemId)
       } else {
         showError('No duplication service available')
         return
@@ -47,7 +49,7 @@ export function useDuplication<T extends { item_id: string }>({
       console.error('Failed to duplicate item:', error)
       showError('Failed to duplicate item. Please try again.')
     }
-  }, [items, projectId, duplicationService, showSuccess, showError])
+  }, [items, projectId, accountId, duplicationService, showSuccess, showError])
 
   return { duplicateItem }
 }

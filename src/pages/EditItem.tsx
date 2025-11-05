@@ -6,6 +6,7 @@ import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { Transaction } from '@/types'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '../contexts/AuthContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 
@@ -28,6 +29,7 @@ export default function EditItem() {
   const { id: projectId, itemId } = useParams<{ id: string; itemId: string }>()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
 
   // Get returnTo parameter for back navigation
   const getBackDestination = () => {
@@ -106,9 +108,9 @@ export default function EditItem() {
   useEffect(() => {
     const fetchItem = async () => {
       console.log('fetchItem called with:', { projectId, itemId })
-      if (itemId && projectId) {
+      if (itemId && projectId && currentAccountId) {
         try {
-          const fetchedItem = await unifiedItemsService.getItemById(itemId)
+          const fetchedItem = await unifiedItemsService.getItemById(currentAccountId, itemId)
           console.log('Fetched item data:', fetchedItem)
           if (fetchedItem) {
             setFormData({
@@ -142,15 +144,15 @@ export default function EditItem() {
     }
 
     fetchItem()
-  }, [itemId, projectId])
+  }, [itemId, projectId, currentAccountId])
 
   // Fetch transactions when component mounts
   useEffect(() => {
     const fetchTransactions = async () => {
-      if (projectId) {
+      if (projectId && currentAccountId) {
         setLoadingTransactions(true)
         try {
-          const fetchedTransactions = await transactionService.getTransactions(projectId)
+          const fetchedTransactions = await transactionService.getTransactions(currentAccountId, projectId)
           setTransactions(fetchedTransactions)
         } catch (error) {
           console.error('Error fetching transactions:', error)
@@ -161,7 +163,7 @@ export default function EditItem() {
     }
 
     fetchTransactions()
-  }, [projectId])
+  }, [projectId, currentAccountId])
 
   // Validation function
   const validateForm = (): boolean => {
@@ -178,7 +180,7 @@ export default function EditItem() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm() || !itemId || !projectId) return
+    if (!validateForm() || !itemId || !projectId || !currentAccountId) return
 
     setSaving(true)
 
@@ -189,7 +191,7 @@ export default function EditItem() {
     }
 
     try {
-      await unifiedItemsService.updateItem(itemId, itemData)
+      await unifiedItemsService.updateItem(currentAccountId, itemId, itemData)
 
       // Use returnTo if available, otherwise go to inventory tab
       const searchParams = new URLSearchParams(window.location.search)

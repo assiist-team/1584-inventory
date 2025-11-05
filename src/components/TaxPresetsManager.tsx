@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { Save, AlertCircle } from 'lucide-react'
 import { getTaxPresets, updateTaxPresets } from '@/services/taxPresetsService'
 import { TaxPreset } from '@/types'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function TaxPresetsManager() {
+  const { currentAccountId } = useAccount()
   const [presets, setPresets] = useState<TaxPreset[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -11,14 +13,18 @@ export default function TaxPresetsManager() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    loadPresets()
-  }, [])
+    if (currentAccountId) {
+      loadPresets()
+    }
+  }, [currentAccountId])
 
   const loadPresets = async () => {
+    if (!currentAccountId) return
+    
     try {
       setIsLoading(true)
       setError(null)
-      const loadedPresets = await getTaxPresets()
+      const loadedPresets = await getTaxPresets(currentAccountId)
       setPresets(loadedPresets)
     } catch (err) {
       console.error('Error loading tax presets:', err)
@@ -41,6 +47,11 @@ export default function TaxPresetsManager() {
   }
 
   const handleSave = async () => {
+    if (!currentAccountId) {
+      setError('Account ID is required to save tax presets')
+      return
+    }
+    
     try {
       setIsSaving(true)
       setError(null)
@@ -56,7 +67,7 @@ export default function TaxPresetsManager() {
         }
       }
 
-      await updateTaxPresets(presets)
+      await updateTaxPresets(currentAccountId, presets)
       setSuccessMessage('Tax presets updated successfully')
       
       // Clear success message after 3 seconds

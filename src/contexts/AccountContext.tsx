@@ -1,0 +1,111 @@
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { useAuth } from './AuthContext'
+import { accountService } from '../services/accountService'
+import { Account, AccountMembership } from '../types'
+
+interface AccountContextType {
+  currentAccountId: string | null
+  currentAccount: Account | null
+  accountMembership: AccountMembership | null
+  isOwner: boolean // System-level owner
+  isAdmin: boolean // Account-level admin OR system owner
+  userRole: 'admin' | 'user' | null // Account-level role
+  loading: boolean
+}
+
+const AccountContext = createContext<AccountContextType | undefined>(undefined)
+
+interface AccountProviderProps {
+  children: ReactNode
+}
+
+export function AccountProvider({ children }: AccountProviderProps) {
+  const { user } = useAuth()
+  const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
+  const [currentAccount, setCurrentAccount] = useState<Account | null>(null)
+  const [accountMembership, setAccountMembership] = useState<AccountMembership | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Check if user is system owner
+  const isOwner = user?.role === 'owner' || false
+
+  useEffect(() => {
+    const loadAccount = async () => {
+      if (!user) {
+        setCurrentAccountId(null)
+        setCurrentAccount(null)
+        setAccountMembership(null)
+        setLoading(false)
+        return
+      }
+
+      try {
+        setLoading(true)
+
+        // Get user's account
+        const account = await accountService.getUserAccount(user.id)
+        
+        if (account) {
+          setCurrentAccountId(account.id)
+          setCurrentAccount(account)
+
+          // Get user's role in account
+          const role = await accountService.getUserRoleInAccount(user.id, account.id)
+          
+          if (role) {
+            setAccountMembership({
+              userId: user.id,
+              accountId: account.id,
+              role,
+              joinedAt: new Date() // Will be loaded from membership if needed
+            })
+          } else {
+            setAccountMembership(null)
+          }
+        } else {
+          setCurrentAccountId(null)
+          setCurrentAccount(null)
+          setAccountMembership(null)
+        }
+      } catch (error) {
+        console.error('Error loading account:', error)
+        setCurrentAccountId(null)
+        setCurrentAccount(null)
+        setAccountMembership(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadAccount()
+  }, [user])
+
+  // Calculate derived values
+  const userRole = accountMembership?.role || null
+  const isAdmin = isOwner || userRole === 'admin'
+
+  const value: AccountContextType = {
+    currentAccountId,
+    currentAccount,
+    accountMembership,
+    isOwner,
+    isAdmin,
+    userRole,
+    loading
+  }
+
+  return (
+    <AccountContext.Provider value={value}>
+      {children}
+    </AccountContext.Provider>
+  )
+}
+
+export function useAccount() {
+  const context = useContext(AccountContext)
+  if (context === undefined) {
+    throw new Error('useAccount must be used within an AccountProvider')
+  }
+  return context
+}
+

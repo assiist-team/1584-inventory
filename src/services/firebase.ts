@@ -4,6 +4,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User, onAuthStat
 import { getStorage } from 'firebase/storage'
 import { getAnalytics } from 'firebase/analytics'
 import { User as AppUser, UserRole } from '../types'
+import { accountService } from './accountService'
 
 // Firebase configuration
 const firebaseConfig = {
@@ -333,15 +334,30 @@ export const createOrUpdateUserDocument = async (firebaseUser: User): Promise<vo
       await setDoc(userDocRef, userData, { merge: true })
     } else {
       // Check for pending invitation
-      let assignedRole = UserRole.VIEWER // Default role
+      let assignedRole: UserRole | 'owner' | null = null
+      let accountId: string | null = null
 
       if (firebaseUser.email) {
         const invitation = await checkUserInvitation(firebaseUser.email)
         if (invitation) {
-          assignedRole = invitation.role
+          // Get accountId from invitation if available
+          const invitationDoc = await getDoc(doc(db, 'invitations', invitation.invitationId))
+          if (invitationDoc.exists()) {
+            const invitationData = invitationDoc.data()
+            accountId = invitationData.accountId || null
+          }
+          
+          // Map invitation role to account role (admin/user) or system owner
+          if (invitation.role === UserRole.OWNER) {
+            assignedRole = 'owner'
+          } else {
+            // For admin/user roles, assign to account membership
+            assignedRole = null // User document won't have role, it's in membership
+          }
+          
           // Accept the invitation
           await acceptUserInvitation(invitation.invitationId)
-          console.log('User invited with role:', assignedRole)
+          console.log('User invited with role:', invitation.role, 'accountId:', accountId)
         } else {
           // Check if this is the first user (for owner assignment)
           const usersCollection = collection(db, 'users')
@@ -349,7 +365,14 @@ export const createOrUpdateUserDocument = async (firebaseUser: User): Promise<vo
           const isFirstUser = usersSnapshot.empty
 
           if (isFirstUser) {
-            assignedRole = UserRole.OWNER // First user becomes owner
+            assignedRole = 'owner' // First user becomes system owner
+            
+            // Create default account for first user
+            accountId = await accountService.createAccount(
+              'Default Account',
+              firebaseUser.uid
+            )
+            console.log('Created default account for first user:', accountId)
           }
         }
       }
@@ -357,11 +380,42 @@ export const createOrUpdateUserDocument = async (firebaseUser: User): Promise<vo
       // Create new user
       const newUserData: AppUser = {
         ...userData as AppUser,
-        role: assignedRole,
+        accountId: accountId || '',
+        role: assignedRole || null,
         createdAt: new Date(),
         lastLogin: new Date(),
       }
       await setDoc(userDocRef, newUserData)
+
+      // If user was invited with admin/user role, add to account membership
+      if (accountId && assignedRole === null && firebaseUser.email) {
+        // Get invitation details again to get role mapping
+        const invitation = await checkUserInvitation(firebaseUser.email)
+        if (invitation) {
+          const invitationDoc = await getDoc(doc(db, 'invitations', invitation.invitationId))
+          if (invitationDoc.exists()) {
+            const invitationData = invitationDoc.data()
+            const inviteRole = invitationData.role
+            
+            // Map UserRole enum to account role
+            let accountRole: 'admin' | 'user' = 'user'
+            if (inviteRole === UserRole.ADMIN) {
+              accountRole = 'admin'
+            } else if (inviteRole === UserRole.DESIGNER || inviteRole === UserRole.VIEWER) {
+              accountRole = 'user'
+            }
+            
+            await accountService.addUserToAccount(firebaseUser.uid, accountId, accountRole)
+            console.log('Added user to account membership:', accountId, 'with role:', accountRole)
+          }
+        }
+      }
+
+      // If first user, add them as admin to their default account
+      if (accountId && assignedRole === 'owner') {
+        await accountService.addUserToAccount(firebaseUser.uid, accountId, 'admin')
+        console.log('Added first user as admin to default account')
+      }
     }
   } catch (error) {
     console.error('Error creating/updating user document:', error)
@@ -370,21 +424,33 @@ export const createOrUpdateUserDocument = async (firebaseUser: User): Promise<vo
 }
 
 // Create user invitation
-export const createUserInvitation = async (email: string, role: UserRole, invitedBy: string): Promise<void> => {
+export const createUserInvitation = async (
+  email: string,
+  role: UserRole,
+  invitedBy: string,
+  accountId?: string
+): Promise<void> => {
   try {
     const invitationId = `${email.replace('@', '_').replace('.', '_')}_${Date.now()}`
     const invitationRef = doc(db, 'invitations', invitationId)
 
-    await setDoc(invitationRef, {
+    const invitationData: any = {
       email,
       role,
       invitedBy,
       status: 'pending',
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-    })
+    }
 
-    console.log('Invitation created for:', email)
+    // Include accountId if provided
+    if (accountId) {
+      invitationData.accountId = accountId
+    }
+
+    await setDoc(invitationRef, invitationData)
+
+    console.log('Invitation created for:', email, 'accountId:', accountId)
   } catch (error) {
     console.error('Error creating invitation:', error)
     throw error

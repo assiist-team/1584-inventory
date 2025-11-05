@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from '@/utils/dateUtils'
 import { COMPANY_INVENTORY, COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/company'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
+import { useAccount } from '@/contexts/AccountContext'
 
 interface FilterOptions {
   status?: string
@@ -17,6 +18,7 @@ interface FilterOptions {
 }
 
 export default function BusinessInventory() {
+  const { currentAccountId } = useAccount()
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<Item[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -129,14 +131,19 @@ export default function BusinessInventory() {
   ]
 
   useEffect(() => {
-    loadBusinessInventory()
-    loadBusinessTransactions()
-    loadProjects()
-  }, [])
+    if (currentAccountId) {
+      loadBusinessInventory()
+      loadBusinessTransactions()
+      loadProjects()
+    }
+  }, [currentAccountId])
 
   // Subscribe to real-time updates for inventory
   useEffect(() => {
+    if (!currentAccountId) return
+    
     const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
+      currentAccountId,
       (updatedItems) => {
         setItems(updatedItems)
         setIsLoading(false)
@@ -145,7 +152,7 @@ export default function BusinessInventory() {
     )
 
     return unsubscribe
-  }, [filters])
+  }, [filters, currentAccountId])
 
   // Subscribe to real-time updates for transactions when on transactions tab
   useEffect(() => {
@@ -166,8 +173,9 @@ export default function BusinessInventory() {
   }, [])
 
   const loadBusinessInventory = async () => {
+    if (!currentAccountId) return
     try {
-      const data = await unifiedItemsService.getBusinessInventoryItems(filters)
+      const data = await unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters)
       setItems(data)
     } catch (error) {
       console.error('Error loading business inventory:', error)
@@ -179,16 +187,17 @@ export default function BusinessInventory() {
 
 
   const loadBusinessTransactions = async () => {
+    if (!currentAccountId) return
     try {
       // Get inventory-related transactions from top-level collection
       const allTransactions: Transaction[] = []
 
       // Get business inventory transactions (project_id == null)
-      const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions()
+      const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions(currentAccountId)
       allTransactions.push(...businessInventoryTransactions)
 
       // Get inventory-related transactions (reimbursement_type in ['Client Owes', 'We Owe'])
-      const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions()
+      const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions(currentAccountId)
       allTransactions.push(...inventoryRelatedTransactions)
 
       // Remove duplicates (same transaction might appear in both queries)
@@ -206,8 +215,9 @@ export default function BusinessInventory() {
   }
 
   const loadProjects = async () => {
+    if (!currentAccountId) return
     try {
-      const projectsData = await projectService.getProjects()
+      const projectsData = await projectService.getProjects(currentAccountId)
       setProjects(projectsData)
     } catch (error) {
       console.error('Error loading projects:', error)
@@ -222,7 +232,10 @@ export default function BusinessInventory() {
   const { toggleBookmark } = useBookmark<Item>({
     items,
     setItems,
-    updateItemService: unifiedItemsService.updateItem
+    updateItemService: (itemId: string, updates: Partial<Item>) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
+      return unifiedItemsService.updateItem(currentAccountId, itemId, updates)
+    }
   })
 
   // Use duplication hook for business inventory items
@@ -230,13 +243,14 @@ export default function BusinessInventory() {
     items,
     setItems,
     duplicationService: async (itemId: string) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
       // Since we're using the unified service, we need to create a duplicate item
-      const originalItem = await unifiedItemsService.getItemById(itemId)
+      const originalItem = await unifiedItemsService.getItemById(currentAccountId, itemId)
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
       const { item_id, date_created, last_updated, ...itemData } = originalItem
-      return await unifiedItemsService.createItem({
+      return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
         inventory_status: 'available',
         project_id: null,
@@ -265,12 +279,13 @@ export default function BusinessInventory() {
   }
 
   const handleBatchAllocationSubmit = async () => {
-    if (!batchAllocationForm.projectId || selectedItems.size === 0) return
+    if (!batchAllocationForm.projectId || selectedItems.size === 0 || !currentAccountId) return
 
     setIsAllocating(true)
     try {
       const itemIds = Array.from(selectedItems)
       await unifiedItemsService.batchAllocateItemsToProject(
+        currentAccountId,
         itemIds,
         batchAllocationForm.projectId,
         {
@@ -346,7 +361,8 @@ export default function BusinessInventory() {
     }
 
     // Update the item with the new image
-    await unifiedItemsService.updateItem(itemId, { images: [newImage] })
+    if (!currentAccountId) throw new Error('Account ID is required')
+    await unifiedItemsService.updateItem(currentAccountId, itemId, { images: [newImage] })
 
     // Show success notification on the last file
     if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {

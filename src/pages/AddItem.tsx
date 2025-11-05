@@ -8,6 +8,7 @@ import { Transaction, ItemImage } from '@/types'
 import { Select } from '@/components/ui/Select'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { useAuth } from '../contexts/AuthContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
@@ -32,6 +33,7 @@ export default function AddItem() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
   const { showError } = useToast()
 
   const [projectName, setProjectName] = useState<string>('')
@@ -101,17 +103,17 @@ export default function AddItem() {
   // Fetch project name and transactions when component mounts
   useEffect(() => {
     const fetchProjectAndTransactions = async () => {
-      if (projectId) {
+      if (projectId && currentAccountId) {
         setLoadingTransactions(true)
         try {
           // Fetch project name for image uploads
-          const project = await projectService.getProject(projectId)
+          const project = await projectService.getProject(currentAccountId, projectId)
           if (project) {
             setProjectName(project.name)
           }
 
           // Fetch transactions
-          const fetchedTransactions = await transactionService.getTransactions(projectId)
+          const fetchedTransactions = await transactionService.getTransactions(currentAccountId, projectId)
           setTransactions(fetchedTransactions)
         } catch (error) {
           console.error('Error fetching project and transactions:', error)
@@ -122,7 +124,7 @@ export default function AddItem() {
     }
 
     fetchProjectAndTransactions()
-  }, [projectId])
+  }, [projectId, currentAccountId])
 
   // Initialize custom states based on initial form data
   useEffect(() => {
@@ -177,7 +179,11 @@ export default function AddItem() {
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
-      await unifiedItemsService.createItem(itemData)
+      if (!currentAccountId) {
+        showError('Account ID is required')
+        return
+      }
+      await unifiedItemsService.createItem(currentAccountId, itemData)
       navigate(`/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Error creating item:', error)

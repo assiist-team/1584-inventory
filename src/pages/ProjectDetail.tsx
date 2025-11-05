@@ -4,6 +4,7 @@ import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'reac
 import { useState, useEffect } from 'react'
 import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
 import InventoryList from './InventoryList'
 import TransactionsList from './TransactionsList'
 import ProjectForm from '@/components/ProjectForm'
@@ -16,6 +17,7 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const { currentAccountId } = useAccount()
   const [searchParams, setSearchParams] = useSearchParams()
   const budgetTabParam = searchParams.get('budgetTab')
   const [project, setProject] = useState<Project | null>(null)
@@ -117,19 +119,20 @@ export default function ProjectDetail() {
       navigate('/projects')
       return
     }
+    if (!currentAccountId) return
 
     setIsLoading(true)
 
     try {
       console.log('Loading project data for ID:', id)
       // Load project data
-      const projectData = await projectService.getProject(id)
+      const projectData = await projectService.getProject(currentAccountId, id)
       if (projectData) {
         console.log('Project loaded successfully:', projectData.name)
         setProject(projectData)
 
         // Load transactions for budget calculation
-        const transactionsData = await transactionService.getTransactions(id)
+        const transactionsData = await transactionService.getTransactions(currentAccountId, id)
         console.log('Transactions loaded:', transactionsData.length)
         setTransactions(transactionsData)
       } else {
@@ -147,8 +150,10 @@ export default function ProjectDetail() {
   }
 
   useEffect(() => {
-    loadProjectAndTransactions()
-  }, [id, navigate])
+    if (currentAccountId) {
+      loadProjectAndTransactions()
+    }
+  }, [id, currentAccountId, navigate])
 
   // Retry function for failed loads
   const retryLoadProject = () => {
@@ -158,22 +163,22 @@ export default function ProjectDetail() {
 
   // Subscribe to real-time transaction updates
   useEffect(() => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
-    const unsubscribe = transactionService.subscribeToTransactions(id, (updatedTransactions) => {
+    const unsubscribe = transactionService.subscribeToTransactions(currentAccountId, id, (updatedTransactions) => {
       setTransactions(updatedTransactions)
     })
 
     return unsubscribe
-  }, [id])
+  }, [id, currentAccountId])
 
   const handleEditProject = async (projectData: any) => {
-    if (!project || !id) return
+    if (!project || !id || !currentAccountId) return
 
     try {
-      await projectService.updateProject(id, projectData)
+      await projectService.updateProject(currentAccountId, id, projectData)
       // Reload project data
-      const updatedProject = await projectService.getProject(id)
+      const updatedProject = await projectService.getProject(currentAccountId, id)
       setProject(updatedProject)
       setIsEditing(false)
     } catch (error) {
@@ -199,11 +204,11 @@ export default function ProjectDetail() {
   }
 
   const handleDeleteProject = async () => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
     setIsDeleting(true)
     try {
-      await projectService.deleteProject(id)
+      await projectService.deleteProject(currentAccountId, id)
       // Redirect to projects list after successful deletion
       navigate('/projects')
     } catch (error) {

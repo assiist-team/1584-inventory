@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/ToastContext'
 import TransactionItemForm from '@/components/TransactionItemForm'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { useAccount } from '@/contexts/AccountContext'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 // Remove any unwanted icons from transaction type badges
@@ -46,6 +47,7 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
 export default function TransactionDetail() {
   const { id: projectId, transactionId } = useParams<{ id?: string; transactionId: string }>()
   const navigate = useNavigate()
+  const { currentAccountId } = useAccount()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [taxPresets, setTaxPresets] = useState<TaxPreset[]>([])
@@ -53,15 +55,16 @@ export default function TransactionDetail() {
   // Load tax presets on mount
   useEffect(() => {
     const loadPresets = async () => {
+      if (!currentAccountId) return
       try {
-        const presets = await getTaxPresets()
+        const presets = await getTaxPresets(currentAccountId)
         setTaxPresets(presets)
       } catch (error) {
         console.error('Error loading tax presets:', error)
       }
     }
     loadPresets()
-  }, [])
+  }, [currentAccountId])
   const [transactionItems, setTransactionItems] = useState<Item[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
@@ -84,7 +87,7 @@ export default function TransactionDetail() {
 
   useEffect(() => {
     const loadTransaction = async () => {
-      if (!transactionId) return
+      if (!transactionId || !currentAccountId) return
 
       try {
         let actualProjectId = projectId
@@ -94,7 +97,7 @@ export default function TransactionDetail() {
         if (!actualProjectId) {
           // For business inventory transactions, we need to find the transaction across all projects
           console.log('TransactionDetail - No projectId provided, searching across all projects for business inventory transaction')
-          const result = await transactionService.getTransactionById(transactionId)
+          const result = await transactionService.getTransactionById(currentAccountId, transactionId)
 
           if (!result.transaction || !result.projectId) {
             console.error('TransactionDetail - Transaction not found in any project')
@@ -107,13 +110,13 @@ export default function TransactionDetail() {
           actualProjectId = result.projectId
 
           // Get project data for the found project
-          projectData = await projectService.getProject(actualProjectId)
+          projectData = await projectService.getProject(currentAccountId, actualProjectId)
         } else {
           // Fetch transaction, project data, and transaction items for regular project transactions
           const [fetchedTransactionData, fetchedProjectData, transactionItems] = await Promise.all([
-            transactionService.getTransaction(actualProjectId, transactionId),
-            projectService.getProject(actualProjectId),
-            unifiedItemsService.getItemsForTransaction(actualProjectId, transactionId)
+            transactionService.getTransaction(currentAccountId, actualProjectId, transactionId),
+            projectService.getProject(currentAccountId, actualProjectId),
+            unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId, transactionId)
           ])
 
           transactionData = fetchedTransactionData
@@ -122,7 +125,7 @@ export default function TransactionDetail() {
           // Fetch the actual item details for regular project transactions
           if (transactionItems.length > 0 && actualProjectId) {
             const itemIds = transactionItems.map(item => item.item_id)
-            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(itemId))
+            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
             console.log('TransactionDetail - fetched items:', validItems.length)
@@ -146,10 +149,10 @@ export default function TransactionDetail() {
         // Fetch transaction items for business inventory transactions
         if (!projectId && actualProjectId) {
           // For business inventory transactions, fetch items after we have the project ID
-          const transactionItems = await unifiedItemsService.getItemsForTransaction(actualProjectId!, transactionId)
+          const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId!, transactionId)
           if (transactionItems.length > 0) {
             const itemIds = transactionItems.map(item => item.item_id)
-            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(itemId))
+            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
             console.log('TransactionDetail - fetched items for business inventory transaction:', validItems.length)
@@ -169,7 +172,7 @@ export default function TransactionDetail() {
     }
 
     loadTransaction()
-  }, [projectId, transactionId])
+  }, [projectId, transactionId, currentAccountId])
 
   // Set up real-time subscription for transaction updates
   useEffect(() => {
@@ -224,11 +227,11 @@ export default function TransactionDetail() {
   }, [transaction])
 
   const handleDelete = async () => {
-    if (!projectId || !transactionId || !transaction) return
+    if (!projectId || !transactionId || !transaction || !currentAccountId) return
 
     if (window.confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
       try {
-        await transactionService.deleteTransaction(projectId, transactionId)
+        await transactionService.deleteTransaction(currentAccountId, projectId, transactionId)
         navigate(`/project/${projectId}?tab=transactions`)
       } catch (error) {
         console.error('Error deleting transaction:', error)
@@ -267,14 +270,15 @@ export default function TransactionDetail() {
       const updatedReceiptImages = [...currentReceiptImages, ...newReceiptImages]
 
       const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
+      if (!currentAccountId) return
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
         receipt_images: updatedReceiptImages,
         transaction_images: updatedReceiptImages // Also update legacy field for compatibility
       })
 
       // Refresh transaction data (use actual project_id from transaction)
       const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Receipt images uploaded successfully')
@@ -307,13 +311,14 @@ export default function TransactionDetail() {
       const updatedOtherImages = [...currentOtherImages, ...newOtherImages]
 
       const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
+      if (!currentAccountId) return
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
         other_images: updatedOtherImages
       })
 
       // Refresh transaction data (use actual project_id from transaction)
       const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Other images uploaded successfully')
@@ -326,7 +331,7 @@ export default function TransactionDetail() {
   }
 
   const handleDeleteReceiptImage = async (imageUrl: string) => {
-    if (!projectId || !transactionId || !transaction) return
+    if (!projectId || !transactionId || !transaction || !currentAccountId) return
 
     try {
       // Filter out the image to be deleted
@@ -334,14 +339,14 @@ export default function TransactionDetail() {
       const updatedReceiptImages = currentReceiptImages.filter(img => img.url !== imageUrl)
 
       const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
         receipt_images: updatedReceiptImages,
         transaction_images: updatedReceiptImages // Also update legacy field for compatibility
       })
 
       // Refresh transaction data (use actual project_id from transaction)
       const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Receipt image deleted successfully')
@@ -360,13 +365,14 @@ export default function TransactionDetail() {
       const updatedOtherImages = currentOtherImages.filter(img => img.url !== imageUrl)
 
       const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
+      if (!currentAccountId) return
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
         other_images: updatedOtherImages
       })
 
       // Refresh transaction data (use actual project_id from transaction)
       const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Other image deleted successfully')
@@ -385,7 +391,7 @@ export default function TransactionDetail() {
   }
 
   const handleSaveItem = async (item: TransactionItemFormData) => {
-    if (!projectId || !transactionId || !transaction) return
+    if (!projectId || !transactionId || !transaction || !currentAccountId) return
 
     try {
       // Create the item linked to the existing transaction
@@ -407,7 +413,7 @@ export default function TransactionDetail() {
         space: item.space || '',
         disposition: 'keep'
       }
-      const itemId = await unifiedItemsService.createItem(itemData)
+      const itemId = await unifiedItemsService.createItem(currentAccountId, itemData)
 
       // Upload item images if any
       // Try to get files from the map first, then fall back to item.imageFiles
@@ -457,7 +463,7 @@ export default function TransactionDetail() {
 
           // Update the item with uploaded images
           if (validImages.length > 0) {
-            await unifiedItemsService.updateItem(itemId, { images: validImages })
+            await unifiedItemsService.updateItem(currentAccountId, itemId, { images: validImages })
           }
         } catch (error) {
           console.error('Error in image upload process:', error)
@@ -465,9 +471,9 @@ export default function TransactionDetail() {
       }
 
       // Refresh the transaction items list
-      const transactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+      const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
       const itemIds = transactionItems.map(item => item.item_id)
-      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(id))
+      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
       const items = await Promise.all(itemsPromises)
       const validItems = items.filter(item => item !== null) as Item[]
       setTransactionItems(validItems)

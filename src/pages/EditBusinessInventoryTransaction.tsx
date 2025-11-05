@@ -7,11 +7,13 @@ import { toDateOnlyString } from '@/utils/dateUtils'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function EditBusinessInventoryTransaction() {
   const { projectId, transactionId } = useParams<{ projectId: string; transactionId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const { currentAccountId } = useAccount()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
@@ -53,15 +55,16 @@ export default function EditBusinessInventoryTransaction() {
   // Load tax presets on mount
   useEffect(() => {
     const loadPresets = async () => {
+      if (!currentAccountId) return
       try {
-        const presets = await getTaxPresets()
+        const presets = await getTaxPresets(currentAccountId)
         setTaxPresets(presets)
       } catch (error) {
         console.error('Error loading tax presets:', error)
       }
     }
     loadPresets()
-  }, [])
+  }, [currentAccountId])
 
   // Update selected preset rate when preset changes
   useEffect(() => {
@@ -87,11 +90,11 @@ export default function EditBusinessInventoryTransaction() {
   // Load projects and transaction data
   useEffect(() => {
     const loadData = async () => {
+      if (!currentAccountId || !transactionId) return
       try {
         const [projectsData, transactionData] = await Promise.all([
-          projectService.getProjects(),
-          projectId && transactionId ? transactionService.getTransaction(projectId, transactionId) :
-            transactionId ? transactionService.getTransactionById(transactionId).then(result => result.transaction) : null
+          projectService.getProjects(currentAccountId),
+          transactionService.getTransaction(currentAccountId, projectId || '', transactionId)
         ])
 
         setProjects(projectsData)
@@ -133,7 +136,7 @@ export default function EditBusinessInventoryTransaction() {
     }
 
     loadData()
-  }, [projectId, transactionId])
+  }, [projectId, transactionId, currentAccountId])
 
   const handleInputChange = (field: keyof typeof formData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -200,7 +203,12 @@ export default function EditBusinessInventoryTransaction() {
         ...(taxRatePreset ? { tax_rate_preset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
-      await transactionService.updateTransaction(actualProjectId || '', transactionId, updateData)
+      if (!currentAccountId) {
+        setFormErrors({ general: 'Account ID is required' })
+        setIsSubmitting(false)
+        return
+      }
+      await transactionService.updateTransaction(currentAccountId, actualProjectId || '', transactionId, updateData)
       navigate(`/business-inventory`)
     } catch (error) {
       console.error('Error updating transaction:', error)
