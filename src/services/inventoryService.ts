@@ -13,15 +13,14 @@ import {
   limit,
   onSnapshot,
   writeBatch,
-  getCountFromServer,
   deleteField,
   serverTimestamp
 } from 'firebase/firestore'
 import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
-import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT, COMPANY_PAYMENT_METHOD } from '@/constants/company'
-import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, BusinessInventoryStats } from '@/types'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData } from '@/types'
 
 // Audit Logging Service for allocation/de-allocation events
 export const auditService = {
@@ -534,7 +533,7 @@ export const transactionService = {
   // Update transaction status (for completing/cancelling pending transactions) (account-scoped)
   async updateTransactionStatus(
     accountId: string,
-    projectId: string,
+    _projectId: string,
     transactionId: string,
     status: 'pending' | 'completed' | 'canceled',
     updates?: Partial<Transaction>
@@ -964,7 +963,7 @@ export const unifiedItemsService = {
 
     // Log allocation start (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'allocation', itemId, item.project_id, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, item.project_id ?? null, currentTransactionId ?? null, {
         action: 'allocation_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -1580,7 +1579,7 @@ export const unifiedItemsService = {
 
     // Log return start (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', itemId, item.project_id, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'return', itemId, item.project_id ?? null, currentTransactionId ?? null, {
         action: 'return_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -1683,7 +1682,7 @@ export const unifiedItemsService = {
       budget_category: 'Furnishings',
       notes: notes || 'Transaction for items purchased from project and moved to business inventory',
       status: 'pending' as const,
-      reimbursement_type: COMPANY_OWES_CLIENT as const,  // We owe the client for this purchase
+      reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
       trigger_event: 'Inventory sale' as const,
       item_ids: [itemId],
       created_by: 'system',
@@ -1919,496 +1918,6 @@ export const unifiedItemsService = {
   }
 }
 
-// Business Inventory Services (DEPRECATED - use unifiedItemsService instead)
-export const businessInventoryService = {
-  // Get all business inventory items
-  async getBusinessInventoryItems(
-    filters?: { status?: string; searchQuery?: string },
-    pagination?: PaginationOptions
-  ): Promise<Item[]> {
-    const itemsRef = collection(db, 'business_inventory')
-    let q = query(itemsRef)
-
-    // Apply filters
-    if (filters?.status) {
-      q = query(q, where('inventory_status', '==', filters.status))
-    }
-
-    // Apply sorting and pagination
-    q = query(q, orderBy('last_updated', 'desc'))
-
-    if (pagination) {
-      q = query(q, limit(pagination.limit))
-      if (pagination.page > 0) {
-        q = query(q, limit(pagination.page * pagination.limit))
-      }
-    }
-
-    const querySnapshot = await getDocs(q)
-
-    let items = querySnapshot.docs.map(doc => ({
-      item_id: doc.id,
-      ...doc.data()
-    } as Item))
-
-    // Apply client-side search if needed
-    if (filters?.searchQuery) {
-      const searchTerm = filters.searchQuery.toLowerCase()
-      items = items.filter(item =>
-        item.description.toLowerCase().includes(searchTerm) ||
-        item.source.toLowerCase().includes(searchTerm) ||
-        item.sku.toLowerCase().includes(searchTerm) ||
-        item.business_inventory_location?.toLowerCase().includes(searchTerm)
-      )
-    }
-
-    return items
-  },
-
-  // Get single business inventory item
-  async getBusinessInventoryItem(itemId: string): Promise<Item | null> {
-    const itemRef = doc(db, 'business_inventory', itemId)
-    const itemSnap = await getDoc(itemRef)
-
-    if (itemSnap.exists()) {
-      return {
-        item_id: itemSnap.id,
-        ...itemSnap.data()
-      } as Item
-    }
-    return null
-  },
-
-  // Duplicate a business inventory item
-  async duplicateBusinessInventoryItem(originalItemId: string): Promise<string> {
-    // Get the original item first
-    const originalItem = await this.getBusinessInventoryItem(originalItemId)
-    if (!originalItem) {
-      throw new Error('Original business inventory item not found')
-    }
-
-    const now = new Date()
-    const newItemId = `BI-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-    const newQrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-
-    // Create duplicate item with new IDs and timestamps
-    // Filter out undefined values to avoid Firebase errors
-    const duplicatedItem: any = {
-      item_id: newItemId,
-      description: originalItem.description,
-      source: originalItem.source,
-      sku: originalItem.sku || '',
-      purchase_price: originalItem.purchase_price || '',
-      project_price: originalItem.project_price || '',
-      market_value: originalItem.market_value || '',
-      payment_method: originalItem.payment_method,
-      disposition: 'keep', // Default disposition for duplicates
-      notes: originalItem.notes,
-      space: originalItem.space || '',
-      qr_key: newQrKey,
-      bookmark: false, // Default bookmark to false for duplicates
-      inventory_status: 'available', // Default status for duplicates
-      business_inventory_location: originalItem.business_inventory_location || '',
-      transaction_id: originalItem.transaction_id,
-      date_created: now.toISOString(),
-      last_updated: now.toISOString(),
-      images: originalItem.images || [] // Copy images from original item
-    }
-
-    // Remove any undefined values that might still exist
-    Object.keys(duplicatedItem).forEach(key => {
-      if (duplicatedItem[key] === undefined) {
-        delete duplicatedItem[key]
-      }
-    })
-
-    // Create the duplicated item
-    const itemRef = doc(db, 'business_inventory', newItemId)
-    await setDoc(itemRef, duplicatedItem)
-
-    return newItemId
-  },
-
-  // Create new business inventory item
-  async createBusinessInventoryItem(itemData: Omit<Item, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
-    const itemsRef = collection(db, 'business_inventory')
-    const now = new Date()
-
-    const newItem = {
-      ...itemData,
-      inventory_status: itemData.inventory_status || 'available',
-      date_created: now.toISOString(),
-      last_updated: now.toISOString()
-    }
-
-    const docRef = await addDoc(itemsRef, newItem)
-    return docRef.id
-  },
-
-  // Update business inventory item
-  async updateBusinessInventoryItem(itemId: string, updates: Partial<Item>): Promise<void> {
-    const itemRef = doc(db, 'business_inventory', itemId)
-
-    const firebaseUpdates: any = {
-      last_updated: new Date().toISOString()
-    }
-
-    if (updates.inventory_status !== undefined) firebaseUpdates.inventory_status = updates.inventory_status
-    if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
-    if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-    if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
-    if (updates.description !== undefined) firebaseUpdates.description = updates.description
-    if (updates.source !== undefined) firebaseUpdates.source = updates.source
-    if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-    if (updates.market_value !== undefined) firebaseUpdates.market_value = updates.market_value
-    if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
-    if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
-    if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
-    if (updates.space !== undefined) firebaseUpdates.space = updates.space
-    if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
-    if (updates.images !== undefined) firebaseUpdates.images = updates.images
-
-    await updateDoc(itemRef, firebaseUpdates)
-  },
-
-  // Delete business inventory item
-  async deleteBusinessInventoryItem(itemId: string): Promise<void> {
-    const itemRef = doc(db, 'business_inventory', itemId)
-    await deleteDoc(itemRef)
-  },
-
-  // Get business inventory statistics
-  async getBusinessInventoryStats(): Promise<BusinessInventoryStats> {
-    const itemsRef = collection(db, 'business_inventory')
-    const snapshot = await getCountFromServer(itemsRef)
-
-    const allItemsQuery = query(itemsRef)
-    const allItemsSnap = await getDocs(allItemsQuery)
-
-    let availableItems = 0
-    let allocatedItems = 0
-    let soldItems = 0
-
-    allItemsSnap.docs.forEach(doc => {
-      const data = doc.data()
-      switch (data.inventory_status) {
-        case 'available':
-          availableItems++
-          break
-        case 'allocated':
-          allocatedItems++
-          break
-        case 'sold':
-          soldItems++
-          break
-      }
-    })
-
-    return {
-      totalItems: snapshot.data().count,
-      availableItems,
-      allocatedItems,
-      soldItems
-    }
-  },
-
-  // Subscribe to business inventory items
-  subscribeToBusinessInventory(
-    callback: (items: Item[]) => void,
-    filters?: { status?: string; searchQuery?: string }
-  ) {
-    const itemsRef = collection(db, 'business_inventory')
-    let q = query(itemsRef, orderBy('last_updated', 'desc'))
-
-    if (filters?.status) {
-      q = query(q, where('inventory_status', '==', filters.status))
-    }
-
-    return onSnapshot(q, (snapshot) => {
-      let items = snapshot.docs.map(doc => ({
-        item_id: doc.id,
-        ...doc.data()
-      } as Item))
-
-      // Apply client-side search if needed
-      if (filters?.searchQuery) {
-        const searchTerm = filters.searchQuery.toLowerCase()
-        items = items.filter(item =>
-          item.description.toLowerCase().includes(searchTerm) ||
-          item.source.toLowerCase().includes(searchTerm) ||
-          item.sku.toLowerCase().includes(searchTerm) ||
-          item.business_inventory_location?.toLowerCase().includes(searchTerm)
-        )
-      }
-
-      callback(items)
-    })
-  },
-
-  // Allocate item to project (creates pending transaction)
-  async allocateItemToProject(
-    itemId: string,
-    projectId: string,
-    amount?: string,
-    notes?: string
-  ): Promise<string> {
-    // Get the item to determine the amount if not provided
-    const item = await this.getBusinessInventoryItem(itemId)
-    if (!item) {
-      throw new Error('Business inventory item not found')
-    }
-    const finalAmount = amount || item.project_price || item.market_value || '0.00'
-
-    // Get project name for the notes
-    let projectName = 'Project'
-    try {
-      const project = await projectService.getProject(projectId)
-      projectName = project?.name || 'Project'
-    } catch (error) {
-      console.warn('Could not fetch project name for transaction notes:', error)
-    }
-
-    // Create pending transaction first
-    const transactionData = {
-      project_id: projectId,
-      transaction_date: toDateOnlyString(new Date()),
-      source: 'Inventory',  // Project purchasing inventory from Design Business
-      transaction_type: 'Purchase',  // Project purchasing inventory from Design Business
-      payment_method: 'Pending',
-      amount: finalAmount,
-      budget_category: 'Furnishings',
-      notes: notes || `${projectName} inventory purchase`,  // Include project name in notes
-      created_by: 'system',
-      status: 'pending' as const,
-      reimbursement_type: CLIENT_OWES_COMPANY as const,
-      trigger_event: 'Inventory allocation' as const
-    }
-
-    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
-    const transactionRef = await addDoc(transactionsRef, transactionData)
-
-    // Update item status to allocated and link to transaction
-    await this.updateBusinessInventoryItem(itemId, {
-      inventory_status: 'allocated',
-      transaction_id: transactionRef.id
-    })
-
-    return transactionRef.id
-  },
-
-  // Batch allocate multiple items to a project
-  async batchAllocateItemsToProject(
-    itemIds: string[],
-    projectId: string,
-    allocationData: {
-      amount?: string;
-      notes?: string;
-      space?: string;
-    } = {}
-  ): Promise<string[]> {
-    const batch = writeBatch(db)
-    const transactionIds: string[] = []
-    const now = new Date()
-
-    // Get the business inventory items first
-    const businessItemsRef = collection(db, 'business_inventory')
-    const businessItemsQuery = query(businessItemsRef, where('__name__', 'in', itemIds))
-    const businessItemsSnapshot = await getDocs(businessItemsQuery)
-
-    if (businessItemsSnapshot.empty) {
-      throw new Error('No business inventory items found')
-    }
-
-    // Get project name for the notes
-    let projectName = 'Project'
-    try {
-      const project = await projectService.getProject(projectId)
-      projectName = project?.name || 'Project'
-    } catch (error) {
-      console.warn('Could not fetch project name for transaction notes:', error)
-    }
-
-    // Create a single transaction for the batch allocation
-    const transactionData = {
-      project_id: projectId,
-      transaction_date: toDateOnlyString(now),
-      source: 'Inventory',  // Project purchasing inventory from Design Business
-      transaction_type: 'Purchase',  // Project purchasing inventory from Design Business
-      payment_method: 'Pending',
-      amount: allocationData.amount || '0.00',
-      budget_category: 'Furnishings',
-      notes: allocationData.notes || `${projectName} inventory purchase`,  // Include project name in notes
-      created_by: 'system',
-      status: 'pending' as const,
-      reimbursement_type: CLIENT_OWES_COMPANY as const,
-      trigger_event: 'Inventory allocation' as const
-    }
-
-    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
-    const transactionRef = doc(transactionsRef)
-    batch.set(transactionRef, transactionData)
-    transactionIds.push(transactionRef.id)
-
-    // Create project items from business inventory items
-    businessItemsSnapshot.docs.forEach((businessItemDoc) => {
-      const businessItemData = businessItemDoc.data()
-
-      // Create the item in project collection with specified defaults
-      const projectItemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-      const projectItemRef = doc(db, 'projects', projectId, 'items', projectItemId)
-
-      const projectItemData = {
-        item_id: projectItemId,
-        description: businessItemData.description,
-        source: businessItemData.source,
-        sku: businessItemData.sku,
-        project_price: businessItemData.project_price, // Design Business project price from business inventory
-        market_value: businessItemData.market_value || '',
-        payment_method: COMPANY_PAYMENT_METHOD, // Default payment method for allocated items
-        disposition: 'keep', // Default disposition for allocated items
-        notes: businessItemData.notes,
-        space: allocationData.space || '', // Optional space field
-        qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`, // Generate new QR key
-        bookmark: false, // Default bookmark to false
-        transaction_id: transactionRef.id, // Link to allocation transaction
-        project_id: projectId,
-        date_created: businessItemData.date_created, // Preserve original date
-        last_updated: now.toISOString(),
-        images: businessItemData.images || [] // Preserve images
-      }
-
-      batch.set(projectItemRef, projectItemData)
-    })
-
-    // Mark business inventory items as sold (since they've been moved to project)
-    itemIds.forEach(itemId => {
-      const itemRef = doc(db, 'business_inventory', itemId)
-      batch.update(itemRef, {
-        inventory_status: 'sold',
-        transaction_id: transactionRef.id,
-        last_updated: now.toISOString()
-      })
-    })
-
-    await batch.commit()
-
-    // Update project metadata
-    const currentItems = await unifiedItemsService.getItemsByProject(projectId)
-    const currentItemCount = currentItems.length
-    await projectService.updateProject(projectId, {
-      metadata: {
-        totalItems: currentItemCount,
-        lastActivity: now
-      }
-    } as Partial<Project>)
-
-    return transactionIds
-  },
-
-  // Return item from project (cancels pending transaction)
-    async returnItemFromProject(itemId: string, transactionId: string, projectId: string): Promise<void> {
-    // Cancel the pending transaction
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
-    await updateDoc(transactionRef, {
-      status: 'canceled',
-      last_updated: new Date().toISOString()
-    })
-
-    // Update item status back to available and clear project links
-    await this.updateBusinessInventoryItem(itemId, {
-      inventory_status: 'available',
-      transaction_id: undefined
-    })
-  },
-
-  // Mark item as sold (completes pending transaction)
-  async markItemAsSold(
-    itemId: string,
-    transactionId: string,
-    projectId: string,
-    paymentMethod: string
-  ): Promise<void> {
-    // Complete the pending transaction
-    const transactionRef = doc(db, 'projects', projectId, 'transactions', transactionId)
-    await updateDoc(transactionRef, {
-      status: 'completed',
-      transaction_date: toDateOnlyString(new Date()),
-      payment_method: paymentMethod,
-      last_updated: new Date().toISOString()
-    })
-
-    // Update item status to sold and clear project links
-    await this.updateBusinessInventoryItem(itemId, {
-      inventory_status: 'sold',
-      transaction_id: undefined
-    })
-  },
-
-  // Move item from project back to business inventory (creates "We owe client" transaction)
-  async moveItemToBusinessInventory(
-    itemId: string,
-    projectId: string,
-    amount: string,
-    notes?: string
-  ): Promise<string> {
-    // Get the item from project first
-    const projectItemsRef = collection(db, 'projects', projectId, 'items')
-    const itemQuery = query(projectItemsRef, where('item_id', '==', itemId))
-    const itemSnap = await getDocs(itemQuery)
-
-    if (itemSnap.empty) {
-      throw new Error('Item not found in project')
-    }
-
-    const itemData = itemSnap.docs[0].data()
-
-    // Create "We owe client" transaction
-    const transactionData = {
-      project_id: projectId,
-      transaction_date: toDateOnlyString(new Date()),
-      source: 'Client Purchase',
-      transaction_type: 'Purchase',
-      payment_method: 'Pending',
-      amount: amount,
-      budget_category: 'Furnishings',
-      notes: notes || 'Client-purchased item moved to business inventory',
-      created_by: 'system',
-      status: 'pending' as const,
-      reimbursement_type: 'We Owe' as const,
-      trigger_event: 'Purchase from client' as const
-    }
-
-    const transactionsRef = collection(db, 'projects', projectId, 'transactions')
-    const transactionRef = await addDoc(transactionsRef, transactionData)
-
-    // Create item in business inventory
-    const newBusinessItem = {
-      description: itemData.description,
-      source: itemData.source,
-      sku: itemData.sku,
-      price: itemData.price,
-      market_value: itemData.market_value,
-      payment_method: itemData.payment_method,
-      disposition: itemData.disposition || 'keep',
-      notes: itemData.notes,
-      space: itemData.space,
-      qr_key: itemData.qr_key,
-      bookmark: itemData.bookmark || false,
-      inventory_status: 'available' as const,
-      business_inventory_location: 'Warehouse - Client Purchase',
-      transaction_id: transactionRef.id,
-      images: itemData.images || []
-    }
-
-    await this.createBusinessInventoryItem(newBusinessItem)
-
-    // Remove item from project
-    await deleteDoc(itemSnap.docs[0].ref)
-
-    return transactionRef.id
-  }
-}
-
 // Deallocation Service - Handles inventory designation automation
 export const deallocationService = {
   // Main entry point for handling inventory designation - simplified unified approach
@@ -2477,7 +1986,7 @@ export const deallocationService = {
 
       // Log deallocation start (catch errors to prevent cascading failures)
       try {
-        await auditService.logAllocationEvent(accountId, 'deallocation', itemId, item.project_id, item.transaction_id, {
+        await auditService.logAllocationEvent(accountId, 'deallocation', itemId, item.project_id ?? null, item.transaction_id ?? null, {
           action: 'deallocation_started',
           target_status: 'inventory',
           current_transaction_id: item.transaction_id
@@ -2614,7 +2123,7 @@ export const deallocationService = {
         budget_category: 'Furnishings',
         notes: additionalNotes || 'Transaction for items purchased from project and moved to business inventory',
         status: 'pending' as const,
-        reimbursement_type: COMPANY_OWES_CLIENT as const,  // We owe the client for this purchase
+        reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
         trigger_event: 'Inventory sale' as const,
         item_ids: [item.item_id],
         created_by: 'system',
