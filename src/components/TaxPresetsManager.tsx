@@ -1,24 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Save, AlertCircle } from 'lucide-react'
 import { getTaxPresets, updateTaxPresets } from '@/services/taxPresetsService'
 import { TaxPreset } from '@/types'
 import { useAccount } from '@/contexts/AccountContext'
 
 export default function TaxPresetsManager() {
-  const { currentAccountId } = useAccount()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [presets, setPresets] = useState<TaxPreset[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (currentAccountId) {
-      loadPresets()
-    }
-  }, [currentAccountId])
-
-  const loadPresets = async () => {
+  const loadPresets = useCallback(async () => {
     if (!currentAccountId) return
     
     try {
@@ -32,7 +26,22 @@ export default function TaxPresetsManager() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [currentAccountId])
+
+  useEffect(() => {
+    // Wait for account to finish loading
+    if (accountLoading) {
+      return
+    }
+
+    if (currentAccountId) {
+      loadPresets()
+    } else {
+      // If no account ID after loading completes, stop loading
+      setIsLoading(false)
+      setError('No account found. Please ensure you are logged in and have an account.')
+    }
+  }, [currentAccountId, accountLoading, loadPresets])
 
   const handlePresetChange = (index: number, field: 'name' | 'rate', value: string | number) => {
     setPresets(prev => prev.map((preset, i) => {
