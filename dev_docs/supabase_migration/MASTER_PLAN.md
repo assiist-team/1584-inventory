@@ -46,7 +46,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Install Supabase client library
   - See: `01-supabase-setup.md`
 
-- [ ] **Task 1.2**: Database Schema Design
+- [x] **Task 1.2**: Database Schema Design
   - Design Postgres schema equivalent to Firestore structure
   - Create migration scripts
   - Set up database tables
@@ -172,7 +172,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 
 ### Phase 1: Setup & Configuration
 - [x] Task 1.1: Supabase Project Setup
-- [ ] Task 1.2: Database Schema Design
+- [x] Task 1.2: Database Schema Design
 - [ ] Task 1.3: Storage Bucket Configuration
 
 ### Phase 2: Authentication Migration
