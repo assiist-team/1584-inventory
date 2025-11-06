@@ -1,20 +1,18 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
-import { User as FirebaseUser } from 'firebase/auth'
+import { User as SupabaseUser } from '@supabase/supabase-js'
 import {
-  onAuthStateChange,
   signInWithGoogle,
   signOutUser,
   getCurrentUserWithData,
   createOrUpdateUserDocument,
   initializeAuthPersistence,
-  initializeFirebase,
-  auth
-} from '../services/firebase'
+  initializeSupabase,
+  supabase
+} from '../services/supabase'
 import { User, UserRole } from '../types'
-import { accountService } from '../services/accountService'
 
 interface AuthContextType {
-  firebaseUser: FirebaseUser | null
+  supabaseUser: SupabaseUser | null
   user: User | null
   loading: boolean
   signIn: () => Promise<void>
@@ -31,58 +29,59 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null)
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let isInitialLoad = true
-    let authStateUnsubscribe: (() => void) | null = null
+    let authStateUnsubscribe: { data: { subscription: any } } | null = null
     let loadingTimeout: NodeJS.Timeout | null = null
     let isMounted = true
 
-    // Safety timeout to ensure loading is set to false even if auth listener doesn't fire
+    // Safety timeout
     loadingTimeout = setTimeout(() => {
       if (isMounted && isInitialLoad) {
         console.warn('⚠️ Auth initialization timeout - setting loading to false')
         setLoading(false)
         isInitialLoad = false
       }
-    }, 5000) // 5 second timeout
+    }, 5000)
 
-    // Initialize Firebase and auth persistence
+    // Initialize Supabase and auth persistence
     const initializeAuth = async () => {
       try {
-        // Initialize Firebase (preserves auth persistence)
-        await initializeFirebase()
-        console.log('🔥 Firebase initialized (auth persistence preserved)')
+        // Initialize Supabase
+        await initializeSupabase()
+        console.log('🔥 Supabase initialized')
 
-        // Set auth persistence to localStorage for indefinite login
+        // Set auth persistence
         await initializeAuthPersistence()
-        console.log('🔐 Auth persistence set to localStorage (indefinite)')
+        console.log('🔐 Auth persistence initialized')
       } catch (error) {
-        console.error('❌ Failed to initialize Firebase/auth persistence:', error)
-        // Still set loading to false on error
+        console.error('❌ Failed to initialize Supabase/auth persistence:', error)
         if (isMounted) {
           setLoading(false)
         }
       }
 
-      // Wait for auth state to be restored from localStorage
+      // Wait for auth state to be restored
       await new Promise(resolve => setTimeout(resolve, 300))
 
-      // Check if user is already authenticated from localStorage
-      const currentUser = auth.currentUser
-      console.log('🔍 Current Firebase user from localStorage:', {
+      // Check if user is already authenticated
+      const { data: { session } } = await supabase.auth.getSession()
+      const currentUser = session?.user || null
+      
+      console.log('🔍 Current Supabase user from localStorage:', {
         exists: !!currentUser,
         email: currentUser?.email || 'none',
-        uid: currentUser?.uid || 'none',
+        uid: currentUser?.id || 'none',
         source: 'localStorage persistence'
       })
 
-      // Set initial state if user exists (from localStorage)
+      // Set initial state if user exists
       if (currentUser) {
-        setFirebaseUser(currentUser)
+        setSupabaseUser(currentUser)
         try {
           await createOrUpdateUserDocument(currentUser)
           const { appUser } = await getCurrentUserWithData()
@@ -96,27 +95,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.error('❌ Error loading user from localStorage:', error)
           if (isMounted) {
             setUser(null)
-            setFirebaseUser(null) // Clear invalid user
+            setSupabaseUser(null)
           }
         }
       }
 
-      // Set up auth state listener for future changes
-      authStateUnsubscribe = onAuthStateChange(async (firebaseUser) => {
+      // Set up auth state listener
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return
 
+        const authUser = session?.user || null
+
         console.log('🔄 AuthContext: Auth state changed:', {
-          hasUser: !!firebaseUser,
-          email: firebaseUser?.email || 'none',
-          uid: firebaseUser?.uid || 'none',
+          event,
+          hasUser: !!authUser,
+          email: authUser?.email || 'none',
+          uid: authUser?.id || 'none',
           isInitialLoad,
           source: isInitialLoad ? 'initial load' : 'auth change'
         })
 
         // Skip duplicate initial calls
-        if (isInitialLoad && firebaseUser && currentUser && firebaseUser.uid === currentUser.uid) {
+        if (isInitialLoad && authUser && currentUser && authUser.id === currentUser.id) {
           console.log('⏭️ Skipping duplicate initial auth state from localStorage')
-          // Clear timeout since we're handling it here
           if (loadingTimeout) {
             clearTimeout(loadingTimeout)
             loadingTimeout = null
@@ -126,11 +127,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           return
         }
 
-        setFirebaseUser(firebaseUser)
+        setSupabaseUser(authUser)
 
-        if (firebaseUser) {
+        if (authUser) {
           try {
-            await createOrUpdateUserDocument(firebaseUser)
+            await createOrUpdateUserDocument(authUser)
             const { appUser } = await getCurrentUserWithData()
             if (isMounted) {
               setUser(appUser)
@@ -153,7 +154,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         // Mark loading as complete after initial processing
         if (isInitialLoad) {
-          // Clear timeout since we're handling it here
           if (loadingTimeout) {
             clearTimeout(loadingTimeout)
             loadingTimeout = null
@@ -163,7 +163,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       })
 
-      return authStateUnsubscribe
+      authStateUnsubscribe = { data: { subscription } }
     }
 
     initializeAuth()
@@ -173,8 +173,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (loadingTimeout) {
         clearTimeout(loadingTimeout)
       }
-      if (authStateUnsubscribe) {
-        authStateUnsubscribe()
+      if (authStateUnsubscribe?.data?.subscription) {
+        authStateUnsubscribe.data.subscription.unsubscribe()
       }
     }
   }, [])
@@ -182,14 +182,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = async () => {
     try {
       setLoading(true)
-      const firebaseUser = await signInWithGoogle()
+      await signInWithGoogle()
 
-      // Ensure user document is created immediately after sign in
-      await createOrUpdateUserDocument(firebaseUser)
-
-      // Fetch the complete user data
-      const { appUser } = await getCurrentUserWithData()
-      setUser(appUser)
+      // Note: OAuth redirect happens immediately - user will be available after redirect
+      // The AuthCallback component will handle user document creation
+      // This function will complete after redirect, so we don't set user here
     } catch (error) {
       console.error('Sign in error:', error)
       throw error
@@ -220,12 +217,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [user?.role])
 
   const value: AuthContextType = {
-    firebaseUser,
+    supabaseUser,
     user,
     loading,
     signIn,
     signOut,
-    isAuthenticated: !!firebaseUser,
+    isAuthenticated: !!supabaseUser,
     hasRole,
     isOwner
   }

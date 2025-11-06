@@ -31,7 +31,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   // Check if user has proper authentication
-  // We check for user.email instead of just firebaseUser to ensure we have complete user data
+  // We check for user.email instead of just supabaseUser to ensure we have complete user data
   if (!user?.email) {
     console.log('🚫 ProtectedRoute: No user email, showing login')
     return <Login />
