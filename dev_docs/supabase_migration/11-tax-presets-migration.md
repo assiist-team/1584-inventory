@@ -136,11 +136,14 @@ export async function getTaxPresetById(accountId: string, presetId: string): Pro
 3. **Upsert logic**: Check existence, then insert or update
 
 ## Verification
-- [ ] Can get tax presets
-- [ ] Can update tax presets
-- [ ] Default presets initialize correctly
-- [ ] Validation works
-- [ ] Can get preset by ID
+- [x] Can get tax presets
+- [x] Can update tax presets
+- [x] Default presets initialize correctly
+- [x] Validation works
+- [x] Can get preset by ID
+
+## Implementation Status
+✅ **COMPLETED** - Service migrated to Supabase Postgres
 
 ## Next Steps
 - Proceed to Task 4.1: Image Upload Service Migration

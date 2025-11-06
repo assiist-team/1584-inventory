@@ -102,7 +102,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Update logo URL handling
   - See: `10-business-profile-migration.md`
 
-- [ ] **Task 3.5**: Tax Presets Service Migration
+- [x] **Task 3.5**: Tax Presets Service Migration
   - Migrate tax presets operations
   - Update settings storage
   - See: `11-tax-presets-migration.md`
@@ -185,7 +185,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 - [x] Task 3.2: Account Service Migration
 - [ ] Task 3.3: Inventory Service Migration
 - [x] Task 3.4: Business Profile Service Migration
-- [ ] Task 3.5: Tax Presets Service Migration
+- [x] Task 3.5: Tax Presets Service Migration
 
 ### Phase 4: Storage Migration
 - [ ] Task 4.1: Image Upload Service Migration

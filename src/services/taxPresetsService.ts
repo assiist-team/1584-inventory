@@ -1,34 +1,42 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { db } from './firebase'
+import { supabase } from './supabase'
 import { DEFAULT_TAX_PRESETS, TaxPreset } from '@/constants/taxPresets'
 
 /**
- * Get tax presets from Firestore for an account, falling back to defaults if not found
+ * Get tax presets from Postgres for an account, falling back to defaults if not found
  */
 export async function getTaxPresets(accountId: string): Promise<TaxPreset[]> {
   try {
-    const presetsDocRef = doc(db, 'accounts', accountId, 'settings', 'taxPresets')
-    const presetsDoc = await getDoc(presetsDocRef)
+    const { data, error } = await supabase
+      .from('tax_presets')
+      .select('presets')
+      .eq('account_id', accountId)
+      .single()
 
-    if (presetsDoc.exists()) {
-      const data = presetsDoc.data()
-      if (data.presets && Array.isArray(data.presets) && data.presets.length > 0) {
-        return data.presets as TaxPreset[]
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Not found - initialize with defaults
+        await updateTaxPresets(accountId, DEFAULT_TAX_PRESETS)
+        return DEFAULT_TAX_PRESETS
       }
+      throw error
     }
 
-    // If no presets found in Firestore, initialize with defaults
+    if (data.presets && Array.isArray(data.presets) && data.presets.length > 0) {
+      return data.presets as TaxPreset[]
+    }
+
+    // If presets array is empty, initialize with defaults
     await updateTaxPresets(accountId, DEFAULT_TAX_PRESETS)
     return DEFAULT_TAX_PRESETS
   } catch (error) {
-    console.error('Error fetching tax presets from Firestore:', error)
+    console.error('Error fetching tax presets from Postgres:', error)
     // Fallback to defaults on error
     return DEFAULT_TAX_PRESETS
   }
 }
 
 /**
- * Update tax presets in Firestore for an account
+ * Update tax presets in Postgres for an account
  * @param accountId Account ID
  * @param presets Array of tax presets to save
  */
@@ -59,11 +67,35 @@ export async function updateTaxPresets(accountId: string, presets: TaxPreset[]):
       throw new Error('Preset IDs must be unique')
     }
 
-    const presetsDocRef = doc(db, 'accounts', accountId, 'settings', 'taxPresets')
-    await setDoc(presetsDocRef, {
-      presets,
-      updatedAt: new Date().toISOString()
-    }, { merge: true })
+    // Check if presets exist for this account
+    const { data: existing } = await supabase
+      .from('tax_presets')
+      .select('account_id')
+      .eq('account_id', accountId)
+      .single()
+
+    const presetData = {
+      account_id: accountId,
+      presets: presets,
+      updated_at: new Date().toISOString()
+    }
+
+    if (existing) {
+      // Update existing
+      const { error } = await supabase
+        .from('tax_presets')
+        .update(presetData)
+        .eq('account_id', accountId)
+
+      if (error) throw error
+    } else {
+      // Create new
+      const { error } = await supabase
+        .from('tax_presets')
+        .insert(presetData)
+
+      if (error) throw error
+    }
 
     console.log('Tax presets updated successfully')
   } catch (error) {
