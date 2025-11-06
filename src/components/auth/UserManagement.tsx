@@ -3,10 +3,11 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useAccount } from '../../contexts/AccountContext'
 import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
-import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore'
-import { db, createUserInvitation } from '../../services/firebase'
+import { supabase } from '../../services/supabase'
+import { createUserInvitation } from '../../services/supabase'
 import { User, UserRole } from '../../types'
-import { Mail, Shield, Users, Crown, Edit } from 'lucide-react'
+import { Mail, Shield, Users, Crown } from 'lucide-react'
+import { convertTimestamps } from '../../services/databaseService'
 
 interface UserManagementProps {
   className?: string
@@ -18,7 +19,7 @@ export default function UserManagement({ className }: UserManagementProps) {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.VIEWER)
+  const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.USER)
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState('')
 
@@ -26,17 +27,60 @@ export default function UserManagement({ className }: UserManagementProps) {
   const canManageUsers = hasRole(UserRole.ADMIN)
 
   useEffect(() => {
-    if (canManageUsers) {
+    if (canManageUsers && currentAccountId) {
       loadUsers()
     }
-  }, [canManageUsers])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageUsers, currentAccountId])
 
   const loadUsers = async () => {
     try {
       setLoading(true)
-      const usersQuery = query(collection(db, 'users'))
-      const querySnapshot = await getDocs(usersQuery)
-      const usersData = querySnapshot.docs.map(doc => doc.data() as User)
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // Get account memberships for each user to determine their account role
+      const usersData = await Promise.all(
+        (data || []).map(async (userData) => {
+          const converted = convertTimestamps(userData)
+          
+          // Get account membership to determine role
+          let accountRole: UserRole | null = null
+          if (currentAccountId) {
+            const { data: membership } = await supabase
+              .from('account_members')
+              .select('role')
+              .eq('user_id', converted.id)
+              .eq('account_id', currentAccountId)
+              .maybeSingle()
+            
+            if (membership) {
+              accountRole = membership.role === 'admin' ? UserRole.ADMIN : UserRole.USER
+            }
+          }
+
+          // System-level role takes precedence
+          // For display: OWNER > account role > USER (default)
+          const displayRole = converted.role === 'owner' 
+            ? UserRole.OWNER 
+            : accountRole || UserRole.USER
+
+          return {
+            id: converted.id,
+            email: converted.email,
+            displayName: converted.display_name,
+            role: displayRole,
+            accountId: currentAccountId || '',
+            createdAt: converted.created_at ? new Date(converted.created_at) : new Date(),
+            lastLogin: converted.last_login ? new Date(converted.last_login) : new Date()
+          } as User
+        })
+      )
+
       setUsers(usersData)
     } catch (err) {
       console.error('Error loading users:', err)
@@ -48,8 +92,40 @@ export default function UserManagement({ className }: UserManagementProps) {
 
   const updateUserRole = async (userId: string, newRole: UserRole) => {
     try {
-      const userDocRef = doc(db, 'users', userId)
-      await updateDoc(userDocRef, { role: newRole })
+      if (!currentAccountId) {
+        setError('Account ID is required')
+        return
+      }
+
+      // Convert UserRole enum to account role ('admin' or 'user')
+      // Note: OWNER role is system-level and cannot be assigned via account membership
+      const accountRole = newRole === UserRole.ADMIN ? 'admin' : 'user'
+
+      // Update account membership role
+      const { error: membershipError } = await supabase
+        .from('account_members')
+        .update({ role: accountRole })
+        .eq('user_id', userId)
+        .eq('account_id', currentAccountId)
+
+      if (membershipError) {
+        // If membership doesn't exist, create it
+        if (membershipError.code === 'PGRST116' || membershipError.message.includes('No rows')) {
+          const { error: insertError } = await supabase
+            .from('account_members')
+            .insert({
+              user_id: userId,
+              account_id: currentAccountId,
+              role: accountRole,
+              joined_at: new Date().toISOString()
+            })
+          
+          if (insertError) throw insertError
+        } else {
+          throw membershipError
+        }
+      }
+
       await loadUsers() // Refresh the list
     } catch (err) {
       console.error('Error updating user role:', err)
@@ -64,18 +140,28 @@ export default function UserManagement({ className }: UserManagementProps) {
       setInviting(true)
       setError('')
 
-      // Create invitation in Firestore
+      // Create invitation in Supabase
       if (!currentAccountId) {
         setError('Account ID is required')
         return
       }
-      await createUserInvitation(inviteEmail.trim(), inviteRole, currentUser?.id || '', currentAccountId)
+      if (!currentUser?.id) {
+        setError('User ID is required')
+        return
+      }
+      
+      await createUserInvitation(
+        inviteEmail.trim(), 
+        inviteRole, 
+        currentUser.id, 
+        currentAccountId
+      )
 
       // Show success message
       alert(`Invitation sent to ${inviteEmail} with ${inviteRole} role. They can now sign up with Google and will be automatically assigned the ${inviteRole} role.`)
 
       setInviteEmail('')
-      setInviteRole(UserRole.VIEWER)
+      setInviteRole(UserRole.USER)
     } catch (err) {
       console.error('Error inviting user:', err)
       setError('Failed to send invitation')
@@ -90,8 +176,8 @@ export default function UserManagement({ className }: UserManagementProps) {
         return <Crown className="h-4 w-4 text-yellow-500" />
       case UserRole.ADMIN:
         return <Shield className="h-4 w-4 text-blue-500" />
-      case UserRole.DESIGNER:
-        return <Edit className="h-4 w-4 text-green-500" />
+      case UserRole.USER:
+        return <Users className="h-4 w-4 text-gray-500" />
       default:
         return <Users className="h-4 w-4 text-gray-500" />
     }
@@ -103,8 +189,8 @@ export default function UserManagement({ className }: UserManagementProps) {
         return 'bg-yellow-100 text-yellow-800'
       case UserRole.ADMIN:
         return 'bg-blue-100 text-blue-800'
-      case UserRole.DESIGNER:
-        return 'bg-green-100 text-green-800'
+      case UserRole.USER:
+        return 'bg-gray-100 text-gray-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
@@ -165,10 +251,8 @@ export default function UserManagement({ className }: UserManagementProps) {
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as UserRole)}
             >
-              <option value={UserRole.VIEWER}>Viewer</option>
-              <option value={UserRole.DESIGNER}>Designer</option>
+              <option value={UserRole.USER}>User</option>
               <option value={UserRole.ADMIN}>Admin</option>
-              <option value={UserRole.OWNER}>Owner</option>
             </Select>
             <Button
               onClick={inviteUser}
@@ -206,16 +290,14 @@ export default function UserManagement({ className }: UserManagementProps) {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
                       {user.role}
                     </span>
-                    {user.id !== currentUser?.id && (
+                    {user.id !== currentUser?.id && user.role !== UserRole.OWNER && (
                       <Select
                         size="sm"
                         value={user.role}
                         onChange={(e) => updateUserRole(user.id, e.target.value as UserRole)}
                       >
-                        <option value={UserRole.VIEWER}>Viewer</option>
-                        <option value={UserRole.DESIGNER}>Designer</option>
+                        <option value={UserRole.USER}>User</option>
                         <option value={UserRole.ADMIN}>Admin</option>
-                        <option value={UserRole.OWNER}>Owner</option>
                       </Select>
                     )}
                   </div>
