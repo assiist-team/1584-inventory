@@ -59,7 +59,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - See: `03-storage-setup.md`
 
 ### Phase 2: Authentication Migration
-- [ ] **Task 2.1**: Supabase Auth Client Setup
+- [x] **Task 2.1**: Supabase Auth Client Setup
   - Replace Firebase Auth initialization
   - Configure Google OAuth provider
   - Update auth context
@@ -176,7 +176,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 - [x] Task 1.3: Storage Bucket Configuration
 
 ### Phase 2: Authentication Migration
-- [ ] Task 2.1: Supabase Auth Client Setup
+- [x] Task 2.1: Supabase Auth Client Setup
 - [ ] Task 2.2: Authentication Service Migration
 - [ ] Task 2.3: Auth Context Update
 
