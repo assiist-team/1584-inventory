@@ -6,12 +6,13 @@ import { useBusinessProfile } from '../contexts/BusinessProfileContext'
 import { businessProfileService } from '../services/businessProfileService'
 import { ImageUploadService } from '../services/imageService'
 import UserManagement from '../components/auth/UserManagement'
+import AccountManagement from '../components/auth/AccountManagement'
 import TaxPresetsManager from '../components/TaxPresetsManager'
 import { Button } from '../components/ui/Button'
 import { UserRole } from '../types'
 
 export default function Settings() {
-  const { user, hasRole } = useAuth()
+  const { user, hasRole, isOwner } = useAuth()
   const { currentAccountId, isAdmin } = useAccount()
   const { businessProfile, businessName, businessLogoUrl, refreshProfile } = useBusinessProfile()
   const [businessNameInput, setBusinessNameInput] = useState(businessName)
@@ -128,14 +129,19 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Account Management Section - Only for owners */}
+        {isOwner() && (
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <AccountManagement />
+          </div>
+        )}
+
         {/* User Management Section - Only for admins */}
         {hasRole(UserRole.ADMIN) && (
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <UserManagement />
           </div>
         )}
-
-        
 
         {/* Tax Presets Management Section - Only for admins */}
         {hasRole(UserRole.ADMIN) && (

@@ -158,6 +158,22 @@ export const accountService = {
     const membershipRef = doc(db, 'accounts', accountId, 'members', userId)
     const membershipSnap = await getDoc(membershipRef)
     return membershipSnap.exists()
+  },
+
+  /**
+   * Get all accounts (owners only)
+   */
+  async getAllAccounts(): Promise<Account[]> {
+    const accountsRef = collection(db, 'accounts')
+    const accountsSnapshot = await getDocs(accountsRef)
+
+    return accountsSnapshot.docs.map(doc => {
+      const data = convertTimestamps(doc.data())
+      return {
+        id: doc.id,
+        ...data
+      } as Account
+    })
   }
 }
 
