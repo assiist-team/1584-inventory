@@ -123,9 +123,10 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div className="mt-3">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto z-50">
+      <div className="flex min-h-screen items-start sm:items-center justify-center p-4">
+        <div className="relative w-full max-w-md mx-auto p-5 border shadow-lg rounded-md bg-white max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <div className="mt-3">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">
@@ -478,6 +479,7 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
               </button>
             </div>
           </form>
+          </div>
         </div>
       </div>
     </div>
