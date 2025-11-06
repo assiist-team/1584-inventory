@@ -122,7 +122,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Test authorization logic
   - See: `13-rls-policies.md`
 
-- [ ] **Task 5.2**: Storage Policies
+- [x] **Task 5.2**: Storage Policies
   - Create storage bucket policies
   - Migrate Firebase Storage rules
   - Test file access permissions
@@ -192,7 +192,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 
 ### Phase 5: Security & Authorization
 - [x] Task 5.1: Row Level Security Policies
-- [ ] Task 5.2: Storage Policies
+- [x] Task 5.2: Storage Policies
 
 ### Phase 6: Real-time Features
 - [ ] Task 6.1: Real-time Subscriptions
