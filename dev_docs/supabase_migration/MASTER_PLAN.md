@@ -142,7 +142,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Update UserManagement component
   - See: `16-auth-components-update.md`
 
-- [ ] **Task 7.2**: Service Hook Updates
+- [x] **Task 7.2**: Service Hook Updates
   - Update any hooks that depend on Firebase
   - Ensure compatibility with Supabase
   - See: `17-hooks-update.md`
@@ -199,7 +199,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 
 ### Phase 7: Component Updates
 - [x] Task 7.1: Auth Components Update
-- [ ] Task 7.2: Service Hook Updates
+- [x] Task 7.2: Service Hook Updates
 
 ### Phase 8: Testing & Cleanup
 - [ ] Task 8.1: Remove Firebase Dependencies
