@@ -130,64 +130,74 @@ export default function BusinessInventory() {
     { id: 'transactions' as const, name: 'Transactions', icon: Receipt }
   ]
 
-  // Handle account loading state - set isLoading to false when account context finishes loading
+  // Unified useEffect for data loading and real-time subscriptions
   useEffect(() => {
-    if (!accountLoading) {
-      // Account context has finished loading
-      if (currentAccountId) {
-        // Load data when account is ready
-        const loadData = async () => {
-          try {
-            // Load inventory
-            const inventoryData = await unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters)
-            setItems(inventoryData)
-            
-            // Load transactions
-            const allTransactions: Transaction[] = []
-            const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions(currentAccountId)
-            allTransactions.push(...businessInventoryTransactions)
-            const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions(currentAccountId)
-            allTransactions.push(...inventoryRelatedTransactions)
-            const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
-              index === self.findIndex(t => t.transactionId === transaction.transactionId)
-            )
-            uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            setTransactions(uniqueTransactions)
-            
-            // Load projects
-            const projectsData = await projectService.getProjects(currentAccountId)
-            setProjects(projectsData)
-          } catch (error) {
-            console.error('Error loading business inventory data:', error)
-            setItems([])
-            setTransactions([])
-          } finally {
-            setIsLoading(false)
-          }
+    if (!currentAccountId) {
+      setIsLoading(false)
+      return
+    }
+
+    let isMounted = true
+    let unsubscribe: (() => void) | null = null
+
+    const loadData = async () => {
+      try {
+        setIsLoading(true)
+
+        // Parallelize data fetching
+        const [inventoryData, businessInventoryTransactions, inventoryRelatedTransactions, projectsData] = await Promise.all([
+          unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters),
+          transactionService.getBusinessInventoryTransactions(currentAccountId),
+          transactionService.getInventoryRelatedTransactions(currentAccountId),
+          projectService.getProjects(currentAccountId)
+        ])
+
+        if (!isMounted) return
+
+        // Process transactions
+        const allTransactions = [...businessInventoryTransactions, ...inventoryRelatedTransactions]
+        const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
+          index === self.findIndex(t => t.transactionId === transaction.transactionId)
+        )
+        uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+        setItems(inventoryData)
+        setTransactions(uniqueTransactions)
+        setProjects(projectsData)
+      } catch (error) {
+        console.error('Error loading business inventory data:', error)
+        if (isMounted) {
+          setItems([])
+          setTransactions([])
+          setProjects([])
         }
-        loadData()
-      } else {
-        // No account ID available, but account context is done loading
-        setIsLoading(false)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
-  }, [currentAccountId, accountLoading, filters])
 
-  // Subscribe to real-time updates for inventory
-  useEffect(() => {
-    if (!currentAccountId) return
-    
-    const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
+    loadData()
+
+    // Set up real-time subscription
+    unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
       currentAccountId,
       (updatedItems) => {
-        setItems(updatedItems)
-        setIsLoading(false)
+        if (isMounted) {
+          setItems(updatedItems)
+        }
       },
       filters
     )
 
-    return unsubscribe
-  }, [filters, currentAccountId])
+    return () => {
+      isMounted = false
+      if (unsubscribe) {
+        unsubscribe()
+      }
+    }
+  }, [currentAccountId, filters])
 
   // Subscribe to real-time updates for transactions when on transactions tab
   useEffect(() => {
@@ -198,7 +208,7 @@ export default function BusinessInventory() {
     }
 
     loadTransactionsOnTabChange()
-  }, [activeTab])
+  }, [activeTab, currentAccountId]) // Add currentAccountId dependency
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
@@ -284,7 +294,8 @@ export default function BusinessInventory() {
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
-      const { itemId, dateCreated, lastUpdated, ...itemData } = originalItem
+      // Rename destructured `itemId` to `originalItemId` to avoid redeclaring the `itemId` parameter
+      const { itemId: originalItemId, dateCreated, lastUpdated, ...itemData } = originalItem
       return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
         inventoryStatus: 'available',
@@ -341,6 +352,59 @@ export default function BusinessInventory() {
       alert('Error allocating items. Please try again.')
     } finally {
       setIsAllocating(false)
+    }
+  }
+
+  const handleDeleteSelectedItems = async () => {
+    if (selectedItems.size === 0 || !currentAccountId) return
+
+    const itemCount = selectedItems.size
+    const confirmMessage = itemCount === 1
+      ? 'Are you sure you want to delete this item? This action cannot be undone.'
+      : `Are you sure you want to delete ${itemCount} items? This action cannot be undone.`
+
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    const itemIds = Array.from(selectedItems)
+    
+    // Optimistically update UI immediately by removing deleted items from state
+    setItems(prevItems => prevItems.filter(item => !itemIds.includes(item.itemId)))
+    
+    // Clear selections immediately
+    setSelectedItems(new Set())
+
+    try {
+      let successCount = 0
+      let errorCount = 0
+
+      // Delete items one by one
+      for (const itemId of itemIds) {
+        try {
+          await unifiedItemsService.deleteItem(currentAccountId, itemId)
+          successCount++
+        } catch (error) {
+          console.error(`Error deleting item ${itemId}:`, error)
+          errorCount++
+        }
+      }
+
+      // Show result message
+      if (errorCount === 0) {
+        alert(`Successfully deleted ${successCount} item${successCount !== 1 ? 's' : ''}.`)
+      } else {
+        // If there were errors, reload the items to restore the failed deletions
+        await loadBusinessInventory()
+        alert(`Deleted ${successCount} item${successCount !== 1 ? 's' : ''}, but ${errorCount} item${errorCount !== 1 ? 's' : ''} failed to delete.`)
+      }
+
+      // Real-time subscription will keep the UI in sync
+    } catch (error) {
+      console.error('Error deleting items:', error)
+      // Reload items on error to restore state
+      await loadBusinessInventory()
+      alert('Error deleting items. Please try again.')
     }
   }
 
@@ -576,9 +640,10 @@ export default function BusinessInventory() {
                 </button>
 
                 <button
+                  onClick={handleDeleteSelectedItems}
                   className="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
                   disabled={selectedItems.size === 0}
-                  title="Delete All"
+                  title="Delete Selected Items"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
