@@ -45,10 +45,22 @@ npm install
 
 Create a `.env` file in the root directory with your Supabase configuration:
 
+```bash
+# Copy the example file
+cp .env.example .env
+```
+
+Then edit `.env` and add your Supabase credentials:
+
 ```env
 VITE_SUPABASE_URL=your-project-url
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
+
+**Where to find these values:**
+- Go to your Supabase project dashboard
+- Navigate to **Project Settings > API**
+- Copy the **Project URL** and **anon/public key**
 
 ### 4. Run Database Migrations
 
@@ -170,11 +182,39 @@ npm run test:storage     # Test Supabase storage configuration
 
 ## 🚀 Deployment
 
-The application is configured for deployment with Cloudflare Pages or similar static hosting:
+The application is configured for deployment with Cloudflare Pages or similar static hosting providers (Vercel, Netlify, etc.).
 
-1. **Build**: `npm run build` creates optimized production build in `dist/`
-2. **Deploy**: Upload `dist/` directory to your hosting provider
-3. **Environment Variables**: Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your hosting environment
+### Build for Production
+
+```bash
+npm run build
+```
+
+This creates an optimized production build in the `dist/` directory.
+
+### Deploy
+
+Upload the `dist/` directory to your hosting provider:
+
+- **Cloudflare Pages**: Connect your repository and set build command to `npm run build`
+- **Vercel**: Connect your repository - Vercel will auto-detect Vite
+- **Netlify**: Connect your repository and set build command to `npm run build` and publish directory to `dist`
+
+### Environment Variables
+
+Set these environment variables in your hosting provider's dashboard:
+
+- `VITE_SUPABASE_URL`: Your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY`: Your Supabase anon/public key
+
+**Important:** These are public environment variables that will be embedded in your client-side bundle. The anon key is safe to expose as it's designed for client-side use and respects Row Level Security policies.
+
+### Cloudflare Pages Configuration
+
+The project includes `wrangler.toml` for Cloudflare Pages deployment. The build process is configured to:
+- Build with Node.js 18
+- Output to `dist/` directory
+- Set appropriate headers for security and caching
 
 ## 📊 Performance
 

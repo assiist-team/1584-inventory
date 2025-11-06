@@ -44,10 +44,10 @@ export default defineConfig({
         cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
+            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: `firebase-storage-cache-${timestamp}`,
+              cacheName: `supabase-storage-cache-${timestamp}`,
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 // 24 hours for images is fine
@@ -81,7 +81,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth', 'firebase/storage'],
+          supabase: ['@supabase/supabase-js'],
           router: ['react-router-dom'],
           ui: ['lucide-react', 'clsx']
         },
