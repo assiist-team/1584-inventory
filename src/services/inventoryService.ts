@@ -1,22 +1,5 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  onSnapshot,
-  writeBatch,
-  deleteField,
-  serverTimestamp
-} from 'firebase/firestore'
-import { db, convertTimestamps, ensureAuthenticatedForStorage } from './firebase'
+import { supabase } from './supabase'
+import { convertTimestamps, ensureAuthenticatedForDatabase } from './databaseService'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
@@ -46,17 +29,24 @@ export const auditService = {
         details = transactionIdOrDetails || {}
       }
 
-      const auditRef = collection(db, 'accounts', accountId, 'audit_logs')
-      await addDoc(auditRef, {
-        event_type: eventType,
-        item_id: itemId,
-        project_id: projectId,
-        transaction_id: transactionId,
-        details: details,
-        timestamp: serverTimestamp(),
-        created_at: new Date().toISOString()
-      })
-      console.log(`📋 Audit logged: ${eventType} for item ${itemId}`)
+      const { error } = await supabase
+        .from('audit_logs')
+        .insert({
+          account_id: accountId,
+          event_type: eventType,
+          item_id: itemId,
+          project_id: projectId,
+          transaction_id: transactionId,
+          details: details,
+          timestamp: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        })
+
+      if (error) {
+        console.warn('⚠️ Failed to log audit event (non-critical):', error)
+      } else {
+        console.log(`📋 Audit logged: ${eventType} for item ${itemId}`)
+      }
     } catch (error) {
       console.warn('⚠️ Failed to log audit event (non-critical):', error)
       // Don't throw - audit logging failures shouldn't break the main flow
@@ -72,16 +62,23 @@ export const auditService = {
     newState?: any
   ): Promise<void> {
     try {
-      const auditRef = collection(db, 'accounts', accountId, 'transaction_audit_logs')
-      await addDoc(auditRef, {
-        transaction_id: transactionId,
-        change_type: changeType,
-        old_state: oldState,
-        new_state: newState,
-        timestamp: serverTimestamp(),
-        created_at: new Date().toISOString()
-      })
-      console.log(`📋 Transaction audit logged: ${changeType} for ${transactionId}`)
+      const { error } = await supabase
+        .from('transaction_audit_logs')
+        .insert({
+          account_id: accountId,
+          transaction_id: transactionId,
+          change_type: changeType,
+          old_state: oldState || null,
+          new_state: newState || null,
+          timestamp: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        })
+
+      if (error) {
+        console.warn('⚠️ Failed to log transaction audit (non-critical):', error)
+      } else {
+        console.log(`📋 Transaction audit logged: ${changeType} for ${transactionId}`)
+      }
     } catch (error) {
       console.warn('⚠️ Failed to log transaction audit (non-critical):', error)
       // Don't throw - audit logging failures shouldn't break the main flow
@@ -93,85 +90,155 @@ export const auditService = {
 export const projectService = {
   // Get all projects for current account
   async getProjects(accountId: string): Promise<Project[]> {
-    // Ensure authentication before Firestore operations
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const projectsRef = collection(db, 'accounts', accountId, 'projects')
-    const q = query(projectsRef, orderBy('updatedAt', 'desc'))
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('updated_at', { ascending: false })
 
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    if (error) throw error
+
+    return (data || []).map(project => {
+      const converted = convertTimestamps(project)
       return {
-        id: doc.id,
-        ...data
+        id: converted.id,
+        accountId: converted.account_id,
+        name: converted.name,
+        description: converted.description || '',
+        clientName: converted.client_name || '',
+        budget: converted.budget ? parseFloat(converted.budget) : undefined,
+        designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
+        budgetCategories: converted.budget_categories || undefined,
+        createdAt: converted.created_at,
+        updatedAt: converted.updated_at,
+        createdBy: converted.created_by,
+        settings: converted.settings || undefined,
+        metadata: converted.metadata || undefined,
+        itemCount: converted.item_count || 0,
+        transactionCount: converted.transaction_count || 0,
+        totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
       } as Project
     })
   },
 
   // Get single project
   async getProject(accountId: string, projectId: string): Promise<Project | null> {
-    // Ensure authentication before Firestore operations
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const projectRef = doc(db, 'accounts', accountId, 'projects', projectId)
-    const projectSnap = await getDoc(projectRef)
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('account_id', accountId)
+      .single()
 
-    if (projectSnap.exists()) {
-      const data = convertTimestamps(projectSnap.data())
-      return {
-        id: projectSnap.id,
-        ...data
-      } as Project
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null
+      }
+      throw error
     }
-    return null
+
+    if (!data) return null
+
+    const converted = convertTimestamps(data)
+    return {
+      id: converted.id,
+      accountId: converted.account_id,
+      name: converted.name,
+      description: converted.description || '',
+      clientName: converted.client_name || '',
+      budget: converted.budget ? parseFloat(converted.budget) : undefined,
+      designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
+      budgetCategories: converted.budget_categories || undefined,
+      createdAt: converted.created_at,
+      updatedAt: converted.updated_at,
+      createdBy: converted.created_by,
+      settings: converted.settings || undefined,
+      metadata: converted.metadata || undefined,
+      itemCount: converted.item_count || 0,
+      transactionCount: converted.transaction_count || 0,
+      totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
+    } as Project
   },
 
   // Create new project
   async createProject(accountId: string, projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    const projectsRef = collection(db, 'accounts', accountId, 'projects')
-    const now = new Date()
+    await ensureAuthenticatedForDatabase()
 
-    const newProject = {
-      ...projectData,
-      createdAt: now,
-      updatedAt: now
-    }
+    const { data, error } = await supabase
+      .from('projects')
+      .insert({
+        account_id: accountId,
+        name: projectData.name,
+        description: projectData.description || null,
+        client_name: projectData.clientName || null,
+        budget: projectData.budget || null,
+        design_fee: projectData.designFee || null,
+        budget_categories: projectData.budgetCategories || {},
+        settings: projectData.settings || {},
+        metadata: projectData.metadata || {},
+        created_by: projectData.createdBy,
+        item_count: 0,
+        transaction_count: 0,
+        total_value: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select('id')
+      .single()
 
-    const docRef = await addDoc(projectsRef, newProject)
-    return docRef.id
+    if (error) throw error
+    return data.id
   },
 
   // Update project
   async updateProject(accountId: string, projectId: string, updates: Partial<Project>): Promise<void> {
-    const projectRef = doc(db, 'accounts', accountId, 'projects', projectId)
-    await updateDoc(projectRef, {
-      ...updates,
-      updatedAt: new Date()
-    })
+    await ensureAuthenticatedForDatabase()
+
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    }
+
+    if (updates.name !== undefined) updateData.name = updates.name
+    if (updates.description !== undefined) updateData.description = updates.description
+    if (updates.clientName !== undefined) updateData.client_name = updates.clientName
+    if (updates.budget !== undefined) updateData.budget = updates.budget
+    if (updates.designFee !== undefined) updateData.design_fee = updates.designFee
+    if (updates.budgetCategories !== undefined) updateData.budget_categories = updates.budgetCategories
+    if (updates.settings !== undefined) updateData.settings = updates.settings
+    if (updates.metadata !== undefined) updateData.metadata = updates.metadata
+
+    const { error } = await supabase
+      .from('projects')
+      .update(updateData)
+      .eq('id', projectId)
+      .eq('account_id', accountId)
+
+    if (error) throw error
   },
 
   // Delete project
   async deleteProject(accountId: string, projectId: string): Promise<void> {
-    const projectRef = doc(db, 'accounts', accountId, 'projects', projectId)
-    await deleteDoc(projectRef)
+    await ensureAuthenticatedForDatabase()
+
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId)
+      .eq('account_id', accountId)
+
+    if (error) throw error
   },
 
-  // Subscribe to projects
+  // Subscribe to projects (Note: Real-time subscriptions will be migrated in Phase 6)
   subscribeToProjects(accountId: string, callback: (projects: Project[]) => void) {
-    const projectsRef = collection(db, 'accounts', accountId, 'projects')
-    const q = query(projectsRef, orderBy('updatedAt', 'desc'))
-
-    return onSnapshot(q, (snapshot) => {
-      const projects = snapshot.docs.map(doc => {
-        const data = convertTimestamps(doc.data())
-        return {
-          id: doc.id,
-          ...data
-        } as Project
-      })
-      callback(projects)
-    })
+    // TODO: Implement Supabase Realtime subscription in Phase 6
+    // For now, return a no-op unsubscribe function
+    console.warn('subscribeToProjects: Real-time subscriptions not yet migrated to Supabase')
+    return () => {}
   }
 }
 
@@ -182,85 +249,141 @@ export const projectService = {
 export const transactionService = {
   // Get transactions for a project (account-scoped)
   async getTransactions(accountId: string, projectId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
-    const q = query(
-      transactionsRef,
-      where('project_id', '==', projectId),
-      orderBy('created_at', 'desc')
-    )
+    await ensureAuthenticatedForDatabase()
 
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
 
-      const transactionData = {
-        ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-        other_images: Array.isArray(data.other_images) ? data.other_images : []
-      }
+    if (error) throw error
 
+    return (data || []).map(tx => {
+      const converted = convertTimestamps(tx)
       return {
-        transaction_id: doc.id,
-        ...transactionData
+        transaction_id: converted.transaction_id,
+        project_id: converted.project_id || undefined,
+        project_name: converted.project_name || undefined,
+        transaction_date: converted.transaction_date,
+        source: converted.source || '',
+        transaction_type: converted.transaction_type || '',
+        payment_method: converted.payment_method || '',
+        amount: converted.amount || '0.00',
+        budget_category: converted.budget_category || undefined,
+        notes: converted.notes || undefined,
+        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+        receipt_emailed: converted.receipt_emailed || false,
+        created_at: converted.created_at,
+        created_by: converted.created_by || '',
+        status: converted.status || 'completed',
+        reimbursement_type: converted.reimbursement_type || undefined,
+        trigger_event: converted.trigger_event || undefined,
+        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+        tax_rate_preset: converted.tax_rate_preset || undefined,
+        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+        subtotal: converted.subtotal || undefined
       } as Transaction
     })
   },
 
   // Get single transaction (account-scoped)
   async getTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Transaction | null> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-    const transactionSnap = await getDoc(transactionRef)
+    await ensureAuthenticatedForDatabase()
 
-    if (transactionSnap.exists()) {
-      const data = convertTimestamps(transactionSnap.data())
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+      .single()
 
-      console.log('inventoryService - raw data:', data)
-      console.log('inventoryService - transaction_images:', data.transaction_images)
-      console.log('inventoryService - transaction_images type:', typeof data.transaction_images)
-
-      const transactionData = {
-        ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-        other_images: Array.isArray(data.other_images) ? data.other_images : []
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null
       }
-
-      console.log('inventoryService - processed transactionData:', transactionData)
-
-      return {
-        transaction_id: transactionSnap.id,
-        ...transactionData
-      } as Transaction
+      throw error
     }
 
-    return null
+    if (!data) return null
+
+    const converted = convertTimestamps(data)
+    return {
+      transaction_id: converted.transaction_id,
+      project_id: converted.project_id || undefined,
+      project_name: converted.project_name || undefined,
+      transaction_date: converted.transaction_date,
+      source: converted.source || '',
+      transaction_type: converted.transaction_type || '',
+      payment_method: converted.payment_method || '',
+      amount: converted.amount || '0.00',
+      budget_category: converted.budget_category || undefined,
+      notes: converted.notes || undefined,
+      transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+      receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+      other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+      receipt_emailed: converted.receipt_emailed || false,
+      created_at: converted.created_at,
+      created_by: converted.created_by || '',
+      status: converted.status || 'completed',
+      reimbursement_type: converted.reimbursement_type || undefined,
+      trigger_event: converted.trigger_event || undefined,
+      item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+      tax_rate_preset: converted.tax_rate_preset || undefined,
+      tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+      subtotal: converted.subtotal || undefined
+    } as Transaction
   },
 
   // Get transaction by ID across all projects (for business inventory) - account-scoped
   async getTransactionById(accountId: string, transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-    const transactionSnap = await getDoc(transactionRef)
+    await ensureAuthenticatedForDatabase()
 
-    if (transactionSnap.exists()) {
-      const data = convertTimestamps(transactionSnap.data())
-      const transactionData = {
-        ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-        other_images: Array.isArray(data.other_images) ? data.other_images : []
-      }
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+      .single()
 
-      return {
-        transaction: {
-          transaction_id: transactionSnap.id,
-          ...transactionData
-        } as Transaction,
-        projectId: data.project_id || null
-      }
+    if (error || !data) {
+      return { transaction: null, projectId: null }
     }
 
-    return { transaction: null, projectId: null }
+    const converted = convertTimestamps(data)
+    const transaction: Transaction = {
+      transaction_id: converted.transaction_id,
+      project_id: converted.project_id || undefined,
+      project_name: converted.project_name || undefined,
+      transaction_date: converted.transaction_date,
+      source: converted.source || '',
+      transaction_type: converted.transaction_type || '',
+      payment_method: converted.payment_method || '',
+      amount: converted.amount || '0.00',
+      budget_category: converted.budget_category || undefined,
+      notes: converted.notes || undefined,
+      transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+      receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+      other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+      receipt_emailed: converted.receipt_emailed || false,
+      created_at: converted.created_at,
+      created_by: converted.created_by || '',
+      status: converted.status || 'completed',
+      reimbursement_type: converted.reimbursement_type || undefined,
+      trigger_event: converted.trigger_event || undefined,
+      item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+      tax_rate_preset: converted.tax_rate_preset || undefined,
+      tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+      subtotal: converted.subtotal || undefined
+    }
+
+    return {
+      transaction,
+      projectId: converted.project_id || null
+    }
   },
 
   // Create new transaction (account-scoped)
@@ -271,30 +394,48 @@ export const transactionService = {
     items?: TransactionItemFormData[]
   ): Promise<string> {
     try {
-      const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
-      const now = new Date()
+      await ensureAuthenticatedForDatabase()
 
-      const newTransaction = {
-        ...transactionData,
-        project_id: projectId,
-        created_at: now.toISOString(),
-        // Set default values for new fields if not provided
+      const now = new Date()
+      // Generate a unique transaction_id (UUID format)
+      const transactionId = crypto.randomUUID()
+
+      const newTransaction: any = {
+        account_id: accountId,
+        transaction_id: transactionId,
+        project_id: projectId || null,
+        transaction_date: transactionData.transaction_date,
+        source: transactionData.source || null,
+        transaction_type: transactionData.transaction_type || null,
+        payment_method: transactionData.payment_method || null,
+        amount: transactionData.amount || '0.00',
+        budget_category: transactionData.budget_category || null,
+        notes: transactionData.notes || null,
+        transaction_images: transactionData.transaction_images || [],
+        receipt_images: transactionData.receipt_images || [],
+        other_images: transactionData.other_images || [],
+        receipt_emailed: transactionData.receipt_emailed || false,
         status: transactionData.status || 'completed',
         reimbursement_type: transactionData.reimbursement_type || null,
-        trigger_event: transactionData.trigger_event || null
+        trigger_event: transactionData.trigger_event || null,
+        item_ids: transactionData.item_ids || [],
+        tax_rate_preset: transactionData.tax_rate_preset || null,
+        tax_rate_pct: null,
+        subtotal: transactionData.subtotal || null,
+        created_by: transactionData.created_by || 'system',
+        created_at: now.toISOString(),
+        updated_at: now.toISOString()
       }
 
       console.log('Creating transaction:', newTransaction)
       console.log('Transaction items:', items)
 
       // Apply tax calculation from presets or compute from subtotal when Other
-      const txToSave: any = { ...newTransaction }
-
-      if (txToSave.tax_rate_preset) {
-        if (txToSave.tax_rate_preset === 'Other') {
+      if (newTransaction.tax_rate_preset) {
+        if (newTransaction.tax_rate_preset === 'Other') {
           // Validate subtotal presence and calculate rate
-          const amountNum = parseFloat((txToSave.amount as any) || '0')
-          const subtotalNum = parseFloat((txToSave.subtotal as any) || '0')
+          const amountNum = parseFloat(newTransaction.amount || '0')
+          const subtotalNum = parseFloat(newTransaction.subtotal || '0')
           if (isNaN(subtotalNum) || subtotalNum <= 0) {
             throw new Error('Subtotal must be greater than 0 when Tax Rate Preset is Other.')
           }
@@ -302,23 +443,25 @@ export const transactionService = {
             throw new Error('Subtotal cannot exceed the total amount.')
           }
           const rate = ((amountNum - subtotalNum) / subtotalNum) * 100
-          txToSave.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
+          newTransaction.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
         } else {
           // Look up preset by ID
-          const preset = await getTaxPresetById(accountId, txToSave.tax_rate_preset)
+          const preset = await getTaxPresetById(accountId, newTransaction.tax_rate_preset)
           if (!preset) {
-            throw new Error(`Tax preset with ID '${txToSave.tax_rate_preset}' not found.`)
+            throw new Error(`Tax preset with ID '${newTransaction.tax_rate_preset}' not found.`)
           }
-          txToSave.tax_rate_pct = preset.rate
+          newTransaction.tax_rate_pct = preset.rate
           // Remove subtotal for preset selections
-          if (txToSave.subtotal !== undefined) {
-            delete txToSave.subtotal
-          }
+          newTransaction.subtotal = null
         }
       }
 
-      const docRef = await addDoc(transactionsRef, txToSave)
-      const transactionId = docRef.id
+      const { error } = await supabase
+        .from('transactions')
+        .insert(newTransaction)
+
+      if (error) throw error
+
       console.log('Transaction created successfully:', transactionId)
 
       // Create items linked to this transaction if provided
@@ -333,11 +476,9 @@ export const transactionService = {
           transactionData.transaction_date,
           transactionData.source, // Pass transaction source to items
           itemsToCreate,
-          txToSave.tax_rate_pct
+          newTransaction.tax_rate_pct
         )
         console.log('Created items:', createdItemIds)
-
-        // tax_rate_pct is included at item creation when possible (see createTransactionItems)
       }
 
       return transactionId
@@ -349,19 +490,19 @@ export const transactionService = {
 
   // Update transaction (account-scoped)
   async updateTransaction(accountId: string, _projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
+    await ensureAuthenticatedForDatabase()
 
     // Apply business rules for reimbursement type and status
     const finalUpdates: any = { ...updates }
 
     // If status is being set to 'completed', clear reimbursement_type
     if (finalUpdates.status === 'completed' && finalUpdates.reimbursement_type !== undefined) {
-      finalUpdates.reimbursement_type = deleteField()
+      finalUpdates.reimbursement_type = null
     }
 
     // If reimbursement_type is being set to empty string, also clear it
     if (finalUpdates.reimbursement_type === '') {
-      finalUpdates.reimbursement_type = deleteField()
+      finalUpdates.reimbursement_type = null
     }
 
     // If reimbursement_type is being set to a non-empty value, ensure status is not 'completed'
@@ -370,7 +511,7 @@ export const transactionService = {
       finalUpdates.status = 'pending'
     }
 
-    // Filter out undefined values to prevent Firebase errors
+    // Filter out undefined values
     const cleanUpdates: any = {}
     Object.keys(finalUpdates).forEach(key => {
       if (finalUpdates[key] !== undefined) {
@@ -384,10 +525,16 @@ export const transactionService = {
     if (processedUpdates.tax_rate_preset !== undefined) {
       if (processedUpdates.tax_rate_preset === 'Other') {
         // Compute from provided subtotal and amount if present in updates or existing doc
-        const txSnap = await getDoc(transactionRef)
-        const existing = txSnap.exists() ? txSnap.data() : {}
-        const amountVal = processedUpdates.amount !== undefined ? parseFloat(processedUpdates.amount) : parseFloat(existing.amount || '0')
-        const subtotalVal = processedUpdates.subtotal !== undefined ? parseFloat(processedUpdates.subtotal) : parseFloat(existing.subtotal || '0')
+        const { data: existing } = await supabase
+          .from('transactions')
+          .select('amount, subtotal')
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+          .single()
+
+        const existingData = existing || {}
+        const amountVal = processedUpdates.amount !== undefined ? parseFloat(processedUpdates.amount) : parseFloat(existingData.amount || '0')
+        const subtotalVal = processedUpdates.subtotal !== undefined ? parseFloat(processedUpdates.subtotal) : parseFloat(existingData.subtotal || '0')
         if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
           const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
           processedUpdates.tax_rate_pct = Math.round(rate * 10000) / 10000
@@ -399,9 +546,7 @@ export const transactionService = {
           if (preset) {
             processedUpdates.tax_rate_pct = preset.rate
             // Remove subtotal when using presets
-            if (processedUpdates.subtotal !== undefined) {
-              processedUpdates.subtotal = deleteField()
-            }
+            processedUpdates.subtotal = null
           } else {
             console.warn(`Tax preset with ID '${processedUpdates.tax_rate_preset}' not found during update`)
           }
@@ -411,19 +556,51 @@ export const transactionService = {
       }
     }
 
-    await updateDoc(transactionRef, processedUpdates)
+    // Convert camelCase to snake_case for database fields
+    const dbUpdates: any = {
+      updated_at: new Date().toISOString()
+    }
+
+    if (processedUpdates.project_id !== undefined) dbUpdates.project_id = processedUpdates.project_id
+    if (processedUpdates.project_name !== undefined) dbUpdates.project_name = processedUpdates.project_name
+    if (processedUpdates.transaction_date !== undefined) dbUpdates.transaction_date = processedUpdates.transaction_date
+    if (processedUpdates.source !== undefined) dbUpdates.source = processedUpdates.source
+    if (processedUpdates.transaction_type !== undefined) dbUpdates.transaction_type = processedUpdates.transaction_type
+    if (processedUpdates.payment_method !== undefined) dbUpdates.payment_method = processedUpdates.payment_method
+    if (processedUpdates.amount !== undefined) dbUpdates.amount = processedUpdates.amount
+    if (processedUpdates.budget_category !== undefined) dbUpdates.budget_category = processedUpdates.budget_category
+    if (processedUpdates.notes !== undefined) dbUpdates.notes = processedUpdates.notes
+    if (processedUpdates.transaction_images !== undefined) dbUpdates.transaction_images = processedUpdates.transaction_images
+    if (processedUpdates.receipt_images !== undefined) dbUpdates.receipt_images = processedUpdates.receipt_images
+    if (processedUpdates.other_images !== undefined) dbUpdates.other_images = processedUpdates.other_images
+    if (processedUpdates.receipt_emailed !== undefined) dbUpdates.receipt_emailed = processedUpdates.receipt_emailed
+    if (processedUpdates.status !== undefined) dbUpdates.status = processedUpdates.status
+    if (processedUpdates.reimbursement_type !== undefined) dbUpdates.reimbursement_type = processedUpdates.reimbursement_type
+    if (processedUpdates.trigger_event !== undefined) dbUpdates.trigger_event = processedUpdates.trigger_event
+    if (processedUpdates.item_ids !== undefined) dbUpdates.item_ids = processedUpdates.item_ids
+    if (processedUpdates.tax_rate_preset !== undefined) dbUpdates.tax_rate_preset = processedUpdates.tax_rate_preset
+    if (processedUpdates.tax_rate_pct !== undefined) dbUpdates.tax_rate_pct = processedUpdates.tax_rate_pct
+    if (processedUpdates.subtotal !== undefined) dbUpdates.subtotal = processedUpdates.subtotal
+
+    const { error } = await supabase
+      .from('transactions')
+      .update(dbUpdates)
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+
+    if (error) throw error
 
     // If tax_rate_pct is set in updates, propagate to items
     if (processedUpdates.tax_rate_pct !== undefined) {
       try {
         const items = await unifiedItemsService.getItemsForTransaction(accountId, _projectId, transactionId)
         if (items && items.length > 0) {
-          const batch = writeBatch(db)
-          items.forEach(item => {
-            const itemRef = doc(db, 'accounts', accountId, 'items', item.item_id)
-            batch.update(itemRef, { tax_rate_pct: processedUpdates.tax_rate_pct, last_updated: new Date().toISOString() })
-          })
-          await batch.commit()
+          // Update each item individually (Supabase doesn't have batch updates like Firestore)
+          for (const item of items) {
+            await unifiedItemsService.updateItem(accountId, item.item_id, {
+              tax_rate_pct: processedUpdates.tax_rate_pct
+            })
+          }
         }
       } catch (e) {
         console.warn('Failed to propagate tax_rate_pct to items:', e)
@@ -433,99 +610,76 @@ export const transactionService = {
 
   // Delete transaction (account-scoped)
   async deleteTransaction(accountId: string, _projectId: string, transactionId: string): Promise<void> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-    await deleteDoc(transactionRef)
+    await ensureAuthenticatedForDatabase()
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+
+    if (error) throw error
   },
 
-  // Subscribe to transactions (account-scoped)
+  // Subscribe to transactions (Note: Real-time subscriptions will be migrated in Phase 6)
   subscribeToTransactions(accountId: string, _projectId: string, callback: (transactions: Transaction[]) => void) {
-    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
-    const q = query(
-      transactionsRef,
-      where('project_id', '==', _projectId),
-      orderBy('created_at', 'desc')
-    )
-
-    return onSnapshot(q, (snapshot) => {
-      const transactions = snapshot.docs.map(doc => {
-        const data = convertTimestamps(doc.data())
-
-        const transactionData = {
-          ...data,
-          transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-          receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-          other_images: Array.isArray(data.other_images) ? data.other_images : []
-        }
-
-        return {
-          transaction_id: doc.id,
-          ...transactionData
-        } as Transaction
-      })
-      callback(transactions)
-    })
+    // TODO: Implement Supabase Realtime subscription in Phase 6
+    console.warn('subscribeToTransactions: Real-time subscriptions not yet migrated to Supabase')
+    return () => {}
   },
 
-  // Subscribe to single transaction for real-time updates (account-scoped)
+  // Subscribe to single transaction for real-time updates (Note: Real-time subscriptions will be migrated in Phase 6)
   subscribeToTransaction(
     accountId: string,
     _projectId: string,
     transactionId: string,
     callback: (transaction: Transaction | null) => void
   ) {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-
-    return onSnapshot(transactionRef, (doc) => {
-      if (doc.exists()) {
-        const data = convertTimestamps(doc.data())
-
-        console.log('inventoryService - real-time raw data:', data)
-        console.log('inventoryService - real-time transaction_images:', data.transaction_images)
-
-        const transactionData = {
-          ...data,
-          transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-          receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-          other_images: Array.isArray(data.other_images) ? data.other_images : []
-        }
-
-        console.log('inventoryService - real-time processed transactionData:', transactionData)
-
-        const transaction = {
-          transaction_id: doc.id,
-          ...transactionData
-        } as Transaction
-        callback(transaction)
-      } else {
-        callback(null)
-      }
-    })
+    // TODO: Implement Supabase Realtime subscription in Phase 6
+    console.warn('subscribeToTransaction: Real-time subscriptions not yet migrated to Supabase')
+    return () => {}
   },
 
   // Get pending transactions for a project (account-scoped)
   async getPendingTransactions(accountId: string, projectId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
-    const q = query(
-      transactionsRef,
-      where('project_id', '==', projectId),
-      where('status', '==', 'pending'),
-      orderBy('created_at', 'desc')
-    )
+    await ensureAuthenticatedForDatabase()
 
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('project_id', projectId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
 
-      const transactionData = {
-        ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-        other_images: Array.isArray(data.other_images) ? data.other_images : []
-      }
+    if (error) throw error
 
+    return (data || []).map(tx => {
+      const converted = convertTimestamps(tx)
       return {
-        transaction_id: doc.id,
-        ...transactionData
+        transaction_id: converted.transaction_id,
+        project_id: converted.project_id || undefined,
+        project_name: converted.project_name || undefined,
+        transaction_date: converted.transaction_date,
+        source: converted.source || '',
+        transaction_type: converted.transaction_type || '',
+        payment_method: converted.payment_method || '',
+        amount: converted.amount || '0.00',
+        budget_category: converted.budget_category || undefined,
+        notes: converted.notes || undefined,
+        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+        receipt_emailed: converted.receipt_emailed || false,
+        created_at: converted.created_at,
+        created_by: converted.created_by || '',
+        status: converted.status || 'completed',
+        reimbursement_type: converted.reimbursement_type || undefined,
+        trigger_event: converted.trigger_event || undefined,
+        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+        tax_rate_preset: converted.tax_rate_preset || undefined,
+        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+        subtotal: converted.subtotal || undefined
       } as Transaction
     })
   },
@@ -538,11 +692,19 @@ export const transactionService = {
     status: 'pending' | 'completed' | 'canceled',
     updates?: Partial<Transaction>
   ): Promise<void> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
+    await ensureAuthenticatedForDatabase()
 
     const updateData: any = {
       status: status,
-      ...updates
+      updated_at: new Date().toISOString()
+    }
+
+    if (updates) {
+      if (updates.transaction_date !== undefined) updateData.transaction_date = updates.transaction_date
+      if (updates.payment_method !== undefined) updateData.payment_method = updates.payment_method
+      if (updates.amount !== undefined) updateData.amount = updates.amount
+      if (updates.notes !== undefined) updateData.notes = updates.notes
+      // Add other fields as needed
     }
 
     // Set transaction_date to current time if completing
@@ -550,62 +712,97 @@ export const transactionService = {
       updateData.transaction_date = toDateOnlyString(new Date())
     }
 
-    // Add last_updated timestamp
-    updateData.last_updated = new Date().toISOString()
+    const { error } = await supabase
+      .from('transactions')
+      .update(updateData)
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
 
-    await updateDoc(transactionRef, updateData)
+    if (error) throw error
   },
 
   // Utility queries for Business Inventory and reporting (account-scoped)
   async getInventoryRelatedTransactions(accountId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
-    const q = query(
-      transactionsRef,
-      where('reimbursement_type', 'in', [CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT]),
-      orderBy('created_at', 'desc')
-    )
+    await ensureAuthenticatedForDatabase()
 
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .in('reimbursement_type', [CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT])
+      .order('created_at', { ascending: false })
 
-      const transactionData = {
-        ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-        other_images: Array.isArray(data.other_images) ? data.other_images : []
-      }
+    if (error) throw error
 
+    return (data || []).map(tx => {
+      const converted = convertTimestamps(tx)
       return {
-        transaction_id: doc.id,
-        ...transactionData
+        transaction_id: converted.transaction_id,
+        project_id: converted.project_id || undefined,
+        project_name: converted.project_name || undefined,
+        transaction_date: converted.transaction_date,
+        source: converted.source || '',
+        transaction_type: converted.transaction_type || '',
+        payment_method: converted.payment_method || '',
+        amount: converted.amount || '0.00',
+        budget_category: converted.budget_category || undefined,
+        notes: converted.notes || undefined,
+        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+        receipt_emailed: converted.receipt_emailed || false,
+        created_at: converted.created_at,
+        created_by: converted.created_by || '',
+        status: converted.status || 'completed',
+        reimbursement_type: converted.reimbursement_type || undefined,
+        trigger_event: converted.trigger_event || undefined,
+        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+        tax_rate_preset: converted.tax_rate_preset || undefined,
+        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+        subtotal: converted.subtotal || undefined
       } as Transaction
     })
   },
 
   // Get business inventory transactions (project_id == null) (account-scoped)
   async getBusinessInventoryTransactions(accountId: string): Promise<Transaction[]> {
-    const transactionsRef = collection(db, 'accounts', accountId, 'transactions')
-    const q = query(
-      transactionsRef,
-      where('project_id', '==', null),
-      orderBy('created_at', 'desc')
-    )
+    await ensureAuthenticatedForDatabase()
 
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .is('project_id', null)
+      .order('created_at', { ascending: false })
 
-      const transactionData = {
-        ...data,
-        transaction_images: Array.isArray(data.transaction_images) ? data.transaction_images : [],
-        receipt_images: Array.isArray(data.receipt_images) ? data.receipt_images : [],
-        other_images: Array.isArray(data.other_images) ? data.other_images : []
-      }
+    if (error) throw error
 
+    return (data || []).map(tx => {
+      const converted = convertTimestamps(tx)
       return {
-        transaction_id: doc.id,
-        ...transactionData
+        transaction_id: converted.transaction_id,
+        project_id: converted.project_id || undefined,
+        project_name: converted.project_name || undefined,
+        transaction_date: converted.transaction_date,
+        source: converted.source || '',
+        transaction_type: converted.transaction_type || '',
+        payment_method: converted.payment_method || '',
+        amount: converted.amount || '0.00',
+        budget_category: converted.budget_category || undefined,
+        notes: converted.notes || undefined,
+        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+        receipt_emailed: converted.receipt_emailed || false,
+        created_at: converted.created_at,
+        created_by: converted.created_by || '',
+        status: converted.status || 'completed',
+        reimbursement_type: converted.reimbursement_type || undefined,
+        trigger_event: converted.trigger_event || undefined,
+        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+        tax_rate_preset: converted.tax_rate_preset || undefined,
+        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+        subtotal: converted.subtotal || undefined
       } as Transaction
     })
   }
@@ -613,6 +810,39 @@ export const transactionService = {
 
 // Unified Items Collection Services (NEW)
 export const unifiedItemsService = {
+  // Helper function to convert database item to app format
+  _convertItemFromDb(dbItem: any): Item {
+    const converted = convertTimestamps(dbItem)
+    return {
+      item_id: converted.item_id,
+      accountId: converted.account_id,
+      projectId: converted.project_id || undefined,
+      transaction_id: converted.transaction_id || undefined,
+      name: converted.name || undefined,
+      description: converted.description || '',
+      sku: converted.sku || '',
+      source: converted.source || '',
+      purchase_price: converted.purchase_price || undefined,
+      project_price: converted.project_price || undefined,
+      market_value: converted.market_value || undefined,
+      payment_method: converted.payment_method || '',
+      disposition: converted.disposition || undefined,
+      notes: converted.notes || undefined,
+      space: converted.space || undefined,
+      qr_key: converted.qr_key || '',
+      bookmark: converted.bookmark || false,
+      date_created: converted.date_created || '',
+      last_updated: converted.last_updated ? (typeof converted.last_updated === 'string' ? converted.last_updated : converted.last_updated.toISOString()) : '',
+      images: Array.isArray(converted.images) ? converted.images : [],
+      inventory_status: converted.inventory_status || undefined,
+      business_inventory_location: converted.business_inventory_location || undefined,
+      tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+      tax_amount: converted.tax_amount || undefined,
+      createdBy: converted.created_by || undefined,
+      createdAt: converted.created_at
+    } as Item
+  },
+
   // Get items for a project (project_id == projectId) (account-scoped)
   async getItemsByProject(
     accountId: string,
@@ -620,120 +850,59 @@ export const unifiedItemsService = {
     filters?: FilterOptions,
     pagination?: PaginationOptions
   ): Promise<Item[]> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
-    let q = query(itemsRef, where('project_id', '==', projectId))
+    let query = supabase
+      .from('items')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('project_id', projectId)
 
     // Apply filters
     if (filters?.status) {
-      q = query(q, where('disposition', '==', filters.status))
+      query = query.eq('disposition', filters.status)
     }
 
     if (filters?.category) {
-      q = query(q, where('source', '==', filters.category))
-    }
-
-    if (filters?.tags && filters.tags.length > 0) {
-      q = query(q, where('tags', 'array-contains-any', filters.tags))
+      query = query.eq('source', filters.category)
     }
 
     if (filters?.priceRange) {
-      q = query(
-        q,
-        where('project_price', '>=', filters.priceRange.min),
-        where('project_price', '<=', filters.priceRange.max)
-      )
+      query = query.gte('project_price', filters.priceRange.min.toString())
+      query = query.lte('project_price', filters.priceRange.max.toString())
     }
 
-    // Apply search
+    // Apply search (using ilike for case-insensitive search)
     if (filters?.searchQuery) {
-      const searchTerm = filters.searchQuery.toLowerCase()
-      q = query(
-        q,
-        where('description', '>=', searchTerm),
-        where('description', '<=', searchTerm + '\uf8ff')
-      )
+      query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
     }
 
-    // Apply sorting and pagination
-    q = query(q, orderBy('last_updated', 'desc'))
+    // Apply sorting
+    query = query.order('last_updated', { ascending: false })
 
+    // Apply pagination
     if (pagination) {
-      q = query(q, limit(pagination.limit))
-      if (pagination.page > 0) {
-        q = query(q, limit(pagination.page * pagination.limit))
-      }
+      const offset = pagination.page > 0 ? (pagination.page - 1) * pagination.limit : 0
+      query = query.range(offset, offset + pagination.limit - 1)
     }
 
-    const querySnapshot = await getDocs(q)
+    const { data, error } = await query
 
-    // Apply client-side filtering for complex queries
-    let items = querySnapshot.docs.map(doc => ({
-      item_id: doc.id,
-      ...doc.data()
-    } as Item))
+    if (error) throw error
 
-    // Apply client-side search if needed
-    if (filters?.searchQuery && items.length > 0) {
-      const searchTerm = filters.searchQuery.toLowerCase()
-      items = items.filter(item =>
-        item.description.toLowerCase().includes(searchTerm) ||
-        item.source.toLowerCase().includes(searchTerm) ||
-        item.sku.toLowerCase().includes(searchTerm) ||
-        item.payment_method.toLowerCase().includes(searchTerm)
-      )
-    }
-
-    return items
+    return (data || []).map(item => this._convertItemFromDb(item))
   },
 
-  // Subscribe to items for a project (account-scoped)
+  // Subscribe to items for a project (Note: Real-time subscriptions will be migrated in Phase 6)
   subscribeToItemsByProject(
     accountId: string,
     projectId: string,
     callback: (items: Item[]) => void,
     filters?: FilterOptions
   ) {
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
-    let q = query(itemsRef, where('project_id', '==', projectId), orderBy('last_updated', 'desc'))
-
-    if (filters?.status) {
-      q = query(q, where('disposition', '==', filters.status))
-    }
-
-    if (filters?.category) {
-      q = query(q, where('source', '==', filters.category))
-    }
-
-    if (filters?.searchQuery) {
-      const searchTerm = filters.searchQuery.toLowerCase()
-      q = query(
-        q,
-        where('description', '>=', searchTerm),
-        where('description', '<=', searchTerm + '\uf8ff')
-      )
-    }
-
-    return onSnapshot(q, (snapshot) => {
-      let items = snapshot.docs.map(doc => ({
-        item_id: doc.id,
-        ...doc.data()
-      } as Item))
-
-      // Apply client-side search if needed
-      if (filters?.searchQuery) {
-        const searchTerm = filters.searchQuery.toLowerCase()
-        items = items.filter(item =>
-          item.description.toLowerCase().includes(searchTerm) ||
-          item.source.toLowerCase().includes(searchTerm) ||
-          item.sku.toLowerCase().includes(searchTerm) ||
-          item.payment_method.toLowerCase().includes(searchTerm)
-        )
-      }
-
-      callback(items)
-    })
+    // TODO: Implement Supabase Realtime subscription in Phase 6
+    console.warn('subscribeToItemsByProject: Real-time subscriptions not yet migrated to Supabase')
+    return () => {}
   },
 
   // Get business inventory items (project_id == null) (account-scoped)
@@ -742,160 +911,162 @@ export const unifiedItemsService = {
     filters?: { status?: string; searchQuery?: string },
     pagination?: PaginationOptions
   ): Promise<Item[]> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
-    let q = query(itemsRef, where('project_id', '==', null))
+    let query = supabase
+      .from('items')
+      .select('*')
+      .eq('account_id', accountId)
+      .is('project_id', null)
 
     // Apply filters
     if (filters?.status) {
-      q = query(q, where('inventory_status', '==', filters.status))
+      query = query.eq('inventory_status', filters.status)
     }
 
-    // Apply sorting and pagination
-    q = query(q, orderBy('last_updated', 'desc'))
-
-    if (pagination) {
-      q = query(q, limit(pagination.limit))
-      if (pagination.page > 0) {
-        q = query(q, limit(pagination.page * pagination.limit))
-      }
-    }
-
-    const querySnapshot = await getDocs(q)
-
-    let items = querySnapshot.docs.map(doc => ({
-      item_id: doc.id,
-      ...doc.data()
-    } as Item))
-
-    // Apply client-side search if needed
+    // Apply search
     if (filters?.searchQuery) {
-      const searchTerm = filters.searchQuery.toLowerCase()
-      items = items.filter(item =>
-        item.description.toLowerCase().includes(searchTerm) ||
-        item.source.toLowerCase().includes(searchTerm) ||
-        item.sku.toLowerCase().includes(searchTerm) ||
-        item.business_inventory_location?.toLowerCase().includes(searchTerm)
-      )
+      query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
     }
 
-    return items
+    // Apply sorting
+    query = query.order('last_updated', { ascending: false })
+
+    // Apply pagination
+    if (pagination) {
+      const offset = pagination.page > 0 ? (pagination.page - 1) * pagination.limit : 0
+      query = query.range(offset, offset + pagination.limit - 1)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    return (data || []).map(item => this._convertItemFromDb(item))
   },
 
-  // Subscribe to business inventory items (account-scoped)
+  // Subscribe to business inventory items (Note: Real-time subscriptions will be migrated in Phase 6)
   subscribeToBusinessInventory(
     accountId: string,
     callback: (items: Item[]) => void,
     filters?: { status?: string; searchQuery?: string }
   ) {
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
-    let q = query(itemsRef, where('project_id', '==', null), orderBy('last_updated', 'desc'))
-
-    if (filters?.status) {
-      q = query(q, where('inventory_status', '==', filters.status))
-    }
-
-    return onSnapshot(q, (snapshot) => {
-      let items = snapshot.docs.map(doc => ({
-        item_id: doc.id,
-        ...doc.data()
-      } as Item))
-
-      // Apply client-side search if needed
-      if (filters?.searchQuery) {
-        const searchTerm = filters.searchQuery.toLowerCase()
-        items = items.filter(item =>
-          item.description.toLowerCase().includes(searchTerm) ||
-          item.source.toLowerCase().includes(searchTerm) ||
-          item.sku.toLowerCase().includes(searchTerm) ||
-          item.business_inventory_location?.toLowerCase().includes(searchTerm)
-        )
-      }
-
-      callback(items)
-    })
+    // TODO: Implement Supabase Realtime subscription in Phase 6
+    console.warn('subscribeToBusinessInventory: Real-time subscriptions not yet migrated to Supabase')
+    return () => {}
   },
 
   // Create new item (account-scoped)
   async createItem(accountId: string, itemData: Omit<Item, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
     const now = new Date()
+    // Generate a unique item_id (using timestamp + random string format like the original)
+    const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
 
     const newItem: any = {
-      ...itemData,
+      account_id: accountId,
+      item_id: itemId,
+      project_id: itemData.projectId || null,
+      transaction_id: itemData.transactionId || null,
+      name: itemData.name || null,
+      description: itemData.description || '',
+      sku: itemData.sku || '',
+      source: itemData.source || '',
+      purchase_price: itemData.purchase_price || null,
+      project_price: itemData.project_price || null,
+      market_value: itemData.market_value || null,
+      payment_method: itemData.payment_method || '',
+      disposition: itemData.disposition || null,
+      notes: itemData.notes || null,
+      space: itemData.space || null,
+      qr_key: itemData.qr_key || qrKey,
+      bookmark: itemData.bookmark || false,
       inventory_status: itemData.inventory_status || 'available',
-      date_created: now.toISOString(),
-      last_updated: now.toISOString()
+      business_inventory_location: itemData.business_inventory_location || null,
+      images: itemData.images || [],
+      tax_rate_pct: itemData.tax_rate_pct || null,
+      tax_amount: itemData.tax_amount || null,
+      date_created: itemData.date_created || toDateOnlyString(now),
+      last_updated: now.toISOString(),
+      created_by: itemData.createdBy || null,
+      created_at: now.toISOString()
     }
 
     // If item is being created with a transaction_id but missing tax_rate_pct,
     // attempt to read the transaction and inherit its tax_rate_pct.
     try {
-      if (newItem.transaction_id && newItem.tax_rate_pct === undefined) {
-        const txRef = doc(db, 'accounts', accountId, 'transactions', newItem.transaction_id)
-        const txSnap = await getDoc(txRef)
-        if (txSnap.exists()) {
-          const txData: any = txSnap.data()
-          if (txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
-            newItem.tax_rate_pct = txData.tax_rate_pct
-          }
+      if (newItem.transaction_id && newItem.tax_rate_pct === null) {
+        const { data: txData } = await supabase
+          .from('transactions')
+          .select('tax_rate_pct')
+          .eq('account_id', accountId)
+          .eq('transaction_id', newItem.transaction_id)
+          .single()
+
+        if (txData && txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+          newItem.tax_rate_pct = txData.tax_rate_pct
         }
       }
     } catch (e) {
       console.warn('Failed to inherit tax_rate_pct when creating item:', e)
     }
 
-    const docRef = await addDoc(itemsRef, newItem)
-    return docRef.id
+    const { error } = await supabase
+      .from('items')
+      .insert(newItem)
+
+    if (error) throw error
+
+    return itemId
   },
 
   // Update item (account-scoped)
   async updateItem(accountId: string, itemId: string, updates: Partial<Item>): Promise<void> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
-
-    const firebaseUpdates: any = {
+    const dbUpdates: any = {
       last_updated: new Date().toISOString()
     }
 
-    if (updates.inventory_status !== undefined) firebaseUpdates.inventory_status = updates.inventory_status
-    if (updates.project_id !== undefined) firebaseUpdates.project_id = updates.project_id
-    if (updates.business_inventory_location !== undefined) firebaseUpdates.business_inventory_location = updates.business_inventory_location
-    if (updates.transaction_id !== undefined) firebaseUpdates.transaction_id = updates.transaction_id
-    if (updates.purchase_price !== undefined) firebaseUpdates.purchase_price = updates.purchase_price
-    if (updates.project_price !== undefined) firebaseUpdates.project_price = updates.project_price
-    if (updates.description !== undefined) firebaseUpdates.description = updates.description
-    if (updates.source !== undefined) firebaseUpdates.source = updates.source
-    if (updates.sku !== undefined) firebaseUpdates.sku = updates.sku
-    if (updates.market_value !== undefined) firebaseUpdates.market_value = updates.market_value
-    if (updates.payment_method !== undefined) firebaseUpdates.payment_method = updates.payment_method
-    if (updates.disposition !== undefined) firebaseUpdates.disposition = updates.disposition
-    if (updates.notes !== undefined) firebaseUpdates.notes = updates.notes
-    if (updates.space !== undefined) firebaseUpdates.space = updates.space
-    if (updates.bookmark !== undefined) firebaseUpdates.bookmark = updates.bookmark
-    if (updates.images !== undefined) firebaseUpdates.images = updates.images
-    if (updates.tax_rate_pct !== undefined) firebaseUpdates.tax_rate_pct = updates.tax_rate_pct
-    if (updates.tax_amount !== undefined) firebaseUpdates.tax_amount = updates.tax_amount
+    // Convert camelCase to snake_case for database fields
+    if (updates.inventory_status !== undefined) dbUpdates.inventory_status = updates.inventory_status
+    if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId
+    if (updates.business_inventory_location !== undefined) dbUpdates.business_inventory_location = updates.business_inventory_location
+    if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId
+    if (updates.purchase_price !== undefined) dbUpdates.purchase_price = updates.purchase_price
+    if (updates.project_price !== undefined) dbUpdates.project_price = updates.project_price
+    if (updates.description !== undefined) dbUpdates.description = updates.description
+    if (updates.source !== undefined) dbUpdates.source = updates.source
+    if (updates.sku !== undefined) dbUpdates.sku = updates.sku
+    if (updates.market_value !== undefined) dbUpdates.market_value = updates.market_value
+    if (updates.payment_method !== undefined) dbUpdates.payment_method = updates.payment_method
+    if (updates.disposition !== undefined) dbUpdates.disposition = updates.disposition
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes
+    if (updates.space !== undefined) dbUpdates.space = updates.space
+    if (updates.bookmark !== undefined) dbUpdates.bookmark = updates.bookmark
+    if (updates.images !== undefined) dbUpdates.images = updates.images
+    if (updates.tax_rate_pct !== undefined) dbUpdates.tax_rate_pct = updates.tax_rate_pct
+    if (updates.tax_amount !== undefined) dbUpdates.tax_amount = updates.tax_amount
 
     // If transaction_id is being set/changed and caller did not provide tax_rate_pct,
     // attempt to inherit the transaction's tax_rate_pct and include it in the update.
     try {
-      const willSetTransaction = updates.transaction_id !== undefined && updates.transaction_id !== null
+      const willSetTransaction = updates.transactionId !== undefined && updates.transactionId !== null
       const missingTax = updates.tax_rate_pct === undefined || updates.tax_rate_pct === null
       if (willSetTransaction && missingTax) {
-        const txId = updates.transaction_id as string
+        const txId = updates.transactionId as string
         if (txId) {
-          const txRef = doc(db, 'accounts', accountId, 'transactions', txId)
-          const txSnap = await getDoc(txRef)
-          if (txSnap.exists()) {
-            const txData: any = txSnap.data()
-            if (txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
-              firebaseUpdates.tax_rate_pct = txData.tax_rate_pct
-            }
+          const { data: txData } = await supabase
+            .from('transactions')
+            .select('tax_rate_pct')
+            .eq('account_id', accountId)
+            .eq('transaction_id', txId)
+            .single()
+
+          if (txData && txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+            dbUpdates.tax_rate_pct = txData.tax_rate_pct
           }
         }
       }
@@ -903,34 +1074,42 @@ export const unifiedItemsService = {
       console.warn('Failed to inherit tax_rate_pct when updating item:', e)
     }
 
-    await updateDoc(itemRef, firebaseUpdates)
+    const { error } = await supabase
+      .from('items')
+      .update(dbUpdates)
+      .eq('account_id', accountId)
+      .eq('item_id', itemId)
+
+    if (error) throw error
   },
 
   // Delete item (account-scoped)
   async deleteItem(accountId: string, itemId: string): Promise<void> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
-    await deleteDoc(itemRef)
+    const { error } = await supabase
+      .from('items')
+      .delete()
+      .eq('account_id', accountId)
+      .eq('item_id', itemId)
+
+    if (error) throw error
   },
 
   // Get items for a transaction (by transaction_id) (account-scoped)
   async getItemsForTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Item[]> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
-    const q = query(
-      itemsRef,
-      where('transaction_id', '==', transactionId),
-      orderBy('date_created', 'asc')
-    )
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+      .order('date_created', { ascending: true })
 
-    const querySnapshot = await getDocs(q)
+    if (error) throw error
 
-    return querySnapshot.docs.map(doc => ({
-      item_id: doc.id,
-      ...doc.data()
-    } as Item))
+    return (data || []).map(item => this._convertItemFromDb(item))
   },
 
   // Allocate single item to project (follows ALLOCATION_TRANSACTION_LOGIC.md deterministic flows) (account-scoped)
@@ -942,7 +1121,7 @@ export const unifiedItemsService = {
     notes?: string,
     space?: string
   ): Promise<string> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
     // Get the item to determine current state and calculate amount
     const item = await this.getItemById(accountId, itemId)
@@ -1283,27 +1462,40 @@ export const unifiedItemsService = {
 
   // Helper: Remove item from transaction and update amounts
   async removeItemFromTransaction(accountId: string, itemId: string, transactionId: string, _itemAmount: string): Promise<void> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-    const transactionSnap = await getDoc(transactionRef)
+    await ensureAuthenticatedForDatabase()
 
-    if (!transactionSnap.exists()) {
+    // Get the transaction
+    const { data: transactionData, error: fetchError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+      .single()
+
+    if (fetchError || !transactionData) {
       console.warn('⚠️ Transaction not found for removal:', transactionId)
       return
     }
 
-    const existingData = transactionSnap.data()
-    const existingItemIds = existingData.item_ids || []
+    const existingItemIds = transactionData.item_ids || []
     const updatedItemIds = existingItemIds.filter((id: string) => id !== itemId)
 
     if (updatedItemIds.length === 0) {
       // No items left - delete transaction
       try {
-        await deleteDoc(transactionRef)
+        const { error: deleteError } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+
+        if (deleteError) throw deleteError
+
         console.log('🗑️ Deleted empty transaction:', transactionId)
 
         // Log transaction deletion (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(accountId, transactionId, 'deleted', existingData, null)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'deleted', transactionData, null)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction deletion:', auditError)
         }
@@ -1314,12 +1506,17 @@ export const unifiedItemsService = {
     } else {
       // Recalculate amount from remaining items
       try {
-        const itemsRef = collection(db, 'accounts', accountId, 'items')
-        const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
-        const itemsSnapshot = await getDocs(itemsQuery)
+        // Get all items to recalculate amount
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('items')
+          .select('project_price, market_value')
+          .eq('account_id', accountId)
+          .in('item_id', updatedItemIds)
 
-        const totalAmount = itemsSnapshot.docs
-          .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+        if (itemsError) throw itemsError
+
+        const totalAmount = (itemsData || [])
+          .map(item => item.project_price || item.market_value || '0.00')
           .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
           .toFixed(2)
         // Prevent negative totals
@@ -1328,15 +1525,22 @@ export const unifiedItemsService = {
         const updateData = {
           item_ids: updatedItemIds,
           amount: safeAmount,
-          last_updated: new Date().toISOString()
+          updated_at: new Date().toISOString()
         }
 
-        await updateDoc(transactionRef, updateData)
+        const { error: updateError } = await supabase
+          .from('transactions')
+          .update(updateData)
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+
+        if (updateError) throw updateError
+
         console.log('🔄 Updated transaction after removal:', transactionId, 'new amount:', safeAmount)
 
         // Log transaction update (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(accountId, transactionId, 'updated', existingData, updateData)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'updated', transactionData, updateData)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction update:', auditError)
         }
@@ -1357,23 +1561,33 @@ export const unifiedItemsService = {
     triggerEvent: string,
     notes?: string
   ): Promise<void> {
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-    const transactionSnap = await getDoc(transactionRef)
+    await ensureAuthenticatedForDatabase()
 
-    if (transactionSnap.exists()) {
+    // Check if transaction exists
+    const { data: existingTransaction, error: fetchError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', transactionId)
+      .single()
+
+    if (existingTransaction && !fetchError) {
       // Transaction exists - add item and recalculate amount
       try {
-        const existingData = transactionSnap.data()
-        const existingItemIds = existingData.item_ids || []
+        const existingItemIds = existingTransaction.item_ids || []
         const updatedItemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
 
         // Get all items to recalculate amount
-        const itemsRef = collection(db, 'accounts', accountId, 'items')
-        const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
-        const itemsSnapshot = await getDocs(itemsQuery)
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('items')
+          .select('project_price, market_value')
+          .eq('account_id', accountId)
+          .in('item_id', updatedItemIds)
 
-        const totalAmount = itemsSnapshot.docs
-          .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+        if (itemsError) throw itemsError
+
+        const totalAmount = (itemsData || [])
+          .map(item => item.project_price || item.market_value || '0.00')
           .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
           .toFixed(2)
         // Prevent negative totals
@@ -1382,25 +1596,33 @@ export const unifiedItemsService = {
         const updateData = {
           item_ids: updatedItemIds,
           amount: safeAmount,
-          last_updated: new Date().toISOString()
+          updated_at: new Date().toISOString()
         }
 
-        await updateDoc(transactionRef, updateData)
+        const { error: updateError } = await supabase
+          .from('transactions')
+          .update(updateData)
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+
+        if (updateError) throw updateError
+
         console.log('🔄 Added item to existing transaction:', transactionId, 'new amount:', safeAmount)
 
         // Log transaction update (catch errors to prevent cascading failures)
         try {
-          await auditService.logTransactionStateChange(accountId, transactionId, 'updated', existingData, updateData)
+          await auditService.logTransactionStateChange(accountId, transactionId, 'updated', existingTransaction, updateData)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction update:', auditError)
         }
 
         // If the transaction has a tax rate, propagate it to the added item
         try {
-          const txTax = existingData.tax_rate_pct
+          const txTax = existingTransaction.tax_rate_pct
           if (txTax !== undefined && txTax !== null) {
-            const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
-            await updateDoc(itemRef, { tax_rate_pct: txTax, last_updated: new Date().toISOString() })
+            await this.updateItem(accountId, itemId, {
+              tax_rate_pct: txTax
+            })
           }
         } catch (e) {
           console.warn('Failed to set tax_rate_pct on added item:', itemId, e)
@@ -1416,10 +1638,13 @@ export const unifiedItemsService = {
         const project = await projectService.getProject(accountId, projectId)
         const projectName = project?.name || 'Other'
 
+        const now = new Date()
         const transactionData = {
+          account_id: accountId,
+          transaction_id: transactionId,
           project_id: projectId,
           project_name: null,
-          transaction_date: toDateOnlyString(new Date()),
+          transaction_date: toDateOnlyString(now),
           source: transactionType === 'Purchase' ? 'Inventory' : projectName,
           transaction_type: transactionType,
           payment_method: 'Pending',
@@ -1431,11 +1656,16 @@ export const unifiedItemsService = {
           trigger_event: triggerEvent,
           item_ids: [itemId],
           created_by: 'system',
-          created_at: new Date().toISOString(),
-          last_updated: new Date().toISOString()
+          created_at: now.toISOString(),
+          updated_at: now.toISOString()
         }
 
-        await setDoc(transactionRef, transactionData)
+        const { error: insertError } = await supabase
+          .from('transactions')
+          .insert(transactionData)
+
+        if (insertError) throw insertError
+
         console.log('🆕 Created new transaction:', transactionId, 'amount:', amount)
 
         // Log transaction creation (catch errors to prevent cascading failures)
@@ -1462,24 +1692,25 @@ export const unifiedItemsService = {
       space?: string;
     } = {}
   ): Promise<string> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
     // Fetch the requested items by id (inspect transaction_id per-item to
     // implement A.1 vs A.2 decisions). Do NOT rely solely on project_id.
-    const itemsRef = collection(db, 'accounts', accountId, 'items')
-    const itemsQuery = query(itemsRef, where('__name__', 'in', itemIds))
-    const itemsSnapshot = await getDocs(itemsQuery)
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('items')
+      .select('*')
+      .eq('account_id', accountId)
+      .in('item_id', itemIds)
 
-    if (itemsSnapshot.empty) {
+    if (itemsError || !itemsData || itemsData.length === 0) {
       throw new Error('No items found for allocation')
     }
 
     const canonicalTransactionId = `INV_PURCHASE_${projectId}`
 
     // Process each item individually so we can apply A.1/A.2 rules per item.
-    for (const itemDoc of itemsSnapshot.docs) {
-      const itemId = itemDoc.id
-      const itemData: any = itemDoc.data()
+    for (const itemData of itemsData) {
+      const itemId = itemData.item_id
       const finalAmount = allocationData.amount || itemData.project_price || itemData.market_value || '0.00'
       const currentTransactionId: string | null = itemData.transaction_id || null
 
@@ -1498,8 +1729,7 @@ export const unifiedItemsService = {
             transaction_id: null,
             disposition: 'keep',
             notes: allocationData.notes,
-            space: allocationData.space || '',
-            last_updated: new Date().toISOString()
+            space: allocationData.space || ''
           })
           continue
         } else {
@@ -1512,8 +1742,7 @@ export const unifiedItemsService = {
             inventory_status: 'allocated',
             transaction_id: canonicalTransactionId,
             disposition: 'keep',
-            space: allocationData.space || '',
-            last_updated: new Date().toISOString()
+            space: allocationData.space || ''
           })
           continue
         }
@@ -1528,8 +1757,7 @@ export const unifiedItemsService = {
           inventory_status: 'allocated',
           transaction_id: canonicalTransactionId,
           disposition: 'keep',
-          space: allocationData.space || '',
-          last_updated: new Date().toISOString()
+          space: allocationData.space || ''
         })
         continue
       }
@@ -1542,8 +1770,7 @@ export const unifiedItemsService = {
         inventory_status: 'allocated',
         transaction_id: canonicalTransactionId,
         disposition: 'keep',
-        space: allocationData.space || '',
-        last_updated: new Date().toISOString()
+        space: allocationData.space || ''
       })
     }
 
@@ -1558,7 +1785,7 @@ export const unifiedItemsService = {
     amount?: string,
     notes?: string
   ): Promise<string> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
     // Get the item to determine current state
     const item = await this.getItemById(accountId, itemId)
@@ -1659,6 +1886,8 @@ export const unifiedItemsService = {
     finalAmount: string,
     notes?: string
   ): Promise<string> {
+    await ensureAuthenticatedForDatabase()
+
     // Get project name for source field
     let projectName = 'Other'
     try {
@@ -1671,10 +1900,13 @@ export const unifiedItemsService = {
     // Create Sale transaction (project selling TO us)
     const saleTransactionId = `INV_SALE_${projectId}`
 
+    const now = new Date()
     const transactionData = {
+      account_id: accountId,
+      transaction_id: saleTransactionId,
       project_id: projectId,
       project_name: null,
-      transaction_date: toDateOnlyString(new Date()),
+      transaction_date: toDateOnlyString(now),
       source: projectName,
       transaction_type: 'To Inventory',  // Project is moving item TO inventory
       payment_method: 'Pending',
@@ -1686,12 +1918,16 @@ export const unifiedItemsService = {
       trigger_event: 'Inventory sale' as const,
       item_ids: [itemId],
       created_by: 'system',
-      created_at: new Date().toISOString(),
-      last_updated: new Date().toISOString()
+      created_at: now.toISOString(),
+      updated_at: now.toISOString()
     }
 
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', saleTransactionId)
-    await setDoc(transactionRef, transactionData, { merge: true })
+    // Use upsert to create or update the transaction
+    const { error: upsertError } = await supabase
+      .from('transactions')
+      .upsert(transactionData, { onConflict: 'transaction_id' })
+
+    if (upsertError) throw upsertError
 
     // Update item status to inventory
     await this.updateItem(accountId, itemId, {
@@ -1726,7 +1962,7 @@ export const unifiedItemsService = {
     projectId: string,
     paymentMethod: string
   ): Promise<void> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
     // Determine canonical transaction ID
     const canonicalTransactionId = transactionType === 'sale'
@@ -1734,67 +1970,80 @@ export const unifiedItemsService = {
       : `INV_PURCHASE_${projectId}`
 
     // Get the transaction
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', canonicalTransactionId)
-    const transactionSnap = await getDoc(transactionRef)
+    const { data: transactionData, error: fetchError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', canonicalTransactionId)
+      .single()
 
-    if (!transactionSnap.exists()) {
+    if (fetchError || !transactionData) {
       throw new Error('Transaction not found')
     }
 
-    const transactionData = transactionSnap.data()
     const itemIds = transactionData.item_ids || []
 
     // Complete the transaction
-    await updateDoc(transactionRef, {
-      status: 'completed',
-      payment_method: paymentMethod,
-      transaction_date: toDateOnlyString(new Date()),
-      last_updated: new Date().toISOString()
-    })
+    const now = new Date()
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({
+        status: 'completed',
+        payment_method: paymentMethod,
+        transaction_date: toDateOnlyString(now),
+        updated_at: now.toISOString()
+      })
+      .eq('account_id', accountId)
+      .eq('transaction_id', canonicalTransactionId)
 
-    // Clear transaction_id from all linked items
-    const batch = writeBatch(db)
+    if (updateError) throw updateError
+
+    // Clear transaction_id from all linked items (update sequentially since Supabase doesn't have batch updates)
     for (const itemId of itemIds) {
-      const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
       if (transactionType === 'sale') {
         // For sales, keep project_id but clear transaction_id and set status to sold
-        batch.update(itemRef, {
+        await this.updateItem(accountId, itemId, {
           transaction_id: null,
-          inventory_status: 'sold',
-          last_updated: new Date().toISOString()
+          inventory_status: 'sold'
         })
       } else {
         // For buys, clear project_id and transaction_id and set status to available
-        batch.update(itemRef, {
+        await this.updateItem(accountId, itemId, {
           project_id: null,
           transaction_id: null,
-          inventory_status: 'available',
-          last_updated: new Date().toISOString()
+          inventory_status: 'available'
         })
       }
     }
-
-    await batch.commit()
   },
 
   // Helper function to get item by ID (account-scoped)
   async getItemById(accountId: string, itemId: string): Promise<Item | null> {
-    await ensureAuthenticatedForStorage()
+    await ensureAuthenticatedForDatabase()
 
-    const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
-    const itemSnap = await getDoc(itemRef)
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('item_id', itemId)
+      .single()
 
-    if (itemSnap.exists()) {
-      return {
-        item_id: itemSnap.id,
-        ...itemSnap.data()
-      } as Item
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null
+      }
+      throw error
     }
-    return null
+
+    if (!data) return null
+
+    return this._convertItemFromDb(data)
   },
 
   // Duplicate an existing item (unified collection version) (account-scoped)
   async duplicateItem(accountId: string, projectId: string, originalItemId: string): Promise<string> {
+    await ensureAuthenticatedForDatabase()
+
     // Get the original item first
     const originalItem = await this.getItemById(accountId, originalItemId)
     if (!originalItem) {
@@ -1806,26 +2055,32 @@ export const unifiedItemsService = {
     const newQrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
 
     // Create duplicate item with new IDs and timestamps
-    // Filter out undefined values to avoid Firebase errors
     const duplicatedItem: any = {
+      account_id: accountId,
       item_id: newItemId,
-      description: originalItem.description,
-      source: originalItem.source,
+      description: originalItem.description || '',
+      source: originalItem.source || '',
       sku: originalItem.sku || '',
-      purchase_price: originalItem.purchase_price || '',
-      project_price: originalItem.project_price || '',
-      market_value: originalItem.market_value || '',
-      payment_method: originalItem.payment_method,
+      purchase_price: originalItem.purchase_price || null,
+      project_price: originalItem.project_price || null,
+      market_value: originalItem.market_value || null,
+      payment_method: originalItem.payment_method || '',
       disposition: 'keep', // Default disposition for duplicates
-      notes: originalItem.notes,
-      space: originalItem.space || '',
+      notes: originalItem.notes || null,
+      space: originalItem.space || null,
       qr_key: newQrKey,
       bookmark: false, // Default bookmark to false for duplicates
-      transaction_id: originalItem.transaction_id,
+      transaction_id: originalItem.transaction_id || null,
       project_id: projectId,
-      date_created: now.toISOString(),
+      inventory_status: originalItem.inventory_status || 'available',
+      business_inventory_location: originalItem.business_inventory_location || null,
+      date_created: originalItem.date_created || toDateOnlyString(now),
       last_updated: now.toISOString(),
-      images: originalItem.images || [] // Copy images from original item
+      images: originalItem.images || [], // Copy images from original item
+      tax_rate_pct: originalItem.tax_rate_pct || null,
+      tax_amount: originalItem.tax_amount || null,
+      created_by: originalItem.createdBy || null,
+      created_at: now.toISOString()
     }
 
     // Remove any undefined values that might still exist
@@ -1836,8 +2091,11 @@ export const unifiedItemsService = {
     })
 
     // Create the duplicated item
-    const itemRef = doc(db, 'accounts', accountId, 'items', newItemId)
-    await setDoc(itemRef, duplicatedItem)
+    const { error } = await supabase
+      .from('items')
+      .insert(duplicatedItem)
+
+    if (error) throw error
 
     return newItemId
   },
@@ -1852,7 +2110,8 @@ export const unifiedItemsService = {
     items: TransactionItemFormData[],
     taxRatePct?: number
   ): Promise<string[]> {
-    const batch = writeBatch(db)
+    await ensureAuthenticatedForDatabase()
+
     const createdItemIds: string[] = []
     const now = new Date()
 
@@ -1860,44 +2119,51 @@ export const unifiedItemsService = {
     let inheritedTax: number | undefined = undefined
     try {
       if ((taxRatePct === undefined || taxRatePct === null) && transactionId) {
-        const txRef = doc(db, 'accounts', accountId, 'transactions', transactionId)
-        const txSnap = await getDoc(txRef)
-        if (txSnap.exists()) {
-          const txData: any = txSnap.data()
-          if (txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
-            inheritedTax = txData.tax_rate_pct
-          }
+        const { data: txData, error: txError } = await supabase
+          .from('transactions')
+          .select('tax_rate_pct')
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+          .single()
+
+        if (!txError && txData && txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+          inheritedTax = txData.tax_rate_pct
         }
       }
     } catch (e) {
       // non-fatal - continue without inherited tax
     }
 
+    // Prepare all items for batch insert
+    const itemsToInsert: any[] = []
+
     for (const itemData of items) {
       const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
       createdItemIds.push(itemId)
 
-      const itemRef = doc(db, 'accounts', accountId, 'items', itemId)
       const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
 
       const item: any = {
+        account_id: accountId,
         item_id: itemId,
-        description: itemData.description,
+        description: itemData.description || '',
         source: transactionSource, // Use transaction source for all items
         sku: itemData.sku || '',
-        purchase_price: itemData.purchase_price,
-        project_price: itemData.project_price,
-        market_value: itemData.market_value || '',
+        purchase_price: itemData.purchase_price || null,
+        project_price: itemData.project_price || null,
+        market_value: itemData.market_value || null,
         payment_method: 'Client Card', // Default payment method
         disposition: 'keep',
-        notes: itemData.notes,
+        notes: itemData.notes || null,
         qr_key: qrKey,
         bookmark: false,
         transaction_id: transactionId,
         project_id: projectId,
+        inventory_status: 'allocated',
         date_created: transaction_date,
         last_updated: now.toISOString(),
-        images: [] // Start with empty images array, will be populated after upload
+        images: [], // Start with empty images array, will be populated after upload
+        created_at: now.toISOString()
       }
 
       // Attach tax rate from explicit arg, otherwise inherited transaction value
@@ -1907,13 +2173,18 @@ export const unifiedItemsService = {
         item.tax_rate_pct = inheritedTax
       }
 
-      // Cast to Item for downstream callers
-      const itemTyped = item as Item
-
-      batch.set(itemRef, itemTyped)
+      itemsToInsert.push(item)
     }
 
-    await batch.commit()
+    // Insert all items in a single batch operation
+    if (itemsToInsert.length > 0) {
+      const { error } = await supabase
+        .from('items')
+        .insert(itemsToInsert)
+
+      if (error) throw error
+    }
+
     return createdItemIds
   }
 }
@@ -2040,6 +2311,8 @@ export const deallocationService = {
     projectId: string,
     additionalNotes?: string
   ): Promise<string | null> {
+    await ensureAuthenticatedForDatabase()
+
     console.log('🏦 Creating/updating sale transaction for item:', item.item_id)
 
     // Get project name for source field
@@ -2063,8 +2336,7 @@ export const deallocationService = {
         await unifiedItemsService.updateItem(accountId, item.item_id, {
           project_id: null,
           inventory_status: 'available',
-          transaction_id: null,
-          last_updated: new Date().toISOString()
+          transaction_id: null
         })
 
         // Return null to indicate no INV_SALE was created
@@ -2076,46 +2348,62 @@ export const deallocationService = {
     console.log('🔑 Canonical transaction ID:', canonicalTransactionId)
 
     // Check if the canonical transaction already exists (account-scoped)
-    const transactionRef = doc(db, 'accounts', accountId, 'transactions', canonicalTransactionId)
-    const transactionSnap = await getDoc(transactionRef)
+    const { data: existingTransaction, error: fetchError } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', canonicalTransactionId)
+      .single()
 
-    if (transactionSnap.exists()) {
+    if (existingTransaction && !fetchError) {
       // Transaction exists - merge the new item and recalculate amount
       console.log('📋 Existing INV_SALE transaction found, updating with new item')
-      const existingData = transactionSnap.data()
-      const existingItemIds = existingData.item_ids || []
+      const existingItemIds = existingTransaction.item_ids || []
       const updatedItemIds = [...new Set([...existingItemIds, item.item_id])] // Avoid duplicates
 
       // Get all items to recalculate amount
-      const itemsRef = collection(db, 'accounts', accountId, 'items')
-      const itemsQuery = query(itemsRef, where('__name__', 'in', updatedItemIds))
-      const itemsSnapshot = await getDocs(itemsQuery)
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('items')
+        .select('project_price, market_value')
+        .eq('account_id', accountId)
+        .in('item_id', updatedItemIds)
 
-      const totalAmount = itemsSnapshot.docs
-        .map(doc => doc.data().project_price || doc.data().market_value || '0.00')
+      if (itemsError) throw itemsError
+
+      const totalAmount = (itemsData || [])
+        .map(item => item.project_price || item.market_value || '0.00')
         .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
         .toFixed(2)
 
+      const now = new Date()
       const updatedTransactionData = {
-        ...existingData,
         item_ids: updatedItemIds,
         amount: totalAmount,
         notes: additionalNotes || 'Transaction for items purchased from project and moved to business inventory',
-        last_updated: new Date().toISOString()
+        updated_at: now.toISOString()
       }
 
-      await setDoc(transactionRef, updatedTransactionData, { merge: true })
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update(updatedTransactionData)
+        .eq('account_id', accountId)
+        .eq('transaction_id', canonicalTransactionId)
+
+      if (updateError) throw updateError
 
       console.log('🔄 Updated INV_SALE transaction with', updatedItemIds.length, 'items, amount:', totalAmount)
     } else {
-        // Calculate amount from item for new transaction
+      // Calculate amount from item for new transaction
       const calculatedAmount = item.project_price || item.market_value || '0.00'
 
       // New transaction - create Sale transaction (project moving item TO inventory)
+      const now = new Date()
       const transactionData = {
+        account_id: accountId,
+        transaction_id: canonicalTransactionId,
         project_id: projectId,
         project_name: null,
-        transaction_date: toDateOnlyString(new Date()),
+        transaction_date: toDateOnlyString(now),
         source: projectName,  // Project name as source (project moving to inventory)
         transaction_type: 'To Inventory',  // Project is moving item TO inventory
         payment_method: 'Pending',
@@ -2127,13 +2415,18 @@ export const deallocationService = {
         trigger_event: 'Inventory sale' as const,
         item_ids: [item.item_id],
         created_by: 'system',
-        created_at: new Date().toISOString(),
-        last_updated: new Date().toISOString()
+        created_at: now.toISOString(),
+        updated_at: now.toISOString()
       }
 
       console.log('🆕 Creating new INV_SALE transaction with amount:', transactionData.amount)
 
-      await setDoc(transactionRef, transactionData, { merge: true })
+      // Use upsert to create or update the transaction
+      const { error: upsertError } = await supabase
+        .from('transactions')
+        .upsert(transactionData, { onConflict: 'transaction_id' })
+
+      if (upsertError) throw upsertError
     }
 
     console.log('✅ Sale transaction created/updated successfully')

@@ -1,4 +1,5 @@
 import { PostgrestError } from '@supabase/supabase-js'
+import { supabase } from './supabase'
 
 /**
  * Core database utilities for Supabase operations.
@@ -186,5 +187,16 @@ export const handleSupabaseError = (
   }
 
   return null
+}
+
+/**
+ * Ensures the user is authenticated before performing database operations.
+ * RLS policies will handle authorization, but this provides an early check.
+ */
+export const ensureAuthenticatedForDatabase = async (): Promise<void> => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    throw new Error('User must be authenticated to perform this operation')
+  }
 }
 
