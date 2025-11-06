@@ -694,7 +694,7 @@ export const transactionService = {
       try {
         const items = await unifiedItemsService.getItemsForTransaction(accountId, _projectId, transactionId)
         if (items && items.length > 0) {
-          // Update each item individually (Supabase doesn't have batch updates like Firestore)
+          // Update each item individually (Supabase batch operations)
           for (const item of items) {
             await unifiedItemsService.updateItem(accountId, item.item_id, {
               tax_rate_pct: processedUpdates.tax_rate_pct

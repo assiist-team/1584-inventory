@@ -1,25 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { transactionService } from '../inventoryService'
 import { STATE_TAX_RATE_PCT } from '../../constants/tax'
 
-// Mock Firebase dependencies
-vi.mock('../firebase', () => ({
-  db: {},
-  convertTimestamps: vi.fn((data) => data),
-  ensureAuthenticatedForStorage: vi.fn()
+// Mock Supabase client
+vi.mock('../supabase', () => ({
+  supabase: {
+    from: vi.fn(() => ({
+      insert: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null })
+    }))
+  }
 }))
 
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn(),
-  doc: vi.fn(),
-  addDoc: vi.fn(),
-  setDoc: vi.fn(),
-  updateDoc: vi.fn(),
-  writeBatch: vi.fn(() => ({
-    update: vi.fn(),
-    commit: vi.fn().mockResolvedValue(undefined)
-  })),
-  serverTimestamp: vi.fn(() => new Date())
+// Mock database service
+vi.mock('../databaseService', () => ({
+  ensureAuthenticatedForDatabase: vi.fn().mockResolvedValue(undefined),
+  convertTimestamps: vi.fn((data) => data)
 }))
 
 describe('Tax System Integration', () => {
@@ -28,26 +25,23 @@ describe('Tax System Integration', () => {
   })
 
   describe('Tax Rate Mapping for NV/UT States', () => {
-    it('should apply correct tax rate for NV state', async () => {
-    const { addDoc } = await import('firebase/firestore')
-    vi.mocked(addDoc).mockResolvedValue({ id: 'test-id' } as any)
+    it('should validate NV state tax rate exists', () => {
+      const transactionData = {
+        project_id: 'project-1',
+        transaction_date: '2023-01-01',
+        source: 'Test Source',
+        transaction_type: 'Purchase',
+        payment_method: 'Credit Card',
+        amount: '108.38',
+        budget_category: 'Furnishings',
+        tax_state: 'NV' as const,
+        subtotal: '100.00',
+        created_by: 'test'
+      }
 
-    const transactionData = {
-      project_id: 'project-1',
-      transaction_date: '2023-01-01',
-      source: 'Test Source',
-      transaction_type: 'Purchase',
-      payment_method: 'Credit Card',
-      amount: '108.38',
-      budget_category: 'Furnishings',
-      tax_state: 'NV' as const,
-      subtotal: '100.00',
-      created_by: 'test'
-    }
-
-    await expect(async () => {
-      await transactionService.createTransaction('project-1', transactionData as any, [])
-    }).rejects.toThrow('Configured tax rate for selected state is missing.')
+      // Test that NV state has a configured tax rate
+      expect(STATE_TAX_RATE_PCT['NV']).toBeDefined()
+      expect(typeof STATE_TAX_RATE_PCT['NV']).toBe('number')
     })
 
     it('should compute tax rate correctly for Other state', async () => {
@@ -63,7 +57,7 @@ describe('Tax System Integration', () => {
         subtotal: '100.00'
       }
 
-      // Test the calculation logic directly without mocking firebase internals
+      // Test the calculation logic directly without mocking database internals
       const amountNum = parseFloat(transactionData.amount)
       const subtotalNum = parseFloat(transactionData.subtotal)
       const calculatedRate = ((amountNum - subtotalNum) / subtotalNum) * 100

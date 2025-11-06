@@ -118,7 +118,7 @@ export default function EditTransaction() {
           setProjectName(project.name)
         }
         if (transaction) {
-          // Determine the source to display: if Firestore saved 'Other' (legacy), use project name
+          // Determine the source to display: if database saved 'Other' (legacy), use project name
           const legacyOther = transaction.source === 'Other' || transaction.source === ''
           const resolvedSource = legacyOther && project ? project.name : transaction.source
 
@@ -150,7 +150,7 @@ export default function EditTransaction() {
 
           setIsCustomSource(sourceIsCustom)
 
-          // If legacy 'Other' was stored, immediately correct Firestore to the project name
+          // If legacy 'Other' was stored, immediately correct database to the project name
           if (legacyOther && project && projectId && transactionId && currentAccountId) {
             try {
               await transactionService.updateTransaction(currentAccountId, projectId, transactionId, { source: project.name })

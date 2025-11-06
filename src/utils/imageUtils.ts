@@ -471,7 +471,7 @@ export class ImageUploadError extends Error {
 
 /**
  * Creates user-friendly error messages for common upload issues
- * Handles both Firebase and Supabase storage errors
+ * Handles Supabase storage errors
  */
 export function getUserFriendlyErrorMessage(error: any): string {
   if (error instanceof ImageUploadError) {
@@ -495,23 +495,7 @@ export function getUserFriendlyErrorMessage(error: any): string {
     }
   }
 
-  // Handle Firebase storage errors (code-based)
-  if (error?.code) {
-    switch (error.code) {
-      case 'storage/unauthorized':
-        return 'You need to sign in to upload images. Please refresh the page and try again.'
-      case 'storage/quota-exceeded':
-        return 'Storage limit reached. Please contact support or delete some old images.'
-      case 'storage/invalid-format':
-        return 'Invalid image format. Please upload JPEG, PNG, GIF, or WebP files only.'
-      case 'storage/retry-limit-exceeded':
-        return 'Upload failed after multiple attempts. Please check your connection and try again.'
-      default:
-        return `Upload failed: ${error.message || 'Unknown error'}. Please try again.`
-    }
-  }
-
-  // Handle error messages (works for both Firebase and Supabase)
+  // Handle Supabase storage errors
   if (error?.message) {
     const message = error.message.toLowerCase()
     
@@ -540,7 +524,7 @@ export function getUserFriendlyErrorMessage(error: any): string {
 
 /**
  * Determines if an error is retryable
- * Handles both Firebase and Supabase storage errors
+ * Handles Supabase storage errors
  */
 export function isRetryableError(error: any): boolean {
   // Supabase errors with retryable status codes
@@ -549,7 +533,7 @@ export function isRetryableError(error: any): boolean {
     return retryableStatusCodes.includes(error.statusCode)
   }
 
-  // Firebase errors with retryable codes
+  // Supabase errors with retryable codes
   if (error?.code) {
     const retryableCodes = [
       'storage/retry-limit-exceeded',
@@ -578,7 +562,7 @@ export function isRetryableError(error: any): boolean {
 
 /**
  * Gets suggested actions for common errors
- * Handles both Firebase and Supabase storage errors
+ * Handles Supabase storage errors
  */
 export function getErrorAction(error: any): string {
   // Supabase errors
@@ -589,8 +573,8 @@ export function getErrorAction(error: any): string {
     return 'Try uploading a smaller image file.'
   }
   
-  // Firebase errors
-  if (error?.code === 'storage/unauthorized') {
+  // Supabase storage errors
+  if (error?.message?.includes('unauthorized') || error?.message?.includes('permission')) {
     return 'Try refreshing the page to sign in again.'
   }
   if (error?.code === 'storage/quota-exceeded') {

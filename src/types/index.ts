@@ -97,10 +97,10 @@ export interface ProjectMetadata {
 
 export interface Item {
   // Note: This interface defines the FORM field names used in AddItem/EditItem forms
-  // Field mapping to Firebase happens in the service layer:
-  // - purchase_price (form) ↔ purchase_price (Firebase)
-  // - project_price (form) ↔ project_price (Firebase) - formerly resale_price
-  // - market_value (form) ↔ market_value (Firebase) - direct mapping
+  // Field mapping to Supabase happens in the service layer:
+  // - purchase_price (form) ↔ purchase_price (Supabase)
+  // - project_price (form) ↔ project_price (Supabase) - formerly resale_price
+  // - market_value (form) ↔ market_value (Supabase) - direct mapping
   item_id: string;
   description: string;
   source: string;
@@ -336,7 +336,7 @@ export interface BusinessInventoryStats {
   soldItems: number;
 }
 
-// Utility type for date values that might be Firestore Timestamp, Date, string, or number
+// Utility type for date values that might be Date, string, or number
 export type DateValue = Date | string | number | { toDate?: () => Date; seconds?: number; nanoseconds?: number } | null | undefined
 
 // Common interface for items that can be bookmarked

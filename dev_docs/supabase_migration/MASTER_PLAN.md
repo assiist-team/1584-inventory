@@ -148,7 +148,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - See: `17-hooks-update.md`
 
 ### Phase 8: Testing & Cleanup
-- [ ] **Task 8.1**: Remove Firebase Dependencies
+- [x] **Task 8.1**: Remove Firebase Dependencies
   - Remove Firebase packages from package.json
   - Remove Firebase configuration files
   - Remove Firebase-related scripts
@@ -202,7 +202,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 - [x] Task 7.2: Service Hook Updates
 
 ### Phase 8: Testing & Cleanup
-- [ ] Task 8.1: Remove Firebase Dependencies
+- [x] Task 8.1: Remove Firebase Dependencies
 - [ ] Task 8.2: Update Build Configuration
 - [ ] Task 8.3: Testing & Validation
 

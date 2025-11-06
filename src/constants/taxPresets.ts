@@ -13,7 +13,7 @@ export const DEFAULT_TAX_PRESETS: TaxPreset[] = [
   { id: 'az', name: 'AZ', rate: 8.6 }
 ]
 
-// Firestore document path for tax presets
+// Supabase table name for tax presets
 export const TAX_PRESETS_DOC_PATH = 'settings/taxPresets'
 
 // Helper to create a map of preset ID to preset

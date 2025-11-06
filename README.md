@@ -1,92 +1,61 @@
 # 1584 Design
 
-A modern, mobile-first inventory management application built with React, TypeScript, and Firebase.
+A modern, mobile-first inventory management application built with React, TypeScript, and Supabase.
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Firebase CLI (`npm install -g firebase-tools`)
-- Firebase account and project
+- Supabase account and project
 
 ### 1. Clone and Setup
 
 ```bash
 # Install dependencies
 npm install
-
-# Set up Firebase (follow the prompts)
-./setup-firebase.sh
 ```
 
-### 2. Configure Firebase
+### 2. Configure Supabase
 
-1. Go to [Firebase Console](https://console.firebase.google.com/)
+1. Go to [Supabase Console](https://app.supabase.com/)
 2. Create a new project or select existing one
 3. Enable the following services:
-   - **Firestore Database** (in test mode for development)
-   - **Authentication** (Email/Password provider)
+   - **PostgreSQL Database** (automatically enabled)
+   - **Authentication** (enable Google OAuth provider)
    - **Storage** (for images)
-   - **Hosting**
+   - **Realtime** (for real-time updates)
 
-#### 🔧 Configure Firebase Storage CORS (Required for Image Uploads)
+#### 🔧 Configure Supabase Storage
 
-Firebase Storage requires CORS configuration to work with web applications. If you encounter CORS errors during image uploads:
-
-1. **Deploy Storage Rules:**
+1. **Create Storage Buckets:**
    ```bash
-   npm run firebase:deploy
+   npm run setup:storage
    ```
 
-2. **Configure CORS (if you have Google Cloud SDK installed):**
-   ```bash
-   npm run firebase:setup-cors
-   ```
+2. **Configure CORS** (if needed):
+   - Go to Storage > Settings in Supabase Dashboard
+   - Configure CORS settings for your domain
 
-3. **Alternative CORS Setup:**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Select your Firebase project
-   - Go to Storage > Browser
-   - Click the bucket name
-   - Go to Permissions > CORS
-   - Add the following configuration:
-   ```json
-   [
-     {
-       "origin": ["http://localhost:3000", "http://localhost:3004"],
-       "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-       "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
-       "maxAgeSeconds": 3600
-     }
-   ]
-   ```
-4. Get your Firebase configuration:
-   - Go to Project Settings > General
-   - Scroll to "Your apps" section
-   - Click the web app icon (</>) or create one
-   - Copy the config object
+3. **Get your Supabase configuration:**
+   - Go to Project Settings > API
+   - Copy the Project URL and anon/public key
 
 ### 3. Update Configuration
 
-Update `src/services/firebase.ts` with your Firebase configuration:
+Create a `.env` file in the root directory with your Supabase configuration:
 
-```typescript
-const firebaseConfig = {
-  apiKey: "your-api-key",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "your-sender-id",
-  appId: "your-app-id"
-};
+```env
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### 4. Deploy Security Rules
+### 4. Run Database Migrations
 
 ```bash
-# Deploy Firestore security rules and indexes
-firebase deploy --only firestore:rules,firestore:indexes
+# Apply database migrations
+# Migrations are located in supabase/migrations/
+# Apply them through Supabase Dashboard or CLI
 ```
 
 ### 5. Run Development Server
@@ -94,47 +63,48 @@ firebase deploy --only firestore:rules,firestore:indexes
 ```bash
 # Start the development server
 npm run dev
-
-# Or use Firebase for local development
-firebase serve
 ```
 
 ### 6. Deploy to Production
 
+The application is configured for deployment with Cloudflare Pages or similar static hosting:
+
 ```bash
-# Build and deploy to Firebase Hosting
+# Build for production
 npm run build
-firebase deploy
+
+# Deploy the dist/ directory to your hosting provider
 ```
 
 ## 📁 Project Structure
 
 ```
-├── docs/                    # Planning and architecture documents
-│   ├── ARCHITECTURE.md      # System architecture and design
-│   ├── DATA_SCHEMA.md       # Firestore data structure
+├── dev_docs/                 # Planning and architecture documents
+│   ├── ARCHITECTURE.md       # System architecture and design
+│   ├── DATA_SCHEMA.md        # Database schema structure
 │   ├── COMPONENT_ARCHITECTURE.md # Component hierarchy
-│   ├── STYLE_GUIDE.md       # Design system and styling
-│   ├── ROADMAP.md           # Development timeline
-│   ├── API_DESIGN.md        # Firestore queries and optimization
-│   └── SECURITY_PLAN.md     # Security rules and performance
-├── public/                  # Static assets
+│   ├── STYLE_GUIDE.md        # Design system and styling
+│   └── SECURITY_PLAN.md      # Security rules and performance
+├── supabase/
+│   └── migrations/           # Database migration files
+├── public/                    # Static assets
 ├── src/
-│   ├── components/          # Reusable UI components
-│   │   ├── layout/          # Layout components (Header, Sidebar, MobileMenu)
-│   │   └── ui/              # Reusable UI components (LoadingSpinner)
-│   ├── pages/               # Route components
-│   │   ├── Projects.tsx     # Project overview (default landing page)
+│   ├── components/           # Reusable UI components
+│   │   ├── layout/           # Layout components (Header, Sidebar, MobileMenu)
+│   │   ├── auth/             # Authentication components
+│   │   └── ui/               # Reusable UI components
+│   ├── pages/                # Route components
+│   │   ├── Projects.tsx      # Project overview (default landing page)
 │   │   ├── ProjectDetail.tsx # Project details with Inventory/Transactions tabs
 │   │   ├── InventoryList.tsx # Project-specific inventory management
 │   │   ├── TransactionsList.tsx # Project-specific transaction management
-│   │   └── ItemDetail.tsx   # Individual item detail view
-│   ├── services/            # Firebase and external services
-│   ├── types/               # TypeScript type definitions
-│   └── index.css            # Global styles
-├── firebase.json            # Firebase hosting configuration
-├── firestore.rules          # Firestore security rules
-└── firestore.indexes.json   # Firestore query indexes
+│   │   └── ItemDetail.tsx    # Individual item detail view
+│   ├── services/             # Supabase and external services
+│   ├── contexts/             # React contexts (Auth, Account, BusinessProfile)
+│   ├── hooks/                # Custom React hooks
+│   ├── types/                # TypeScript type definitions
+│   └── index.css             # Global styles
+└── package.json              # Dependencies and scripts
 ```
 
 ## 🎯 Key Features
@@ -145,7 +115,8 @@ firebase deploy
 - **Project-Based Inventory**: Inventory and transactions organized within projects
 - **List View Interface**: Clean, efficient inventory management in list format
 - **Modern UI**: Built with React, TypeScript, and Tailwind CSS
-- **Scalable Architecture**: Firebase Firestore ready for data storage
+- **Scalable Architecture**: Supabase Postgres ready for data storage
+- **Real-time Updates**: Supabase Realtime subscriptions for live data
 
 ## 🛠 Development
 
@@ -154,29 +125,32 @@ firebase deploy
 ```bash
 # Development
 npm run dev              # Start development server
-npm run build           # Build for production
-npm run preview         # Preview production build
-
-# Firebase
-firebase serve          # Local development with Firebase
-firebase deploy         # Deploy to Firebase Hosting
+npm run build            # Build for production
+npm run preview          # Preview production build
 
 # Testing
-npm run test            # Run tests
-npm run test:watch      # Run tests in watch mode
+npm run test             # Run tests
+npm run test:watch       # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage
 
 # Linting
-npm run lint            # Run ESLint
-npm run lint:fix        # Fix ESLint errors
+npm run lint             # Run ESLint
+npm run lint:fix         # Fix ESLint errors
+npm run type-check       # TypeScript type checking
+
+# Supabase
+npm run setup:storage    # Setup Supabase storage buckets
+npm run test:storage     # Test Supabase storage configuration
 ```
 
 ### Development Guidelines
 
 1. **Mobile-First**: Design for mobile (320px+) first, then scale up
 2. **Component Structure**: Use functional components with TypeScript
-3. **State Management**: Use Zustand for global state
+3. **State Management**: Use React Context and Zustand for global state
 4. **Styling**: Use Tailwind CSS with custom design tokens
 5. **Accessibility**: Follow WCAG AA guidelines
+6. **Database**: Use Supabase Postgres with Row Level Security (RLS)
 
 ## 📱 Mobile Optimization
 
@@ -188,26 +162,26 @@ npm run lint:fix        # Fix ESLint errors
 
 ## 🔒 Security
 
-- Firestore security rules for data protection
-- Authentication with Firebase Auth
+- Row Level Security (RLS) policies for data protection
+- Authentication with Supabase Auth (Google OAuth)
 - Input validation and sanitization
 - HTTPS-only hosting
-- Row-level security for multi-user support
+- Account-based multi-user support
 
 ## 🚀 Deployment
 
-The application is configured for automatic deployment with Firebase Hosting:
+The application is configured for deployment with Cloudflare Pages or similar static hosting:
 
-1. **Staging**: `firebase serve` for local testing
-2. **Production**: `firebase deploy` for live deployment
-3. **Monitoring**: Built-in Firebase monitoring and analytics
+1. **Build**: `npm run build` creates optimized production build in `dist/`
+2. **Deploy**: Upload `dist/` directory to your hosting provider
+3. **Environment Variables**: Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your hosting environment
 
 ## 📊 Performance
 
 - **Lighthouse Score**: Target 90+ for all categories
 - **Core Web Vitals**: All metrics in "Good" range
 - **Bundle Size**: Optimized for fast loading
-- **Real-time Updates**: Efficient Firestore listeners
+- **Real-time Updates**: Efficient Supabase Realtime subscriptions
 
 ## 🤝 Contributing
 
@@ -223,7 +197,7 @@ This project is private and proprietary.
 
 ## 🆘 Support
 
-For support and questions, please refer to the documentation in the `docs/` directory or contact the development team.
+For support and questions, please refer to the documentation in the `dev_docs/` directory or contact the development team.
 
 ---
 

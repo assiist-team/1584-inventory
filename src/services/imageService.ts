@@ -219,8 +219,7 @@ export class ImageUploadService {
     console.log('Uploading to path:', fileName, 'Size:', processedFile.size, 'Type:', processedFile.type)
 
     try {
-      // Supabase doesn't have built-in progress tracking like Firebase
-      // We'll simulate it or use a different approach
+      // Supabase Storage upload with progress simulation
       const { data, error } = await supabase.storage
         .from(imageType)
         .upload(fileName, processedFile, {
@@ -455,15 +454,14 @@ export class ImageUploadService {
 
   /**
    * Get image metadata
-   * Note: Supabase Storage doesn't have a direct metadata API like Firebase
-   * This method is kept for compatibility but returns basic info
+   * Note: Supabase Storage provides basic metadata through the file API
+   * This method returns basic info based on URL
    */
   static async getImageMetadata(imageUrl: string): Promise<any> {
     try {
       await this.ensureAuthentication()
       
-      // Supabase doesn't provide metadata API like Firebase
-      // Return basic info based on URL
+      // Supabase Storage provides metadata through the file API
       return {
         name: imageUrl.split('/').pop() || '',
         fullPath: imageUrl,

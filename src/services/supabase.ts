@@ -25,7 +25,7 @@ export const isSupabaseReady = (): boolean => {
   return supabase !== null && typeof supabase === 'object'
 }
 
-// Initialize Supabase (replaces initializeFirebase)
+// Initialize Supabase
 export const initializeSupabase = async (): Promise<void> => {
   if (typeof window !== 'undefined') {
     // Supabase initializes automatically, but we can verify
@@ -296,7 +296,7 @@ export const getCurrentUserWithData = async (): Promise<{
   return { supabaseUser, appUser }
 }
 
-// Invitation functions (replace Firebase invitation functions)
+// Invitation functions (Supabase-based)
 export const createUserInvitation = async (
   email: string,
   role: UserRole,

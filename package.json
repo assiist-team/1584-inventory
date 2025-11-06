@@ -13,8 +13,6 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
-    "firebase:deploy": "firebase deploy",
-    "firebase:setup-cors": "gsutil cors set cors.json gs://inventory-management-090999.appspot.com",
     "setup:storage": "tsx scripts/setup-supabase-storage.ts",
     "test:storage": "tsx scripts/test-supabase-storage.ts"
   },
@@ -35,8 +33,6 @@
     "date-fns": "^3.0.6",
     "dompurify": "^3.0.6",
     "dotenv": "^17.2.3",
-    "firebase": "^10.7.1",
-    "firebase-admin": "^13.5.0",
     "lucide-react": "^0.294.0",
     "qrcode": "^1.5.3",
     "react": "^18.2.0",

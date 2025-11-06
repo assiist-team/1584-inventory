@@ -49,7 +49,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const { showSuccess, showError } = useToast()
 
-  // Fetch real inventory data from Firestore
+  // Fetch real inventory data from Supabase
   useEffect(() => {
     const fetchItems = async () => {
       if (!currentAccountId) return
@@ -162,7 +162,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
       console.log('📝 Updating disposition from', item.disposition, 'to', newDisposition)
 
-      // Update in Firestore
+      // Update in Supabase
       if (!currentAccountId) throw new Error('Account ID is required')
       await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: newDisposition })
       console.log('💾 Database updated successfully')

@@ -245,7 +245,7 @@ export default function AddTransaction() {
           } else if (error.message?.includes('Unauthorized')) {
             errorMessage = 'Permission denied. Please check your account permissions.'
           } else if (error.message?.includes('CORS') || error.message?.includes('Access-Control') || error.message?.includes('ERR_FAILED') || error.message?.includes('preflight')) {
-            errorMessage = 'Upload blocked by browser security policy. Please check Firebase Storage configuration or try refreshing the page.'
+            errorMessage = 'Upload blocked by browser security policy. Please check Supabase Storage configuration or try refreshing the page.'
           }
 
           setErrors({ receipt_images: errorMessage })
@@ -304,7 +304,7 @@ export default function AddTransaction() {
           } else if (error.message?.includes('Unauthorized')) {
             errorMessage = 'Permission denied. Please check your account permissions.'
           } else if (error.message?.includes('CORS') || error.message?.includes('Access-Control') || error.message?.includes('ERR_FAILED') || error.message?.includes('preflight')) {
-            errorMessage = 'Upload blocked by browser security policy. Please check Firebase Storage configuration or try refreshing the page.'
+            errorMessage = 'Upload blocked by browser security policy. Please check Supabase Storage configuration or try refreshing the page.'
           }
 
           setErrors({ other_images: errorMessage })
