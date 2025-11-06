@@ -59,7 +59,10 @@ export const convertTimestamps = (data: any): any => {
     return data
   }
 
-  const converted: any = { ...data }
+  // Handle arrays first
+  if (Array.isArray(data)) {
+    return data.map((item: any) => convertTimestamps(item))
+  }
 
   // Convert known timestamp fields
   const timestampFields = [
@@ -73,27 +76,32 @@ export const convertTimestamps = (data: any): any => {
       return obj
     }
 
-    const result: any = { ...obj }
-
-    // Handle arrays of objects FIRST
-    if (Array.isArray(result)) {
-      return result.map((item: any) => convertObject(item))
+    // Handle arrays
+    if (Array.isArray(obj)) {
+      return obj.map((item: any) => convertObject(item))
     }
 
-    // Convert timestamp fields
+    const result: any = { ...obj }
+
+    // Convert timestamp fields (only if they're strings, numbers, or Dates)
     timestampFields.forEach(field => {
-      if (result[field]) {
-        result[field] = timestampToDate(result[field])
+      if (result[field] !== undefined && result[field] !== null) {
+        const value = result[field]
+        // Only convert if it's a string, number, or Date - skip objects/arrays
+        if (typeof value === 'string' || typeof value === 'number' || value instanceof Date) {
+          result[field] = timestampToDate(value)
+        }
       }
     })
 
-    // Handle nested objects and arrays
+    // Handle nested objects and arrays (skip Date instances)
     Object.keys(result).forEach(key => {
-      if (result[key] && typeof result[key] === 'object') {
-        if (Array.isArray(result[key])) {
-          result[key] = result[key].map((item: any) => convertObject(item))
+      const value = result[key]
+      if (value !== undefined && value !== null && typeof value === 'object' && !(value instanceof Date)) {
+        if (Array.isArray(value)) {
+          result[key] = value.map((item: any) => convertObject(item))
         } else {
-          result[key] = convertObject(result[key])
+          result[key] = convertObject(value)
         }
       }
     })
@@ -101,7 +109,7 @@ export const convertTimestamps = (data: any): any => {
     return result
   }
 
-  return convertObject(converted)
+  return convertObject(data)
 }
 
 /**

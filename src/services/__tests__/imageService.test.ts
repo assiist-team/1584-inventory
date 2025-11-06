@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMockSupabaseClient } from './test-utils'
 
 // Mock Supabase before importing services
-const mockSupabase = createMockSupabaseClient()
-vi.mock('../supabase', () => ({
-  supabase: mockSupabase
-}))
+vi.mock('../supabase', async () => {
+  const { createMockSupabaseClient } = await import('./test-utils')
+  return {
+    supabase: createMockSupabaseClient()
+  }
+})
 
 // Mock databaseService
 vi.mock('../databaseService', () => ({

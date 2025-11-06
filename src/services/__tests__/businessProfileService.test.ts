@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMockSupabaseClient, createNotFoundError } from './test-utils'
 
 // Mock Supabase before importing services
-const mockSupabase = createMockSupabaseClient()
-vi.mock('../supabase', () => ({
-  supabase: mockSupabase
-}))
+vi.mock('../supabase', async () => {
+  const { createMockSupabaseClient } = await import('./test-utils')
+  return {
+    supabase: createMockSupabaseClient()
+  }
+})
 
 // Mock databaseService
 vi.mock('../databaseService', () => ({
@@ -113,6 +115,19 @@ describe('businessProfileService', () => {
       const existingProfile = { account_id: 'test-account-id' }
       let updateCalled = false
       
+      // Create an awaitable chain for the update operation
+      const awaitableUpdateChain = {
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        then: vi.fn((onResolve?: (value: any) => any) => {
+          updateCalled = true
+          return Promise.resolve({ data: null, error: null }).then(onResolve)
+        }),
+        catch: vi.fn((onReject?: (error: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).catch(onReject)
+        })
+      }
+      
       vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
         const mockQueryBuilder = createMockSupabaseClient().from(table)
         if (table === 'business_profiles') {
@@ -121,11 +136,7 @@ describe('businessProfileService', () => {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
             single: vi.fn().mockResolvedValue({ data: existingProfile, error: null }),
-            update: vi.fn().mockReturnThis(),
-            then: vi.fn().mockImplementation(() => {
-              updateCalled = true
-              return Promise.resolve({ data: null, error: null })
-            })
+            update: vi.fn().mockReturnValue(awaitableUpdateChain)
           } as any
         }
         return mockQueryBuilder as any

@@ -146,15 +146,18 @@ export class ImageUploadService {
 
       if (error) throw error
 
+      // Use the path returned from Supabase (may differ from generated fileName)
+      const uploadedPath = data?.path || fileName
+
       // Simulate progress if callback provided
       if (onProgress) {
         onProgress({ loaded: processedFile.size, total: processedFile.size, percentage: 100 })
       }
 
-      // Get public URL
+      // Get public URL using the actual uploaded path
       const { data: urlData } = supabase.storage
         .from('business-logos')
-        .getPublicUrl(fileName)
+        .getPublicUrl(uploadedPath)
 
       if (!urlData?.publicUrl) {
         throw new Error('Failed to get public URL for uploaded file')
@@ -162,7 +165,7 @@ export class ImageUploadService {
 
       return {
         url: urlData.publicUrl,
-        fileName: fileName,
+        fileName: uploadedPath,
         size: processedFile.size,
         mimeType: processedFile.type
       }
@@ -229,15 +232,18 @@ export class ImageUploadService {
 
       if (error) throw error
 
+      // Use the path returned from Supabase (may differ from generated fileName)
+      const uploadedPath = data?.path || fileName
+
       // Simulate progress if callback provided
       if (onProgress) {
         onProgress({ loaded: processedFile.size, total: processedFile.size, percentage: 100 })
       }
 
-      // Get public URL
+      // Get public URL using the actual uploaded path
       const { data: urlData } = supabase.storage
         .from(imageType)
-        .getPublicUrl(fileName)
+        .getPublicUrl(uploadedPath)
 
       if (!urlData?.publicUrl) {
         throw new Error('Failed to get public URL for uploaded file')
@@ -245,7 +251,7 @@ export class ImageUploadService {
 
       return {
         url: urlData.publicUrl,
-        fileName: fileName,
+        fileName: uploadedPath,
         size: processedFile.size,
         mimeType: processedFile.type
       }
@@ -597,6 +603,9 @@ export class ImageUploadService {
    * Create a preview URL for a file
    */
   static createPreviewUrl(file: File): string {
+    if (typeof URL === 'undefined' || !URL.createObjectURL) {
+      throw new Error('URL.createObjectURL is not available in this environment')
+    }
     return URL.createObjectURL(file)
   }
 

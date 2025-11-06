@@ -68,11 +68,14 @@ export async function updateTaxPresets(accountId: string, presets: TaxPreset[]):
     }
 
     // Check if presets exist for this account
-    const { data: existing } = await supabase
+    const { data: existing, error: checkError } = await supabase
       .from('tax_presets')
       .select('account_id')
       .eq('account_id', accountId)
       .single()
+
+    // Handle "not found" error gracefully - it means we need to insert
+    const shouldInsert = !existing || (checkError && checkError.code === 'PGRST116')
 
     const presetData = {
       account_id: accountId,
@@ -80,7 +83,7 @@ export async function updateTaxPresets(accountId: string, presets: TaxPreset[]):
       updated_at: new Date().toISOString()
     }
 
-    if (existing) {
+    if (!shouldInsert) {
       // Update existing
       const { error } = await supabase
         .from('tax_presets')

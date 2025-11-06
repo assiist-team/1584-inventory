@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMockSupabaseClient, createNotFoundError } from './test-utils'
 
 // Mock Supabase before importing services
-const mockSupabase = createMockSupabaseClient()
-vi.mock('../supabase', () => ({
-  supabase: mockSupabase
-}))
+vi.mock('../supabase', async () => {
+  const { createMockSupabaseClient } = await import('./test-utils')
+  return {
+    supabase: createMockSupabaseClient()
+  }
+})
 
 // Import after mocks are set up
 import { getTaxPresets, updateTaxPresets, getTaxPresetById } from '../taxPresetsService'
@@ -63,6 +65,20 @@ describe('taxPresetsService', () => {
     it('should initialize with defaults when presets array is empty', async () => {
       const mockData = { account_id: 'test-account-id', presets: [] }
       let updateCalled = false
+      let callCount = 0
+      
+      // Create an awaitable chain for the update operation
+      const awaitableUpdateChain = {
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        then: vi.fn((onResolve?: (value: any) => any) => {
+          updateCalled = true
+          return Promise.resolve({ data: null, error: null }).then(onResolve)
+        }),
+        catch: vi.fn((onReject?: (error: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).catch(onReject)
+        })
+      }
       
       vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
         const mockQueryBuilder = createMockSupabaseClient().from(table)
@@ -70,12 +86,16 @@ describe('taxPresetsService', () => {
           ...mockQueryBuilder,
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: mockData, error: null }),
-          update: vi.fn().mockReturnThis(),
-          then: vi.fn().mockImplementation(() => {
-            updateCalled = true
-            return Promise.resolve({ data: null, error: null })
-          })
+          single: vi.fn().mockImplementation(() => {
+            callCount++
+            // First call: getTaxPresets finds empty presets
+            if (callCount === 1) {
+              return Promise.resolve({ data: mockData, error: null })
+            }
+            // Second call: updateTaxPresets checks if record exists (it does)
+            return Promise.resolve({ data: { account_id: 'test-account-id' }, error: null })
+          }),
+          update: vi.fn().mockReturnValue(awaitableUpdateChain)
         } as any
       })
 
@@ -109,6 +129,19 @@ describe('taxPresetsService', () => {
       ]
       let updateCalled = false
       
+      // Create an awaitable chain for the update operation
+      const awaitableUpdateChain = {
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        then: vi.fn((onResolve?: (value: any) => any) => {
+          updateCalled = true
+          return Promise.resolve({ data: null, error: null }).then(onResolve)
+        }),
+        catch: vi.fn((onReject?: (error: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).catch(onReject)
+        })
+      }
+      
       vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
         const mockQueryBuilder = createMockSupabaseClient().from(table)
         return {
@@ -116,11 +149,7 @@ describe('taxPresetsService', () => {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({ data: existingPresets, error: null }),
-          update: vi.fn().mockReturnThis(),
-          then: vi.fn().mockImplementation(() => {
-            updateCalled = true
-            return Promise.resolve({ data: null, error: null })
-          })
+          update: vi.fn().mockReturnValue(awaitableUpdateChain)
         } as any
       })
 

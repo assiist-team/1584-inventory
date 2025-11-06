@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMockSupabaseClient, createMockAccount, createMockUser, createNotFoundError } from './test-utils'
 
 // Mock Supabase before importing services
-const mockSupabase = createMockSupabaseClient()
-vi.mock('../supabase', () => ({
-  supabase: mockSupabase
-}))
+vi.mock('../supabase', async () => {
+  const { createMockSupabaseClient } = await import('./test-utils')
+  return {
+    supabase: createMockSupabaseClient()
+  }
+})
 
 // Mock databaseService
 vi.mock('../databaseService', () => ({
@@ -184,14 +186,19 @@ describe('accountService', () => {
 
   describe('updateUserRoleInAccount', () => {
     it('should update user role', async () => {
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
-      
-      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
-        ...mockQueryBuilder,
+      // Create an awaitable chain object
+      const awaitableChain = {
         update: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        then: vi.fn().mockResolvedValue({ data: null, error: null })
-      } as any)
+        then: vi.fn((onResolve?: (value: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).then(onResolve)
+        }),
+        catch: vi.fn((onReject?: (error: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).catch(onReject)
+        })
+      }
+      
+      vi.mocked(supabaseModule.supabase.from).mockReturnValue(awaitableChain as any)
 
       await expect(
         accountService.updateUserRoleInAccount('user-id', 'account-id', 'user')
@@ -201,14 +208,19 @@ describe('accountService', () => {
 
   describe('removeUserFromAccount', () => {
     it('should remove user from account', async () => {
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
-      
-      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
-        ...mockQueryBuilder,
+      // Create an awaitable chain object
+      const awaitableChain = {
         delete: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        then: vi.fn().mockResolvedValue({ data: null, error: null })
-      } as any)
+        then: vi.fn((onResolve?: (value: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).then(onResolve)
+        }),
+        catch: vi.fn((onReject?: (error: any) => any) => {
+          return Promise.resolve({ data: null, error: null }).catch(onReject)
+        })
+      }
+      
+      vi.mocked(supabaseModule.supabase.from).mockReturnValue(awaitableChain as any)
 
       await expect(
         accountService.removeUserFromAccount('user-id', 'account-id')
