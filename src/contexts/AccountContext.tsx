@@ -30,12 +30,28 @@ export function AccountProvider({ children }: AccountProviderProps) {
   const isOwner = user?.role === 'owner' || false
 
   useEffect(() => {
+    let isMounted = true
+    let loadingTimeout: NodeJS.Timeout | null = null
+
+    // Safety timeout to ensure loading is set to false even if account loading fails
+    loadingTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('⚠️ Account loading timeout - setting loading to false')
+        setLoading(false)
+      }
+    }, 10000) // 10 second timeout
+
     const loadAccount = async () => {
       if (!user) {
+        if (loadingTimeout) {
+          clearTimeout(loadingTimeout)
+        }
         setCurrentAccountId(null)
         setCurrentAccount(null)
         setAccountMembership(null)
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
         return
       }
 
@@ -45,6 +61,8 @@ export function AccountProvider({ children }: AccountProviderProps) {
         // Get user's account
         const account = await accountService.getUserAccount(user.id)
         
+        if (!isMounted) return
+
         if (account) {
           setCurrentAccountId(account.id)
           setCurrentAccount(account)
@@ -52,6 +70,8 @@ export function AccountProvider({ children }: AccountProviderProps) {
           // Get user's role in account
           const role = await accountService.getUserRoleInAccount(user.id, account.id)
           
+          if (!isMounted) return
+
           if (role) {
             setAccountMembership({
               userId: user.id,
@@ -69,15 +89,29 @@ export function AccountProvider({ children }: AccountProviderProps) {
         }
       } catch (error) {
         console.error('Error loading account:', error)
-        setCurrentAccountId(null)
-        setCurrentAccount(null)
-        setAccountMembership(null)
+        if (isMounted) {
+          setCurrentAccountId(null)
+          setCurrentAccount(null)
+          setAccountMembership(null)
+        }
       } finally {
-        setLoading(false)
+        if (loadingTimeout) {
+          clearTimeout(loadingTimeout)
+        }
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     loadAccount()
+
+    return () => {
+      isMounted = false
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout)
+      }
+    }
   }, [user])
 
   // Calculate derived values

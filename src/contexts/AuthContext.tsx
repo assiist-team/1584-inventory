@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import { User as FirebaseUser } from 'firebase/auth'
 import {
   onAuthStateChange,
@@ -38,6 +38,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     let isInitialLoad = true
     let authStateUnsubscribe: (() => void) | null = null
+    let loadingTimeout: NodeJS.Timeout | null = null
+    let isMounted = true
+
+    // Safety timeout to ensure loading is set to false even if auth listener doesn't fire
+    loadingTimeout = setTimeout(() => {
+      if (isMounted && isInitialLoad) {
+        console.warn('⚠️ Auth initialization timeout - setting loading to false')
+        setLoading(false)
+        isInitialLoad = false
+      }
+    }, 5000) // 5 second timeout
 
     // Initialize Firebase and auth persistence
     const initializeAuth = async () => {
@@ -51,6 +62,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.log('🔐 Auth persistence set to localStorage (indefinite)')
       } catch (error) {
         console.error('❌ Failed to initialize Firebase/auth persistence:', error)
+        // Still set loading to false on error
+        if (isMounted) {
+          setLoading(false)
+        }
       }
 
       // Wait for auth state to be restored from localStorage
@@ -71,19 +86,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
         try {
           await createOrUpdateUserDocument(currentUser)
           const { appUser } = await getCurrentUserWithData()
-          setUser(appUser)
-          if (appUser?.email) {
-            console.log('✅ User restored from localStorage persistence:', appUser.email)
+          if (isMounted) {
+            setUser(appUser)
+            if (appUser?.email) {
+              console.log('✅ User restored from localStorage persistence:', appUser.email)
+            }
           }
         } catch (error) {
           console.error('❌ Error loading user from localStorage:', error)
-          setUser(null)
-          setFirebaseUser(null) // Clear invalid user
+          if (isMounted) {
+            setUser(null)
+            setFirebaseUser(null) // Clear invalid user
+          }
         }
       }
 
       // Set up auth state listener for future changes
       authStateUnsubscribe = onAuthStateChange(async (firebaseUser) => {
+        if (!isMounted) return
+
         console.log('🔄 AuthContext: Auth state changed:', {
           hasUser: !!firebaseUser,
           email: firebaseUser?.email || 'none',
@@ -95,6 +116,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Skip duplicate initial calls
         if (isInitialLoad && firebaseUser && currentUser && firebaseUser.uid === currentUser.uid) {
           console.log('⏭️ Skipping duplicate initial auth state from localStorage')
+          // Clear timeout since we're handling it here
+          if (loadingTimeout) {
+            clearTimeout(loadingTimeout)
+            loadingTimeout = null
+          }
           setLoading(false)
           isInitialLoad = false
           return
@@ -106,21 +132,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
           try {
             await createOrUpdateUserDocument(firebaseUser)
             const { appUser } = await getCurrentUserWithData()
-            setUser(appUser)
-            if (appUser?.email) {
-              console.log('✅ Auth state change - user authenticated:', appUser.email)
+            if (isMounted) {
+              setUser(appUser)
+              if (appUser?.email) {
+                console.log('✅ Auth state change - user authenticated:', appUser.email)
+              }
             }
           } catch (error) {
             console.error('❌ Error loading authenticated user:', error)
-            setUser(null)
+            if (isMounted) {
+              setUser(null)
+            }
           }
         } else {
           console.log('🚪 User signed out or auth cleared')
-          setUser(null)
+          if (isMounted) {
+            setUser(null)
+          }
         }
 
         // Mark loading as complete after initial processing
         if (isInitialLoad) {
+          // Clear timeout since we're handling it here
+          if (loadingTimeout) {
+            clearTimeout(loadingTimeout)
+            loadingTimeout = null
+          }
           setLoading(false)
           isInitialLoad = false
         }
@@ -132,6 +169,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     initializeAuth()
 
     return () => {
+      isMounted = false
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout)
+      }
       if (authStateUnsubscribe) {
         authStateUnsubscribe()
       }
@@ -169,16 +210,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  const hasRole = (role: UserRole): boolean => {
-    console.log('Checking role:', role, 'for user:', user?.email, 'with role:', user?.role)
-    const result = user?.role === role || user?.role === UserRole.OWNER || user?.role === UserRole.ADMIN
-    console.log('hasRole result:', result)
-    return result
-  }
+  const hasRole = useCallback((role: UserRole): boolean => {
+    // Removed excessive logging - only log in development if needed for debugging
+    return user?.role === role || user?.role === UserRole.OWNER || user?.role === UserRole.ADMIN
+  }, [user?.role])
 
-  const isOwner = (): boolean => {
+  const isOwner = useCallback((): boolean => {
     return user?.role === 'owner' || false
-  }
+  }, [user?.role])
 
   const value: AuthContextType = {
     firebaseUser,

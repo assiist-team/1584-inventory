@@ -18,7 +18,7 @@ interface FilterOptions {
 }
 
 export default function BusinessInventory() {
-  const { currentAccountId } = useAccount()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<Item[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -130,13 +130,48 @@ export default function BusinessInventory() {
     { id: 'transactions' as const, name: 'Transactions', icon: Receipt }
   ]
 
+  // Handle account loading state - set isLoading to false when account context finishes loading
   useEffect(() => {
-    if (currentAccountId) {
-      loadBusinessInventory()
-      loadBusinessTransactions()
-      loadProjects()
+    if (!accountLoading) {
+      // Account context has finished loading
+      if (currentAccountId) {
+        // Load data when account is ready
+        const loadData = async () => {
+          try {
+            // Load inventory
+            const inventoryData = await unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters)
+            setItems(inventoryData)
+            
+            // Load transactions
+            const allTransactions: Transaction[] = []
+            const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions(currentAccountId)
+            allTransactions.push(...businessInventoryTransactions)
+            const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions(currentAccountId)
+            allTransactions.push(...inventoryRelatedTransactions)
+            const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
+              index === self.findIndex(t => t.transaction_id === transaction.transaction_id)
+            )
+            uniqueTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            setTransactions(uniqueTransactions)
+            
+            // Load projects
+            const projectsData = await projectService.getProjects(currentAccountId)
+            setProjects(projectsData)
+          } catch (error) {
+            console.error('Error loading business inventory data:', error)
+            setItems([])
+            setTransactions([])
+          } finally {
+            setIsLoading(false)
+          }
+        }
+        loadData()
+      } else {
+        // No account ID available, but account context is done loading
+        setIsLoading(false)
+      }
     }
-  }, [currentAccountId])
+  }, [currentAccountId, accountLoading, filters])
 
   // Subscribe to real-time updates for inventory
   useEffect(() => {
