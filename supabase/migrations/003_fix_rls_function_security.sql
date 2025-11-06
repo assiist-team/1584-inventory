@@ -4,7 +4,7 @@
 CREATE OR REPLACE FUNCTION is_system_owner() RETURNS boolean 
 LANGUAGE sql 
 STABLE 
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT EXISTS (
@@ -16,7 +16,7 @@ $$;
 CREATE OR REPLACE FUNCTION is_account_member(account_id_param uuid) RETURNS boolean 
 LANGUAGE sql 
 STABLE 
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT EXISTS (
@@ -28,7 +28,7 @@ $$;
 CREATE OR REPLACE FUNCTION get_user_role_in_account(account_id_param uuid) RETURNS text 
 LANGUAGE sql 
 STABLE 
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT role FROM public.account_members
@@ -38,7 +38,7 @@ $$;
 CREATE OR REPLACE FUNCTION is_account_admin(account_id_param uuid) RETURNS boolean 
 LANGUAGE sql 
 STABLE 
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT public.is_system_owner() OR (

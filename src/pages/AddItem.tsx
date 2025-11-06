@@ -38,8 +38,8 @@ export default function AddItem() {
 
   const [projectName, setProjectName] = useState<string>('')
 
-  // Check if user has permission to add items (DESIGNER role or higher)
-  if (!hasRole(UserRole.DESIGNER)) {
+  // Check if user has permission to add items (USER role or higher)
+  if (!hasRole(UserRole.USER)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full space-y-8 text-center">

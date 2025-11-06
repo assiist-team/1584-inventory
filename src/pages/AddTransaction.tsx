@@ -21,8 +21,8 @@ export default function AddTransaction() {
   const { hasRole, user } = useAuth()
   const { currentAccountId } = useAccount()
 
-  // Check if user has permission to add transactions (DESIGNER role or higher)
-  if (!hasRole(UserRole.DESIGNER)) {
+  // Check if user has permission to add transactions (USER role or higher)
+  if (!hasRole(UserRole.USER)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full space-y-8 text-center">
