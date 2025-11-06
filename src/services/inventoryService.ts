@@ -233,12 +233,111 @@ export const projectService = {
     if (error) throw error
   },
 
-  // Subscribe to projects (Note: Real-time subscriptions will be migrated in Phase 6)
+  // Subscribe to projects with real-time updates
   subscribeToProjects(accountId: string, callback: (projects: Project[]) => void) {
-    // TODO: Implement Supabase Realtime subscription in Phase 6
-    // For now, return a no-op unsubscribe function
-    console.warn('subscribeToProjects: Real-time subscriptions not yet migrated to Supabase')
-    return () => {}
+    const channel = supabase
+      .channel(`projects:${accountId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'projects',
+          filter: `account_id=eq.${accountId}`
+        },
+        async () => {
+          // Refetch projects on any change
+          try {
+            const { data, error } = await supabase
+              .from('projects')
+              .select('*')
+              .eq('account_id', accountId)
+              .order('updated_at', { ascending: false })
+            
+            if (error) {
+              console.error('Error fetching projects in subscription:', error)
+              return
+            }
+            
+            if (data) {
+              const projects = (data || []).map(project => {
+                const converted = convertTimestamps(project)
+                return {
+                  id: converted.id,
+                  accountId: converted.account_id,
+                  name: converted.name,
+                  description: converted.description || '',
+                  clientName: converted.client_name || '',
+                  budget: converted.budget ? parseFloat(converted.budget) : undefined,
+                  designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
+                  budgetCategories: converted.budget_categories || undefined,
+                  createdAt: converted.created_at,
+                  updatedAt: converted.updated_at,
+                  createdBy: converted.created_by,
+                  settings: converted.settings || undefined,
+                  metadata: converted.metadata || undefined,
+                  itemCount: converted.item_count || 0,
+                  transactionCount: converted.transaction_count || 0,
+                  totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
+                } as Project
+              })
+              callback(projects)
+            }
+          } catch (error) {
+            console.error('Error in projects subscription callback:', error)
+          }
+        }
+      )
+      .subscribe()
+
+    // Initial fetch
+    const fetchProjects = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('account_id', accountId)
+          .order('updated_at', { ascending: false })
+        
+        if (error) {
+          console.error('Error fetching initial projects:', error)
+          return
+        }
+        
+        if (data) {
+          const projects = (data || []).map(project => {
+            const converted = convertTimestamps(project)
+            return {
+              id: converted.id,
+              accountId: converted.account_id,
+              name: converted.name,
+              description: converted.description || '',
+              clientName: converted.client_name || '',
+              budget: converted.budget ? parseFloat(converted.budget) : undefined,
+              designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
+              budgetCategories: converted.budget_categories || undefined,
+              createdAt: converted.created_at,
+              updatedAt: converted.updated_at,
+              createdBy: converted.created_by,
+              settings: converted.settings || undefined,
+              metadata: converted.metadata || undefined,
+              itemCount: converted.item_count || 0,
+              transactionCount: converted.transaction_count || 0,
+              totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
+            } as Project
+          })
+          callback(projects)
+        }
+      } catch (error) {
+        console.error('Error in initial projects fetch:', error)
+      }
+    }
+    
+    fetchProjects()
+
+    return () => {
+      channel.unsubscribe()
+    }
   }
 }
 
@@ -621,23 +720,264 @@ export const transactionService = {
     if (error) throw error
   },
 
-  // Subscribe to transactions (Note: Real-time subscriptions will be migrated in Phase 6)
-  subscribeToTransactions(accountId: string, _projectId: string, callback: (transactions: Transaction[]) => void) {
-    // TODO: Implement Supabase Realtime subscription in Phase 6
-    console.warn('subscribeToTransactions: Real-time subscriptions not yet migrated to Supabase')
-    return () => {}
+  // Subscribe to transactions with real-time updates
+  subscribeToTransactions(accountId: string, projectId: string, callback: (transactions: Transaction[]) => void) {
+    const channel = supabase
+      .channel(`transactions:${accountId}:${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+          filter: `account_id=eq.${accountId} AND project_id=eq.${projectId}`
+        },
+        async () => {
+          // Refetch transactions on any change
+          try {
+            const { data, error } = await supabase
+              .from('transactions')
+              .select('*')
+              .eq('account_id', accountId)
+              .eq('project_id', projectId)
+              .order('created_at', { ascending: false })
+            
+            if (error) {
+              console.error('Error fetching transactions in subscription:', error)
+              return
+            }
+            
+            if (data) {
+              const transactions = (data || []).map(tx => {
+                const converted = convertTimestamps(tx)
+                return {
+                  transaction_id: converted.transaction_id,
+                  project_id: converted.project_id || undefined,
+                  project_name: converted.project_name || undefined,
+                  transaction_date: converted.transaction_date,
+                  source: converted.source || '',
+                  transaction_type: converted.transaction_type || '',
+                  payment_method: converted.payment_method || '',
+                  amount: converted.amount || '0.00',
+                  budget_category: converted.budget_category || undefined,
+                  notes: converted.notes || undefined,
+                  transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+                  receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+                  other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+                  receipt_emailed: converted.receipt_emailed || false,
+                  created_at: converted.created_at,
+                  created_by: converted.created_by || '',
+                  status: converted.status || 'completed',
+                  reimbursement_type: converted.reimbursement_type || undefined,
+                  trigger_event: converted.trigger_event || undefined,
+                  item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+                  tax_rate_preset: converted.tax_rate_preset || undefined,
+                  tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+                  subtotal: converted.subtotal || undefined
+                } as Transaction
+              })
+              callback(transactions)
+            }
+          } catch (error) {
+            console.error('Error in transactions subscription callback:', error)
+          }
+        }
+      )
+      .subscribe()
+
+    // Initial fetch
+    const fetchTransactions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: false })
+        
+        if (error) {
+          console.error('Error fetching initial transactions:', error)
+          return
+        }
+        
+        if (data) {
+          const transactions = (data || []).map(tx => {
+            const converted = convertTimestamps(tx)
+            return {
+              transaction_id: converted.transaction_id,
+              project_id: converted.project_id || undefined,
+              project_name: converted.project_name || undefined,
+              transaction_date: converted.transaction_date,
+              source: converted.source || '',
+              transaction_type: converted.transaction_type || '',
+              payment_method: converted.payment_method || '',
+              amount: converted.amount || '0.00',
+              budget_category: converted.budget_category || undefined,
+              notes: converted.notes || undefined,
+              transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+              receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+              other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+              receipt_emailed: converted.receipt_emailed || false,
+              created_at: converted.created_at,
+              created_by: converted.created_by || '',
+              status: converted.status || 'completed',
+              reimbursement_type: converted.reimbursement_type || undefined,
+              trigger_event: converted.trigger_event || undefined,
+              item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+              tax_rate_preset: converted.tax_rate_preset || undefined,
+              tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+              subtotal: converted.subtotal || undefined
+            } as Transaction
+          })
+          callback(transactions)
+        }
+      } catch (error) {
+        console.error('Error in initial transactions fetch:', error)
+      }
+    }
+    
+    fetchTransactions()
+
+    return () => {
+      channel.unsubscribe()
+    }
   },
 
-  // Subscribe to single transaction for real-time updates (Note: Real-time subscriptions will be migrated in Phase 6)
+  // Subscribe to single transaction for real-time updates
   subscribeToTransaction(
     accountId: string,
     _projectId: string,
     transactionId: string,
     callback: (transaction: Transaction | null) => void
   ) {
-    // TODO: Implement Supabase Realtime subscription in Phase 6
-    console.warn('subscribeToTransaction: Real-time subscriptions not yet migrated to Supabase')
-    return () => {}
+    const channel = supabase
+      .channel(`transaction:${accountId}:${transactionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+          filter: `account_id=eq.${accountId} AND transaction_id=eq.${transactionId}`
+        },
+        async () => {
+          // Refetch transaction on any change
+          try {
+            const { data, error } = await supabase
+              .from('transactions')
+              .select('*')
+              .eq('account_id', accountId)
+              .eq('transaction_id', transactionId)
+              .single()
+            
+            if (error) {
+              if (error.code === 'PGRST116') {
+                // Not found - transaction was deleted
+                callback(null)
+                return
+              }
+              console.error('Error fetching transaction in subscription:', error)
+              return
+            }
+            
+            if (data) {
+              const converted = convertTimestamps(data)
+              const transaction: Transaction = {
+                transaction_id: converted.transaction_id,
+                project_id: converted.project_id || undefined,
+                project_name: converted.project_name || undefined,
+                transaction_date: converted.transaction_date,
+                source: converted.source || '',
+                transaction_type: converted.transaction_type || '',
+                payment_method: converted.payment_method || '',
+                amount: converted.amount || '0.00',
+                budget_category: converted.budget_category || undefined,
+                notes: converted.notes || undefined,
+                transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+                receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+                other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+                receipt_emailed: converted.receipt_emailed || false,
+                created_at: converted.created_at,
+                created_by: converted.created_by || '',
+                status: converted.status || 'completed',
+                reimbursement_type: converted.reimbursement_type || undefined,
+                trigger_event: converted.trigger_event || undefined,
+                item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+                tax_rate_preset: converted.tax_rate_preset || undefined,
+                tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+                subtotal: converted.subtotal || undefined
+              }
+              callback(transaction)
+            } else {
+              callback(null)
+            }
+          } catch (error) {
+            console.error('Error in transaction subscription callback:', error)
+          }
+        }
+      )
+      .subscribe()
+
+    // Initial fetch
+    const fetchTransaction = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+          .single()
+        
+        if (error) {
+          if (error.code === 'PGRST116') {
+            callback(null)
+            return
+          }
+          console.error('Error fetching initial transaction:', error)
+          return
+        }
+        
+        if (data) {
+          const converted = convertTimestamps(data)
+          const transaction: Transaction = {
+            transaction_id: converted.transaction_id,
+            project_id: converted.project_id || undefined,
+            project_name: converted.project_name || undefined,
+            transaction_date: converted.transaction_date,
+            source: converted.source || '',
+            transaction_type: converted.transaction_type || '',
+            payment_method: converted.payment_method || '',
+            amount: converted.amount || '0.00',
+            budget_category: converted.budget_category || undefined,
+            notes: converted.notes || undefined,
+            transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+            receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+            other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
+            receipt_emailed: converted.receipt_emailed || false,
+            created_at: converted.created_at,
+            created_by: converted.created_by || '',
+            status: converted.status || 'completed',
+            reimbursement_type: converted.reimbursement_type || undefined,
+            trigger_event: converted.trigger_event || undefined,
+            item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+            tax_rate_preset: converted.tax_rate_preset || undefined,
+            tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+            subtotal: converted.subtotal || undefined
+          }
+          callback(transaction)
+        } else {
+          callback(null)
+        }
+      } catch (error) {
+        console.error('Error in initial transaction fetch:', error)
+      }
+    }
+    
+    fetchTransaction()
+
+    return () => {
+      channel.unsubscribe()
+    }
   },
 
   // Get pending transactions for a project (account-scoped)
@@ -893,16 +1233,124 @@ export const unifiedItemsService = {
     return (data || []).map(item => this._convertItemFromDb(item))
   },
 
-  // Subscribe to items for a project (Note: Real-time subscriptions will be migrated in Phase 6)
+  // Subscribe to items for a project with real-time updates
   subscribeToItemsByProject(
     accountId: string,
     projectId: string,
     callback: (items: Item[]) => void,
     filters?: FilterOptions
   ) {
-    // TODO: Implement Supabase Realtime subscription in Phase 6
-    console.warn('subscribeToItemsByProject: Real-time subscriptions not yet migrated to Supabase')
-    return () => {}
+    const channel = supabase
+      .channel(`items:${accountId}:${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'items',
+          filter: `account_id=eq.${accountId} AND project_id=eq.${projectId}`
+        },
+        async () => {
+          // Refetch items on any change
+          try {
+            let query = supabase
+              .from('items')
+              .select('*')
+              .eq('account_id', accountId)
+              .eq('project_id', projectId)
+
+            // Apply filters
+            if (filters?.status) {
+              query = query.eq('disposition', filters.status)
+            }
+
+            if (filters?.category) {
+              query = query.eq('source', filters.category)
+            }
+
+            if (filters?.priceRange) {
+              query = query.gte('project_price', filters.priceRange.min.toString())
+              query = query.lte('project_price', filters.priceRange.max.toString())
+            }
+
+            // Apply search (using ilike for case-insensitive search)
+            if (filters?.searchQuery) {
+              query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
+            }
+
+            // Apply sorting
+            query = query.order('last_updated', { ascending: false })
+
+            const { data, error } = await query
+
+            if (error) {
+              console.error('Error fetching items in subscription:', error)
+              return
+            }
+
+            if (data) {
+              const items = (data || []).map(item => this._convertItemFromDb(item))
+              callback(items)
+            }
+          } catch (error) {
+            console.error('Error in items subscription callback:', error)
+          }
+        }
+      )
+      .subscribe()
+
+    // Initial fetch
+    const fetchItems = async () => {
+      try {
+        let query = supabase
+          .from('items')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('project_id', projectId)
+
+        // Apply filters
+        if (filters?.status) {
+          query = query.eq('disposition', filters.status)
+        }
+
+        if (filters?.category) {
+          query = query.eq('source', filters.category)
+        }
+
+        if (filters?.priceRange) {
+          query = query.gte('project_price', filters.priceRange.min.toString())
+          query = query.lte('project_price', filters.priceRange.max.toString())
+        }
+
+        // Apply search (using ilike for case-insensitive search)
+        if (filters?.searchQuery) {
+          query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
+        }
+
+        // Apply sorting
+        query = query.order('last_updated', { ascending: false })
+
+        const { data, error } = await query
+
+        if (error) {
+          console.error('Error fetching initial items:', error)
+          return
+        }
+
+        if (data) {
+          const items = (data || []).map(item => this._convertItemFromDb(item))
+          callback(items)
+        }
+      } catch (error) {
+        console.error('Error in initial items fetch:', error)
+      }
+    }
+
+    fetchItems()
+
+    return () => {
+      channel.unsubscribe()
+    }
   },
 
   // Get business inventory items (project_id == null) (account-scoped)
@@ -945,15 +1393,105 @@ export const unifiedItemsService = {
     return (data || []).map(item => this._convertItemFromDb(item))
   },
 
-  // Subscribe to business inventory items (Note: Real-time subscriptions will be migrated in Phase 6)
+  // Subscribe to business inventory items with real-time updates
   subscribeToBusinessInventory(
     accountId: string,
     callback: (items: Item[]) => void,
     filters?: { status?: string; searchQuery?: string }
   ) {
-    // TODO: Implement Supabase Realtime subscription in Phase 6
-    console.warn('subscribeToBusinessInventory: Real-time subscriptions not yet migrated to Supabase')
-    return () => {}
+    const channel = supabase
+      .channel(`business-inventory:${accountId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'items',
+          filter: `account_id=eq.${accountId}`
+        },
+        async () => {
+          // Refetch business inventory items on any change
+          try {
+            let query = supabase
+              .from('items')
+              .select('*')
+              .eq('account_id', accountId)
+              .is('project_id', null)
+
+            // Apply filters
+            if (filters?.status) {
+              query = query.eq('inventory_status', filters.status)
+            }
+
+            // Apply search
+            if (filters?.searchQuery) {
+              query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
+            }
+
+            // Apply sorting
+            query = query.order('last_updated', { ascending: false })
+
+            const { data, error } = await query
+
+            if (error) {
+              console.error('Error fetching business inventory in subscription:', error)
+              return
+            }
+
+            if (data) {
+              const items = (data || []).map(item => this._convertItemFromDb(item))
+              callback(items)
+            }
+          } catch (error) {
+            console.error('Error in business inventory subscription callback:', error)
+          }
+        }
+      )
+      .subscribe()
+
+    // Initial fetch
+    const fetchBusinessInventory = async () => {
+      try {
+        let query = supabase
+          .from('items')
+          .select('*')
+          .eq('account_id', accountId)
+          .is('project_id', null)
+
+        // Apply filters
+        if (filters?.status) {
+          query = query.eq('inventory_status', filters.status)
+        }
+
+        // Apply search
+        if (filters?.searchQuery) {
+          query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
+        }
+
+        // Apply sorting
+        query = query.order('last_updated', { ascending: false })
+
+        const { data, error } = await query
+
+        if (error) {
+          console.error('Error fetching initial business inventory:', error)
+          return
+        }
+
+        if (data) {
+          const items = (data || []).map(item => this._convertItemFromDb(item))
+          callback(items)
+        }
+      } catch (error) {
+        console.error('Error in initial business inventory fetch:', error)
+      }
+    }
+
+    fetchBusinessInventory()
+
+    return () => {
+      channel.unsubscribe()
+    }
   },
 
   // Create new item (account-scoped)

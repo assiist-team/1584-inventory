@@ -7,11 +7,49 @@ Replace Firestore `onSnapshot` listeners with Supabase Realtime subscriptions.
 
 ### 1. Enable Realtime for Tables
 
-In Supabase Dashboard → Database → Replication, enable replication for tables that need real-time updates:
-- `projects`
-- `items`
-- `transactions`
-- `account_members` (optional)
+**Option A: Run the Migration File (Recommended)**
+
+Run the migration file `supabase/migrations/006_enable_realtime.sql` using one of these methods:
+
+1. **Via Supabase Dashboard:**
+   - Go to your Supabase project dashboard
+   - Navigate to **SQL Editor**
+   - Copy and paste the contents of `supabase/migrations/006_enable_realtime.sql`
+   - Click **Run** to execute the SQL
+
+2. **Via Supabase CLI:**
+   ```bash
+   supabase db push
+   ```
+
+**Option B: Manual SQL Commands**
+
+If you prefer to run the SQL manually, open the Supabase SQL Editor and run:
+
+```sql
+-- Ensure the supabase_realtime publication exists
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'
+  ) THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+END $$;
+
+-- Add tables to the publication
+ALTER PUBLICATION supabase_realtime ADD TABLE projects;
+ALTER PUBLICATION supabase_realtime ADD TABLE items;
+ALTER PUBLICATION supabase_realtime ADD TABLE transactions;
+```
+
+**Note:** If you get errors saying a table is already in the publication, that's fine - it means realtime is already enabled for that table. You can safely ignore those errors.
+
+**Tables enabled for realtime:**
+- `projects` - for project list updates
+- `items` - for inventory item updates  
+- `transactions` - for transaction updates
+- `account_members` (optional) - uncomment in migration file if needed
 
 ### 2. Create Realtime Hook
 

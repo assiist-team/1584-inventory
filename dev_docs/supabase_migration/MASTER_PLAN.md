@@ -129,7 +129,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - See: `14-storage-policies.md`
 
 ### Phase 6: Real-time Features
-- [ ] **Task 6.1**: Real-time Subscriptions
+- [x] **Task 6.1**: Real-time Subscriptions
   - Implement Supabase Realtime subscriptions
   - Update real-time listeners
   - Test real-time updates
@@ -195,7 +195,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 - [x] Task 5.2: Storage Policies
 
 ### Phase 6: Real-time Features
-- [ ] Task 6.1: Real-time Subscriptions
+- [x] Task 6.1: Real-time Subscriptions
 
 ### Phase 7: Component Updates
 - [ ] Task 7.1: Auth Components Update
