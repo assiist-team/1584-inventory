@@ -344,6 +344,66 @@ export const projectService = {
 // Item Services (REMOVED - migrated to unifiedItemsService)
 // This service was completely removed after successful migration to unified collection
 
+// Transaction conversion functions
+function _convertTransactionFromDb(dbTransaction: any): Transaction {
+  const converted = convertTimestamps(dbTransaction)
+  return {
+    transactionId: converted.transaction_id,
+    projectId: converted.project_id || undefined,
+    projectName: converted.project_name || undefined,
+    transactionDate: converted.transaction_date,
+    source: converted.source || '',
+    transactionType: converted.transaction_type || '',
+    paymentMethod: converted.payment_method || '',
+    amount: converted.amount || '0.00',
+    budgetCategory: converted.budget_category || undefined,
+    notes: converted.notes || undefined,
+    transactionImages: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
+    receiptImages: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
+    otherImages: Array.isArray(converted.other_images) ? converted.other_images : [],
+    receiptEmailed: converted.receipt_emailed || false,
+    createdAt: converted.created_at,
+    createdBy: converted.created_by || '',
+    status: converted.status || 'completed',
+    reimbursementType: converted.reimbursement_type || undefined,
+    triggerEvent: converted.trigger_event || undefined,
+    itemIds: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+    taxRatePreset: converted.tax_rate_preset || undefined,
+    taxRatePct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+    subtotal: converted.subtotal || undefined
+  } as Transaction
+}
+
+function _convertTransactionToDb(transaction: Partial<Transaction>): any {
+  const dbTransaction: any = {}
+  
+  if (transaction.transactionId !== undefined) dbTransaction.transaction_id = transaction.transactionId
+  if (transaction.projectId !== undefined) dbTransaction.project_id = transaction.projectId ?? null
+  if (transaction.projectName !== undefined) dbTransaction.project_name = transaction.projectName
+  if (transaction.transactionDate !== undefined) dbTransaction.transaction_date = transaction.transactionDate
+  if (transaction.source !== undefined) dbTransaction.source = transaction.source
+  if (transaction.transactionType !== undefined) dbTransaction.transaction_type = transaction.transactionType
+  if (transaction.paymentMethod !== undefined) dbTransaction.payment_method = transaction.paymentMethod
+  if (transaction.amount !== undefined) dbTransaction.amount = transaction.amount
+  if (transaction.budgetCategory !== undefined) dbTransaction.budget_category = transaction.budgetCategory
+  if (transaction.notes !== undefined) dbTransaction.notes = transaction.notes
+  if (transaction.transactionImages !== undefined) dbTransaction.transaction_images = transaction.transactionImages
+  if (transaction.receiptImages !== undefined) dbTransaction.receipt_images = transaction.receiptImages
+  if (transaction.otherImages !== undefined) dbTransaction.other_images = transaction.otherImages
+  if (transaction.receiptEmailed !== undefined) dbTransaction.receipt_emailed = transaction.receiptEmailed
+  if (transaction.createdAt !== undefined) dbTransaction.created_at = transaction.createdAt
+  if (transaction.createdBy !== undefined) dbTransaction.created_by = transaction.createdBy
+  if (transaction.status !== undefined) dbTransaction.status = transaction.status
+  if (transaction.reimbursementType !== undefined) dbTransaction.reimbursement_type = transaction.reimbursementType
+  if (transaction.triggerEvent !== undefined) dbTransaction.trigger_event = transaction.triggerEvent
+  if (transaction.itemIds !== undefined) dbTransaction.item_ids = transaction.itemIds
+  if (transaction.taxRatePreset !== undefined) dbTransaction.tax_rate_preset = transaction.taxRatePreset
+  if (transaction.taxRatePct !== undefined) dbTransaction.tax_rate_pct = transaction.taxRatePct
+  if (transaction.subtotal !== undefined) dbTransaction.subtotal = transaction.subtotal
+  
+  return dbTransaction
+}
+
 // Transaction Services
 export const transactionService = {
   // Get transactions for a project (account-scoped)
@@ -359,34 +419,7 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => {
-      const converted = convertTimestamps(tx)
-      return {
-        transaction_id: converted.transaction_id,
-        project_id: converted.project_id || undefined,
-        project_name: converted.project_name || undefined,
-        transaction_date: converted.transaction_date,
-        source: converted.source || '',
-        transaction_type: converted.transaction_type || '',
-        payment_method: converted.payment_method || '',
-        amount: converted.amount || '0.00',
-        budget_category: converted.budget_category || undefined,
-        notes: converted.notes || undefined,
-        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-        receipt_emailed: converted.receipt_emailed || false,
-        created_at: converted.created_at,
-        created_by: converted.created_by || '',
-        status: converted.status || 'completed',
-        reimbursement_type: converted.reimbursement_type || undefined,
-        trigger_event: converted.trigger_event || undefined,
-        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-        tax_rate_preset: converted.tax_rate_preset || undefined,
-        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-        subtotal: converted.subtotal || undefined
-      } as Transaction
-    })
+    return (data || []).map(tx => _convertTransactionFromDb(tx))
   },
 
   // Get single transaction (account-scoped)
@@ -409,32 +442,7 @@ export const transactionService = {
 
     if (!data) return null
 
-    const converted = convertTimestamps(data)
-    return {
-      transaction_id: converted.transaction_id,
-      project_id: converted.project_id || undefined,
-      project_name: converted.project_name || undefined,
-      transaction_date: converted.transaction_date,
-      source: converted.source || '',
-      transaction_type: converted.transaction_type || '',
-      payment_method: converted.payment_method || '',
-      amount: converted.amount || '0.00',
-      budget_category: converted.budget_category || undefined,
-      notes: converted.notes || undefined,
-      transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-      receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-      other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-      receipt_emailed: converted.receipt_emailed || false,
-      created_at: converted.created_at,
-      created_by: converted.created_by || '',
-      status: converted.status || 'completed',
-      reimbursement_type: converted.reimbursement_type || undefined,
-      trigger_event: converted.trigger_event || undefined,
-      item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-      tax_rate_preset: converted.tax_rate_preset || undefined,
-      tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-      subtotal: converted.subtotal || undefined
-    } as Transaction
+    return _convertTransactionFromDb(data)
   },
 
   // Get transaction by ID across all projects (for business inventory) - account-scoped
@@ -453,31 +461,7 @@ export const transactionService = {
     }
 
     const converted = convertTimestamps(data)
-    const transaction: Transaction = {
-      transaction_id: converted.transaction_id,
-      project_id: converted.project_id || undefined,
-      project_name: converted.project_name || undefined,
-      transaction_date: converted.transaction_date,
-      source: converted.source || '',
-      transaction_type: converted.transaction_type || '',
-      payment_method: converted.payment_method || '',
-      amount: converted.amount || '0.00',
-      budget_category: converted.budget_category || undefined,
-      notes: converted.notes || undefined,
-      transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-      receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-      other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-      receipt_emailed: converted.receipt_emailed || false,
-      created_at: converted.created_at,
-      created_by: converted.created_by || '',
-      status: converted.status || 'completed',
-      reimbursement_type: converted.reimbursement_type || undefined,
-      trigger_event: converted.trigger_event || undefined,
-      item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-      tax_rate_preset: converted.tax_rate_preset || undefined,
-      tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-      subtotal: converted.subtotal || undefined
-    }
+    const transaction = _convertTransactionFromDb(data)
 
     return {
       transaction,
@@ -489,7 +473,7 @@ export const transactionService = {
   async createTransaction(
     accountId: string,
     projectId: string | null | undefined,
-    transactionData: Omit<Transaction, 'transaction_id' | 'created_at'>,
+    transactionData: Omit<Transaction, 'transactionId' | 'createdAt'>,
     items?: TransactionItemFormData[]
   ): Promise<string> {
     try {
@@ -497,7 +481,7 @@ export const transactionService = {
 
       // Get current user ID for created_by field
       const currentUser = await getCurrentUser()
-      const userId = transactionData.created_by || currentUser?.id || null
+      const userId = transactionData.createdBy || currentUser?.id || null
       
       if (!userId) {
         throw new Error('User must be authenticated to create transactions')
@@ -507,42 +491,28 @@ export const transactionService = {
       // Generate a unique transaction_id (UUID format)
       const transactionId = crypto.randomUUID()
 
-      const newTransaction: any = {
-        account_id: accountId,
-        transaction_id: transactionId,
-        project_id: projectId || null,
-        transaction_date: transactionData.transaction_date,
-        source: transactionData.source || null,
-        transaction_type: transactionData.transaction_type || null,
-        payment_method: transactionData.payment_method || null,
-        amount: transactionData.amount || '0.00',
-        budget_category: transactionData.budget_category || null,
-        notes: transactionData.notes || null,
-        transaction_images: transactionData.transaction_images || [],
-        receipt_images: transactionData.receipt_images || [],
-        other_images: transactionData.other_images || [],
-        receipt_emailed: transactionData.receipt_emailed || false,
-        status: transactionData.status || 'completed',
-        reimbursement_type: transactionData.reimbursement_type || null,
-        trigger_event: transactionData.trigger_event || null,
-        item_ids: transactionData.item_ids || [],
-        tax_rate_preset: transactionData.tax_rate_preset || null,
-        tax_rate_pct: null,
-        subtotal: transactionData.subtotal || null,
-        created_by: userId,
-        created_at: now.toISOString(),
-        updated_at: now.toISOString()
-      }
+      // Convert camelCase transactionData to database format
+      const dbTransaction = _convertTransactionToDb({
+        ...transactionData,
+        transactionId,
+        createdAt: now.toISOString()
+      })
 
-      console.log('Creating transaction:', newTransaction)
+      // Set account_id and timestamps
+      dbTransaction.account_id = accountId
+      dbTransaction.created_at = now.toISOString()
+      dbTransaction.updated_at = now.toISOString()
+      if (!dbTransaction.status) dbTransaction.status = 'completed'
+
+      console.log('Creating transaction:', dbTransaction)
       console.log('Transaction items:', items)
 
       // Apply tax calculation from presets or compute from subtotal when Other
-      if (newTransaction.tax_rate_preset) {
-        if (newTransaction.tax_rate_preset === 'Other') {
+      if (dbTransaction.tax_rate_preset) {
+        if (dbTransaction.tax_rate_preset === 'Other') {
           // Validate subtotal presence and calculate rate
-          const amountNum = parseFloat(newTransaction.amount || '0')
-          const subtotalNum = parseFloat(newTransaction.subtotal || '0')
+          const amountNum = parseFloat(dbTransaction.amount || '0')
+          const subtotalNum = parseFloat(dbTransaction.subtotal || '0')
           if (isNaN(subtotalNum) || subtotalNum <= 0) {
             throw new Error('Subtotal must be greater than 0 when Tax Rate Preset is Other.')
           }
@@ -550,22 +520,22 @@ export const transactionService = {
             throw new Error('Subtotal cannot exceed the total amount.')
           }
           const rate = ((amountNum - subtotalNum) / subtotalNum) * 100
-          newTransaction.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
+          dbTransaction.tax_rate_pct = Math.round(rate * 10000) / 10000 // 4 decimal places
         } else {
           // Look up preset by ID
-          const preset = await getTaxPresetById(accountId, newTransaction.tax_rate_preset)
+          const preset = await getTaxPresetById(accountId, dbTransaction.tax_rate_preset)
           if (!preset) {
-            throw new Error(`Tax preset with ID '${newTransaction.tax_rate_preset}' not found.`)
+            throw new Error(`Tax preset with ID '${dbTransaction.tax_rate_preset}' not found.`)
           }
-          newTransaction.tax_rate_pct = preset.rate
+          dbTransaction.tax_rate_pct = preset.rate
           // Remove subtotal for preset selections
-          newTransaction.subtotal = null
+          dbTransaction.subtotal = null
         }
       }
 
       const { error } = await supabase
         .from('transactions')
-        .insert(newTransaction)
+        .insert(dbTransaction)
 
       if (error) throw error
 
@@ -580,10 +550,10 @@ export const transactionService = {
           accountId,
           projectId || '',
           transactionId,
-          transactionData.transaction_date,
+          transactionData.transactionDate,
           transactionData.source, // Pass transaction source to items
           itemsToCreate,
-          newTransaction.tax_rate_pct
+          dbTransaction.tax_rate_pct
         )
         console.log('Created items:', createdItemIds)
       }
@@ -599,38 +569,28 @@ export const transactionService = {
   async updateTransaction(accountId: string, _projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
     await ensureAuthenticatedForDatabase()
 
-    // Apply business rules for reimbursement type and status
-    const finalUpdates: any = { ...updates }
+    // Apply business rules for reimbursement type and status (using camelCase)
+    const finalUpdates: Partial<Transaction> = { ...updates }
 
-    // If status is being set to 'completed', clear reimbursement_type
-    if (finalUpdates.status === 'completed' && finalUpdates.reimbursement_type !== undefined) {
-      finalUpdates.reimbursement_type = null
+    // If status is being set to 'completed', clear reimbursementType
+    if (finalUpdates.status === 'completed' && finalUpdates.reimbursementType !== undefined) {
+      finalUpdates.reimbursementType = null
     }
 
-    // If reimbursement_type is being set to empty string, also clear it
-    if (finalUpdates.reimbursement_type === '') {
-      finalUpdates.reimbursement_type = null
+    // If reimbursementType is being set to empty string, also clear it
+    if (finalUpdates.reimbursementType === '') {
+      finalUpdates.reimbursementType = null
     }
 
-    // If reimbursement_type is being set to a non-empty value, ensure status is not 'completed'
-    if (finalUpdates.reimbursement_type && finalUpdates.status === 'completed') {
-      // Set status to 'pending' if reimbursement_type is being set to a non-empty value and status is 'completed'
+    // If reimbursementType is being set to a non-empty value, ensure status is not 'completed'
+    if (finalUpdates.reimbursementType && finalUpdates.status === 'completed') {
+      // Set status to 'pending' if reimbursementType is being set to a non-empty value and status is 'completed'
       finalUpdates.status = 'pending'
     }
 
-    // Filter out undefined values
-    const cleanUpdates: any = {}
-    Object.keys(finalUpdates).forEach(key => {
-      if (finalUpdates[key] !== undefined) {
-        cleanUpdates[key] = finalUpdates[key]
-      }
-    })
-
-    // Apply tax mapping / computation before save
-    const processedUpdates: any = { ...cleanUpdates }
-    
-    if (processedUpdates.tax_rate_preset !== undefined) {
-      if (processedUpdates.tax_rate_preset === 'Other') {
+    // Apply tax mapping / computation before save (using camelCase)
+    if (finalUpdates.taxRatePreset !== undefined) {
+      if (finalUpdates.taxRatePreset === 'Other') {
         // Compute from provided subtotal and amount if present in updates or existing doc
         const { data: existing } = await supabase
           .from('transactions')
@@ -640,22 +600,22 @@ export const transactionService = {
           .single()
 
         const existingData = existing || {}
-        const amountVal = processedUpdates.amount !== undefined ? parseFloat(processedUpdates.amount) : parseFloat(existingData.amount || '0')
-        const subtotalVal = processedUpdates.subtotal !== undefined ? parseFloat(processedUpdates.subtotal) : parseFloat(existingData.subtotal || '0')
+        const amountVal = finalUpdates.amount !== undefined ? parseFloat(finalUpdates.amount) : parseFloat(existingData.amount || '0')
+        const subtotalVal = finalUpdates.subtotal !== undefined ? parseFloat(finalUpdates.subtotal) : parseFloat(existingData.subtotal || '0')
         if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
           const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
-          processedUpdates.tax_rate_pct = Math.round(rate * 10000) / 10000
+          finalUpdates.taxRatePct = Math.round(rate * 10000) / 10000
         }
       } else {
         // Look up preset by ID
         try {
-          const preset = await getTaxPresetById(accountId, processedUpdates.tax_rate_preset)
+          const preset = await getTaxPresetById(accountId, finalUpdates.taxRatePreset)
           if (preset) {
-            processedUpdates.tax_rate_pct = preset.rate
+            finalUpdates.taxRatePct = preset.rate
             // Remove subtotal when using presets
-            processedUpdates.subtotal = null
+            finalUpdates.subtotal = null
           } else {
-            console.warn(`Tax preset with ID '${processedUpdates.tax_rate_preset}' not found during update`)
+            console.warn(`Tax preset with ID '${finalUpdates.taxRatePreset}' not found during update`)
           }
         } catch (e) {
           console.warn('Tax preset lookup failed during update:', e)
@@ -663,31 +623,12 @@ export const transactionService = {
       }
     }
 
-    // Convert camelCase to snake_case for database fields
-    const dbUpdates: any = {
-      updated_at: new Date().toISOString()
-    }
-
-    if (processedUpdates.project_id !== undefined) dbUpdates.project_id = processedUpdates.project_id
-    if (processedUpdates.project_name !== undefined) dbUpdates.project_name = processedUpdates.project_name
-    if (processedUpdates.transaction_date !== undefined) dbUpdates.transaction_date = processedUpdates.transaction_date
-    if (processedUpdates.source !== undefined) dbUpdates.source = processedUpdates.source
-    if (processedUpdates.transaction_type !== undefined) dbUpdates.transaction_type = processedUpdates.transaction_type
-    if (processedUpdates.payment_method !== undefined) dbUpdates.payment_method = processedUpdates.payment_method
-    if (processedUpdates.amount !== undefined) dbUpdates.amount = processedUpdates.amount
-    if (processedUpdates.budget_category !== undefined) dbUpdates.budget_category = processedUpdates.budget_category
-    if (processedUpdates.notes !== undefined) dbUpdates.notes = processedUpdates.notes
-    if (processedUpdates.transaction_images !== undefined) dbUpdates.transaction_images = processedUpdates.transaction_images
-    if (processedUpdates.receipt_images !== undefined) dbUpdates.receipt_images = processedUpdates.receipt_images
-    if (processedUpdates.other_images !== undefined) dbUpdates.other_images = processedUpdates.other_images
-    if (processedUpdates.receipt_emailed !== undefined) dbUpdates.receipt_emailed = processedUpdates.receipt_emailed
-    if (processedUpdates.status !== undefined) dbUpdates.status = processedUpdates.status
-    if (processedUpdates.reimbursement_type !== undefined) dbUpdates.reimbursement_type = processedUpdates.reimbursement_type
-    if (processedUpdates.trigger_event !== undefined) dbUpdates.trigger_event = processedUpdates.trigger_event
-    if (processedUpdates.item_ids !== undefined) dbUpdates.item_ids = processedUpdates.item_ids
-    if (processedUpdates.tax_rate_preset !== undefined) dbUpdates.tax_rate_preset = processedUpdates.tax_rate_preset
-    if (processedUpdates.tax_rate_pct !== undefined) dbUpdates.tax_rate_pct = processedUpdates.tax_rate_pct
-    if (processedUpdates.subtotal !== undefined) dbUpdates.subtotal = processedUpdates.subtotal
+    // Convert camelCase updates to database format
+    const dbUpdates = _convertTransactionToDb({
+      ...finalUpdates,
+      updatedAt: new Date().toISOString()
+    })
+    dbUpdates.updated_at = new Date().toISOString()
 
     const { error } = await supabase
       .from('transactions')
@@ -697,15 +638,15 @@ export const transactionService = {
 
     if (error) throw error
 
-    // If tax_rate_pct is set in updates, propagate to items
-    if (processedUpdates.tax_rate_pct !== undefined) {
+    // If taxRatePct is set in updates, propagate to items
+    if (finalUpdates.taxRatePct !== undefined) {
       try {
         const items = await unifiedItemsService.getItemsForTransaction(accountId, _projectId, transactionId)
         if (items && items.length > 0) {
           // Update each item individually (Supabase batch operations)
           for (const item of items) {
-            await unifiedItemsService.updateItem(accountId, item.item_id, {
-              tax_rate_pct: processedUpdates.tax_rate_pct
+            await unifiedItemsService.updateItem(accountId, item.itemId, {
+              taxRatePct: finalUpdates.taxRatePct
             })
           }
         }
@@ -756,34 +697,7 @@ export const transactionService = {
             }
             
             if (data) {
-              const transactions = (data || []).map(tx => {
-                const converted = convertTimestamps(tx)
-                return {
-                  transaction_id: converted.transaction_id,
-                  project_id: converted.project_id || undefined,
-                  project_name: converted.project_name || undefined,
-                  transaction_date: converted.transaction_date,
-                  source: converted.source || '',
-                  transaction_type: converted.transaction_type || '',
-                  payment_method: converted.payment_method || '',
-                  amount: converted.amount || '0.00',
-                  budget_category: converted.budget_category || undefined,
-                  notes: converted.notes || undefined,
-                  transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-                  receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-                  other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-                  receipt_emailed: converted.receipt_emailed || false,
-                  created_at: converted.created_at,
-                  created_by: converted.created_by || '',
-                  status: converted.status || 'completed',
-                  reimbursement_type: converted.reimbursement_type || undefined,
-                  trigger_event: converted.trigger_event || undefined,
-                  item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-                  tax_rate_preset: converted.tax_rate_preset || undefined,
-                  tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-                  subtotal: converted.subtotal || undefined
-                } as Transaction
-              })
+              const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
               callback(transactions)
             }
           } catch (error) {
@@ -809,34 +723,7 @@ export const transactionService = {
         }
         
         if (data) {
-          const transactions = (data || []).map(tx => {
-            const converted = convertTimestamps(tx)
-            return {
-              transaction_id: converted.transaction_id,
-              project_id: converted.project_id || undefined,
-              project_name: converted.project_name || undefined,
-              transaction_date: converted.transaction_date,
-              source: converted.source || '',
-              transaction_type: converted.transaction_type || '',
-              payment_method: converted.payment_method || '',
-              amount: converted.amount || '0.00',
-              budget_category: converted.budget_category || undefined,
-              notes: converted.notes || undefined,
-              transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-              receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-              other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-              receipt_emailed: converted.receipt_emailed || false,
-              created_at: converted.created_at,
-              created_by: converted.created_by || '',
-              status: converted.status || 'completed',
-              reimbursement_type: converted.reimbursement_type || undefined,
-              trigger_event: converted.trigger_event || undefined,
-              item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-              tax_rate_preset: converted.tax_rate_preset || undefined,
-              tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-              subtotal: converted.subtotal || undefined
-            } as Transaction
-          })
+          const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
           callback(transactions)
         }
       } catch (error) {
@@ -946,33 +833,7 @@ export const transactionService = {
         }
         
         if (data) {
-          const converted = convertTimestamps(data)
-          const transaction: Transaction = {
-            transaction_id: converted.transaction_id,
-            project_id: converted.project_id || undefined,
-            project_name: converted.project_name || undefined,
-            transaction_date: converted.transaction_date,
-            source: converted.source || '',
-            transaction_type: converted.transaction_type || '',
-            payment_method: converted.payment_method || '',
-            amount: converted.amount || '0.00',
-            budget_category: converted.budget_category || undefined,
-            notes: converted.notes || undefined,
-            transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-            receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-            other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-            receipt_emailed: converted.receipt_emailed || false,
-            created_at: converted.created_at,
-            created_by: converted.created_by || '',
-            status: converted.status || 'completed',
-            reimbursement_type: converted.reimbursement_type || undefined,
-            trigger_event: converted.trigger_event || undefined,
-            item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-            tax_rate_preset: converted.tax_rate_preset || undefined,
-            tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-            subtotal: converted.subtotal || undefined
-          }
-          callback(transaction)
+          callback(_convertTransactionFromDb(data))
         } else {
           callback(null)
         }
@@ -1002,34 +863,7 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => {
-      const converted = convertTimestamps(tx)
-      return {
-        transaction_id: converted.transaction_id,
-        project_id: converted.project_id || undefined,
-        project_name: converted.project_name || undefined,
-        transaction_date: converted.transaction_date,
-        source: converted.source || '',
-        transaction_type: converted.transaction_type || '',
-        payment_method: converted.payment_method || '',
-        amount: converted.amount || '0.00',
-        budget_category: converted.budget_category || undefined,
-        notes: converted.notes || undefined,
-        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-        receipt_emailed: converted.receipt_emailed || false,
-        created_at: converted.created_at,
-        created_by: converted.created_by || '',
-        status: converted.status || 'completed',
-        reimbursement_type: converted.reimbursement_type || undefined,
-        trigger_event: converted.trigger_event || undefined,
-        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-        tax_rate_preset: converted.tax_rate_preset || undefined,
-        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-        subtotal: converted.subtotal || undefined
-      } as Transaction
-    })
+    return (data || []).map(tx => _convertTransactionFromDb(tx))
   },
 
   // Update transaction status (for completing/cancelling pending transactions) (account-scoped)
@@ -1082,34 +916,7 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => {
-      const converted = convertTimestamps(tx)
-      return {
-        transaction_id: converted.transaction_id,
-        project_id: converted.project_id || undefined,
-        project_name: converted.project_name || undefined,
-        transaction_date: converted.transaction_date,
-        source: converted.source || '',
-        transaction_type: converted.transaction_type || '',
-        payment_method: converted.payment_method || '',
-        amount: converted.amount || '0.00',
-        budget_category: converted.budget_category || undefined,
-        notes: converted.notes || undefined,
-        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-        receipt_emailed: converted.receipt_emailed || false,
-        created_at: converted.created_at,
-        created_by: converted.created_by || '',
-        status: converted.status || 'completed',
-        reimbursement_type: converted.reimbursement_type || undefined,
-        trigger_event: converted.trigger_event || undefined,
-        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-        tax_rate_preset: converted.tax_rate_preset || undefined,
-        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-        subtotal: converted.subtotal || undefined
-      } as Transaction
-    })
+    return (data || []).map(tx => _convertTransactionFromDb(tx))
   },
 
   // Get business inventory transactions (project_id == null) (account-scoped)
@@ -1125,70 +932,77 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => {
-      const converted = convertTimestamps(tx)
-      return {
-        transaction_id: converted.transaction_id,
-        project_id: converted.project_id || undefined,
-        project_name: converted.project_name || undefined,
-        transaction_date: converted.transaction_date,
-        source: converted.source || '',
-        transaction_type: converted.transaction_type || '',
-        payment_method: converted.payment_method || '',
-        amount: converted.amount || '0.00',
-        budget_category: converted.budget_category || undefined,
-        notes: converted.notes || undefined,
-        transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-        receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-        other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-        receipt_emailed: converted.receipt_emailed || false,
-        created_at: converted.created_at,
-        created_by: converted.created_by || '',
-        status: converted.status || 'completed',
-        reimbursement_type: converted.reimbursement_type || undefined,
-        trigger_event: converted.trigger_event || undefined,
-        item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-        tax_rate_preset: converted.tax_rate_preset || undefined,
-        tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-        subtotal: converted.subtotal || undefined
-      } as Transaction
-    })
+    return (data || []).map(tx => _convertTransactionFromDb(tx))
   }
 }
 
 // Unified Items Collection Services (NEW)
 export const unifiedItemsService = {
-  // Helper function to convert database item to app format
+  // Helper function to convert database item (snake_case) to app format (camelCase)
   _convertItemFromDb(dbItem: any): Item {
     const converted = convertTimestamps(dbItem)
     return {
-      item_id: converted.item_id,
+      itemId: converted.item_id,
       accountId: converted.account_id,
       projectId: converted.project_id || undefined,
-      transaction_id: converted.transaction_id || undefined,
+      transactionId: converted.transaction_id || undefined,
       name: converted.name || undefined,
       description: converted.description || '',
       sku: converted.sku || '',
       source: converted.source || '',
-      purchase_price: converted.purchase_price || undefined,
-      project_price: converted.project_price || undefined,
-      market_value: converted.market_value || undefined,
-      payment_method: converted.payment_method || '',
+      purchasePrice: converted.purchase_price || undefined,
+      projectPrice: converted.project_price || undefined,
+      marketValue: converted.market_value || undefined,
+      paymentMethod: converted.payment_method || '',
       disposition: converted.disposition || undefined,
       notes: converted.notes || undefined,
       space: converted.space || undefined,
-      qr_key: converted.qr_key || '',
+      qrKey: converted.qr_key || '',
       bookmark: converted.bookmark || false,
-      date_created: converted.date_created || '',
-      last_updated: converted.last_updated ? (typeof converted.last_updated === 'string' ? converted.last_updated : converted.last_updated.toISOString()) : '',
+      dateCreated: converted.date_created || '',
+      lastUpdated: converted.last_updated ? (typeof converted.last_updated === 'string' ? converted.last_updated : converted.last_updated.toISOString()) : '',
       images: Array.isArray(converted.images) ? converted.images : [],
-      inventory_status: converted.inventory_status || undefined,
-      business_inventory_location: converted.business_inventory_location || undefined,
-      tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-      tax_amount: converted.tax_amount || undefined,
+      inventoryStatus: converted.inventory_status || undefined,
+      businessInventoryLocation: converted.business_inventory_location || undefined,
+      taxRatePct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
+      taxAmount: converted.tax_amount || undefined,
       createdBy: converted.created_by || undefined,
       createdAt: converted.created_at
     } as Item
+  },
+
+  // Helper function to convert app format (camelCase) to database format (snake_case)
+  _convertItemToDb(item: Partial<Item>): any {
+    const dbItem: any = {}
+    
+    if (item.itemId !== undefined) dbItem.item_id = item.itemId
+    if (item.accountId !== undefined) dbItem.account_id = item.accountId
+    if (item.projectId !== undefined) dbItem.project_id = item.projectId ?? null
+    if (item.transactionId !== undefined) dbItem.transaction_id = item.transactionId ?? null
+    if (item.name !== undefined) dbItem.name = item.name
+    if (item.description !== undefined) dbItem.description = item.description
+    if (item.sku !== undefined) dbItem.sku = item.sku
+    if (item.source !== undefined) dbItem.source = item.source
+    if (item.purchasePrice !== undefined) dbItem.purchase_price = item.purchasePrice
+    if (item.projectPrice !== undefined) dbItem.project_price = item.projectPrice
+    if (item.marketValue !== undefined) dbItem.market_value = item.marketValue
+    if (item.paymentMethod !== undefined) dbItem.payment_method = item.paymentMethod
+    if (item.disposition !== undefined) dbItem.disposition = item.disposition
+    if (item.notes !== undefined) dbItem.notes = item.notes
+    if (item.space !== undefined) dbItem.space = item.space
+    if (item.qrKey !== undefined) dbItem.qr_key = item.qrKey
+    if (item.bookmark !== undefined) dbItem.bookmark = item.bookmark
+    if (item.dateCreated !== undefined) dbItem.date_created = item.dateCreated
+    if (item.lastUpdated !== undefined) dbItem.last_updated = item.lastUpdated
+    if (item.images !== undefined) dbItem.images = item.images
+    if (item.inventoryStatus !== undefined) dbItem.inventory_status = item.inventoryStatus
+    if (item.businessInventoryLocation !== undefined) dbItem.business_inventory_location = item.businessInventoryLocation
+    if (item.taxRatePct !== undefined) dbItem.tax_rate_pct = item.taxRatePct
+    if (item.taxAmount !== undefined) dbItem.tax_amount = item.taxAmount
+    if (item.createdBy !== undefined) dbItem.created_by = item.createdBy
+    if (item.createdAt !== undefined) dbItem.created_at = item.createdAt
+    
+    return dbItem
   },
 
   // Get items for a project (project_id == projectId) (account-scoped)
@@ -1503,7 +1317,7 @@ export const unifiedItemsService = {
   },
 
   // Create new item (account-scoped)
-  async createItem(accountId: string, itemData: Omit<Item, 'item_id' | 'date_created' | 'last_updated'>): Promise<string> {
+  async createItem(accountId: string, itemData: Omit<Item, 'itemId' | 'dateCreated' | 'lastUpdated'>): Promise<string> {
     await ensureAuthenticatedForDatabase()
 
     const now = new Date()
@@ -1511,48 +1325,35 @@ export const unifiedItemsService = {
     const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
     const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
 
-    const newItem: any = {
-      account_id: accountId,
-      item_id: itemId,
-      project_id: itemData.projectId || null,
-      transaction_id: itemData.transactionId || null,
-      name: itemData.name || null,
-      description: itemData.description || '',
-      sku: itemData.sku || '',
-      source: itemData.source || '',
-      purchase_price: itemData.purchase_price || null,
-      project_price: itemData.project_price || null,
-      market_value: itemData.market_value || null,
-      payment_method: itemData.payment_method || '',
-      disposition: itemData.disposition || null,
-      notes: itemData.notes || null,
-      space: itemData.space || null,
-      qr_key: itemData.qr_key || qrKey,
-      bookmark: itemData.bookmark || false,
-      inventory_status: itemData.inventory_status || 'available',
-      business_inventory_location: itemData.business_inventory_location || null,
-      images: itemData.images || [],
-      tax_rate_pct: itemData.tax_rate_pct || null,
-      tax_amount: itemData.tax_amount || null,
-      date_created: itemData.date_created || toDateOnlyString(now),
-      last_updated: now.toISOString(),
-      created_by: itemData.createdBy || null,
-      created_at: now.toISOString()
-    }
+    // Convert camelCase itemData to database format
+    const dbItem = this._convertItemToDb({
+      ...itemData,
+      itemId,
+      qrKey: itemData.qrKey || qrKey,
+      dateCreated: itemData.dateCreated || toDateOnlyString(now),
+      lastUpdated: now.toISOString()
+    })
+
+    // Set account_id and timestamps
+    dbItem.account_id = accountId
+    dbItem.created_at = now.toISOString()
+    if (!dbItem.date_created) dbItem.date_created = toDateOnlyString(now)
+    if (!dbItem.last_updated) dbItem.last_updated = now.toISOString()
+    if (!dbItem.inventory_status) dbItem.inventory_status = 'available'
 
     // If item is being created with a transaction_id but missing tax_rate_pct,
     // attempt to read the transaction and inherit its tax_rate_pct.
     try {
-      if (newItem.transaction_id && newItem.tax_rate_pct === null) {
+      if (dbItem.transaction_id && dbItem.tax_rate_pct === null) {
         const { data: txData } = await supabase
           .from('transactions')
           .select('tax_rate_pct')
           .eq('account_id', accountId)
-          .eq('transaction_id', newItem.transaction_id)
+          .eq('transaction_id', dbItem.transaction_id)
           .single()
 
         if (txData && txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
-          newItem.tax_rate_pct = txData.tax_rate_pct
+          dbItem.tax_rate_pct = txData.tax_rate_pct
         }
       }
     } catch (e) {
@@ -1561,7 +1362,7 @@ export const unifiedItemsService = {
 
     const { error } = await supabase
       .from('items')
-      .insert(newItem)
+      .insert(dbItem)
 
     if (error) throw error
 
@@ -1572,35 +1373,17 @@ export const unifiedItemsService = {
   async updateItem(accountId: string, itemId: string, updates: Partial<Item>): Promise<void> {
     await ensureAuthenticatedForDatabase()
 
-    const dbUpdates: any = {
-      last_updated: new Date().toISOString()
-    }
-
-    // Convert camelCase to snake_case for database fields
-    if (updates.inventory_status !== undefined) dbUpdates.inventory_status = updates.inventory_status
-    if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId
-    if (updates.business_inventory_location !== undefined) dbUpdates.business_inventory_location = updates.business_inventory_location
-    if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId
-    if (updates.purchase_price !== undefined) dbUpdates.purchase_price = updates.purchase_price
-    if (updates.project_price !== undefined) dbUpdates.project_price = updates.project_price
-    if (updates.description !== undefined) dbUpdates.description = updates.description
-    if (updates.source !== undefined) dbUpdates.source = updates.source
-    if (updates.sku !== undefined) dbUpdates.sku = updates.sku
-    if (updates.market_value !== undefined) dbUpdates.market_value = updates.market_value
-    if (updates.payment_method !== undefined) dbUpdates.payment_method = updates.payment_method
-    if (updates.disposition !== undefined) dbUpdates.disposition = updates.disposition
-    if (updates.notes !== undefined) dbUpdates.notes = updates.notes
-    if (updates.space !== undefined) dbUpdates.space = updates.space
-    if (updates.bookmark !== undefined) dbUpdates.bookmark = updates.bookmark
-    if (updates.images !== undefined) dbUpdates.images = updates.images
-    if (updates.tax_rate_pct !== undefined) dbUpdates.tax_rate_pct = updates.tax_rate_pct
-    if (updates.tax_amount !== undefined) dbUpdates.tax_amount = updates.tax_amount
+    // Convert camelCase updates to database format
+    const dbUpdates = this._convertItemToDb({
+      ...updates,
+      lastUpdated: new Date().toISOString()
+    })
 
     // If transaction_id is being set/changed and caller did not provide tax_rate_pct,
     // attempt to inherit the transaction's tax_rate_pct and include it in the update.
     try {
       const willSetTransaction = updates.transactionId !== undefined && updates.transactionId !== null
-      const missingTax = updates.tax_rate_pct === undefined || updates.tax_rate_pct === null
+      const missingTax = updates.taxRatePct === undefined || updates.taxRatePct === null
       if (willSetTransaction && missingTax) {
         const txId = updates.transactionId as string
         if (txId) {
@@ -1675,20 +1458,20 @@ export const unifiedItemsService = {
       throw new Error('Item not found')
     }
 
-    const finalAmount = amount || item.project_price || item.market_value || '0.00'
-    const currentTransactionId: string | null = item.transaction_id || null
+    const finalAmount = amount || item.projectPrice || item.marketValue || '0.00'
+    const currentTransactionId: string | null = item.transactionId || null
 
     console.log('🔄 Starting allocation process:', {
       itemId,
       projectId,
       currentTransactionId,
-      itemProjectId: item.project_id,
+      itemProjectId: item.projectId,
       finalAmount
     })
 
     // Log allocation start (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'allocation', itemId, item.project_id ?? null, currentTransactionId ?? null, {
+      await auditService.logAllocationEvent(accountId, 'allocation', itemId, item.projectId ?? null, currentTransactionId ?? null, {
         action: 'allocation_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -1809,9 +1592,9 @@ export const unifiedItemsService = {
     // i.e. set the item's project and mark as allocated, but do not attach a
     // purchase transaction.
     await this.updateItem(accountId, itemId, {
-      project_id: _projectId,
-      inventory_status: 'allocated',
-      transaction_id: null,
+      projectId: _projectId,
+      inventoryStatus: 'allocated',
+      transactionId: null,
       disposition: 'keep',
       space: space ?? ''
     })
@@ -1855,9 +1638,9 @@ export const unifiedItemsService = {
 
     // Update item status
     await this.updateItem(accountId, itemId, {
-      project_id: newProjectId,
-      inventory_status: 'allocated',
-      transaction_id: purchaseTransactionId,
+      projectId: newProjectId,
+      inventoryStatus: 'allocated',
+      transactionId: purchaseTransactionId,
       disposition: 'keep',
       space: space
     })
@@ -1895,8 +1678,8 @@ export const unifiedItemsService = {
 
     // Update item status to inventory
     await this.updateItem(accountId, itemId, {
-      project_id: null,
-      inventory_status: 'available',
+      projectId: null,
+      inventoryStatus: 'available',
       disposition: 'inventory',
       notes: _notes,
       space: space ?? ''
@@ -1940,9 +1723,9 @@ export const unifiedItemsService = {
 
     // Update item status
     await this.updateItem(accountId, itemId, {
-      project_id: null,
-      inventory_status: 'available',
-      transaction_id: saleTransactionId,
+      projectId: null,
+      inventoryStatus: 'available',
+      transactionId: saleTransactionId,
       disposition: 'inventory',
       space: space ?? ''
     })
@@ -1981,9 +1764,9 @@ export const unifiedItemsService = {
 
     // Update item status
     await this.updateItem(accountId, itemId, {
-      project_id: projectId,
-      inventory_status: 'allocated',
-      transaction_id: purchaseTransactionId,
+      projectId: projectId,
+      inventoryStatus: 'allocated',
+      transactionId: purchaseTransactionId,
       disposition: 'keep',
       space: space
     })
@@ -2276,9 +2059,9 @@ export const unifiedItemsService = {
           console.log('📋 Batch A.1: Item in sale for target project — removing from sale and assigning to project', itemId)
           await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
           await this.updateItem(accountId, itemId, {
-            project_id: projectId,
-            inventory_status: 'allocated',
-            transaction_id: null,
+            projectId: projectId,
+            inventoryStatus: 'allocated',
+            transactionId: null,
             disposition: 'keep',
             notes: allocationData.notes,
             space: allocationData.space || ''
@@ -2290,9 +2073,9 @@ export const unifiedItemsService = {
           await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
           await this.addItemToTransaction(accountId, itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
           await this.updateItem(accountId, itemId, {
-            project_id: projectId,
-            inventory_status: 'allocated',
-            transaction_id: canonicalTransactionId,
+            projectId: projectId,
+            inventoryStatus: 'allocated',
+            transactionId: canonicalTransactionId,
             disposition: 'keep',
             space: allocationData.space || ''
           })
@@ -2305,9 +2088,9 @@ export const unifiedItemsService = {
         console.log('📋 Batch C: Item in inventory — adding to purchase', itemId)
         await this.addItemToTransaction(accountId, itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
         await this.updateItem(accountId, itemId, {
-          project_id: projectId,
-          inventory_status: 'allocated',
-          transaction_id: canonicalTransactionId,
+          projectId: projectId,
+          inventoryStatus: 'allocated',
+          transactionId: canonicalTransactionId,
           disposition: 'keep',
           space: allocationData.space || ''
         })
@@ -2318,9 +2101,9 @@ export const unifiedItemsService = {
       console.log('📋 Batch Fallback: Item in other transaction — adding to purchase', itemId, currentTransactionId)
       await this.addItemToTransaction(accountId, itemId, canonicalTransactionId, finalAmount, 'Purchase', 'Inventory allocation', allocationData.notes)
       await this.updateItem(accountId, itemId, {
-        project_id: projectId,
-        inventory_status: 'allocated',
-        transaction_id: canonicalTransactionId,
+        projectId: projectId,
+        inventoryStatus: 'allocated',
+        transactionId: canonicalTransactionId,
         disposition: 'keep',
         space: allocationData.space || ''
       })
@@ -2345,20 +2128,20 @@ export const unifiedItemsService = {
       throw new Error('Item not found')
     }
 
-    const finalAmount = amount || item.project_price || item.market_value || '0.00'
-    const currentTransactionId: string | null = item.transaction_id || null
+    const finalAmount = amount || item.projectPrice || item.marketValue || '0.00'
+    const currentTransactionId: string | null = item.transactionId || null
 
     console.log('🔄 Starting return process:', {
       itemId,
       projectId,
       currentTransactionId,
-      itemProjectId: item.project_id,
+      itemProjectId: item.projectId,
       finalAmount
     })
 
     // Log return start (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', itemId, item.project_id ?? null, currentTransactionId ?? null, {
+      await auditService.logAllocationEvent(accountId, 'return', itemId, item.projectId ?? null, currentTransactionId ?? null, {
         action: 'return_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -2404,9 +2187,9 @@ export const unifiedItemsService = {
 
     // Update item status to inventory and clear transaction linkage for canonical state
     await this.updateItem(accountId, itemId, {
-      project_id: null,
-      inventory_status: 'available',
-      transaction_id: null,
+      projectId: null,
+      inventoryStatus: 'available',
+      transactionId: null,
       disposition: 'inventory',
       notes: notes
     })
@@ -2489,9 +2272,9 @@ export const unifiedItemsService = {
 
     // Update item status to inventory
     await this.updateItem(accountId, itemId, {
-      project_id: null,
-      inventory_status: 'available',
-      transaction_id: saleTransactionId,
+      projectId: null,
+      inventoryStatus: 'available',
+      transactionId: saleTransactionId,
       disposition: 'inventory'
     })
 
@@ -2561,15 +2344,15 @@ export const unifiedItemsService = {
       if (transactionType === 'sale') {
         // For sales, keep project_id but clear transaction_id and set status to sold
         await this.updateItem(accountId, itemId, {
-          transaction_id: null,
-          inventory_status: 'sold'
+          transactionId: null,
+          inventoryStatus: 'sold'
         })
       } else {
         // For buys, clear project_id and transaction_id and set status to available
         await this.updateItem(accountId, itemId, {
-          project_id: null,
-          transaction_id: null,
-          inventory_status: 'available'
+          projectId: null,
+          transactionId: null,
+          inventoryStatus: 'available'
         })
       }
     }
@@ -2619,24 +2402,24 @@ export const unifiedItemsService = {
       description: originalItem.description || '',
       source: originalItem.source || '',
       sku: originalItem.sku || '',
-      purchase_price: originalItem.purchase_price || null,
-      project_price: originalItem.project_price || null,
-      market_value: originalItem.market_value || null,
-      payment_method: originalItem.payment_method || '',
+      purchase_price: originalItem.purchasePrice || null,
+      project_price: originalItem.projectPrice || null,
+      market_value: originalItem.marketValue || null,
+      payment_method: originalItem.paymentMethod || '',
       disposition: 'keep', // Default disposition for duplicates
       notes: originalItem.notes || null,
       space: originalItem.space || null,
       qr_key: newQrKey,
       bookmark: false, // Default bookmark to false for duplicates
-      transaction_id: originalItem.transaction_id || null,
+      transaction_id: originalItem.transactionId || null,
       project_id: projectId,
-      inventory_status: originalItem.inventory_status || 'available',
-      business_inventory_location: originalItem.business_inventory_location || null,
-      date_created: originalItem.date_created || toDateOnlyString(now),
+      inventory_status: originalItem.inventoryStatus || 'available',
+      business_inventory_location: originalItem.businessInventoryLocation || null,
+      date_created: originalItem.dateCreated || toDateOnlyString(now),
       last_updated: now.toISOString(),
       images: originalItem.images || [], // Copy images from original item
-      tax_rate_pct: originalItem.tax_rate_pct || null,
-      tax_amount: originalItem.tax_amount || null,
+      tax_rate_pct: originalItem.taxRatePct || null,
+      tax_amount: originalItem.taxAmount || null,
       created_by: originalItem.createdBy || null,
       created_at: now.toISOString()
     }
@@ -2770,36 +2553,36 @@ export const deallocationService = {
       if (!item) {
         throw new Error('Item not found')
       }
-      console.log('✅ Item found:', item.item_id, 'disposition:', item.disposition, 'project_id:', item.project_id)
+      console.log('✅ Item found:', item.itemId, 'disposition:', item.disposition, 'projectId:', item.projectId)
 
       // If the item is currently linked to an INV_PURCHASE for the same project,
       // this is a purchase-reversion: remove it from the purchase and return it
       // to inventory instead of creating an INV_SALE. This prevents creating
       // both INV_PURCHASE and INV_SALE canonical transactions for the same
       // item/project.
-      if (item.transaction_id && item.transaction_id.startsWith('INV_PURCHASE_')) {
-        const purchaseProjectId = item.transaction_id.replace('INV_PURCHASE_', '')
+      if (item.transactionId && item.transactionId.startsWith('INV_PURCHASE_')) {
+        const purchaseProjectId = item.transactionId.replace('INV_PURCHASE_', '')
         if (purchaseProjectId === projectId) {
           console.log('🔁 Detected purchase-reversion: removing from INV_PURCHASE and returning to inventory')
 
           // Remove item from the existing purchase (will delete if empty)
-          await unifiedItemsService.removeItemFromTransaction(accountId, item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
+          await unifiedItemsService.removeItemFromTransaction(accountId, item.itemId, item.transactionId, item.projectPrice || item.marketValue || '0.00')
 
           // Update the item to reflect it's back in business inventory
-          await unifiedItemsService.updateItem(accountId, item.item_id, {
-            project_id: null,
-            inventory_status: 'available',
-            transaction_id: null,
-            last_updated: new Date().toISOString()
+          await unifiedItemsService.updateItem(accountId, item.itemId, {
+            projectId: null,
+            inventoryStatus: 'available',
+            transactionId: null,
+            lastUpdated: new Date().toISOString()
           })
 
           try {
-            await auditService.logAllocationEvent(accountId, 'deallocation', itemId, null, item.transaction_id, {
+            await auditService.logAllocationEvent(accountId, 'deallocation', itemId, null, item.transactionId, {
               action: 'deallocation_completed',
               scenario: 'purchase_reversion',
-              from_transaction: item.transaction_id,
+              from_transaction: item.transactionId,
               to_status: 'inventory',
-              amount: item.project_price || item.market_value || '0.00'
+              amount: item.projectPrice || item.marketValue || '0.00'
             })
           } catch (auditError) {
             console.warn('⚠️ Failed to log deallocation completion for purchase-reversion:', auditError)
@@ -2815,10 +2598,10 @@ export const deallocationService = {
 
       // Log deallocation start (catch errors to prevent cascading failures)
       try {
-        await auditService.logAllocationEvent(accountId, 'deallocation', itemId, item.project_id ?? null, item.transaction_id ?? null, {
+        await auditService.logAllocationEvent(accountId, 'deallocation', itemId, item.projectId ?? null, item.transactionId ?? null, {
           action: 'deallocation_started',
           target_status: 'inventory',
-          current_transaction_id: item.transaction_id
+          current_transaction_id: item.transactionId
         })
       } catch (auditError) {
         console.warn('⚠️ Failed to log deallocation start:', auditError)
@@ -2833,21 +2616,21 @@ export const deallocationService = {
 
       console.log('📦 Moving item to business inventory...')
       // Update item to move to business inventory and link to transaction
-      await unifiedItemsService.updateItem(accountId, item.item_id, {
-        project_id: null,
-        inventory_status: 'available',
-        transaction_id: transactionId,
+      await unifiedItemsService.updateItem(accountId, item.itemId, {
+        projectId: null,
+        inventoryStatus: 'available',
+        transactionId: transactionId,
         space: '', // Clear space field when moving to business inventory
-        last_updated: new Date().toISOString()
+        lastUpdated: new Date().toISOString()
       })
 
       // Log successful deallocation (catch errors to prevent cascading failures)
       try {
         await auditService.logAllocationEvent(accountId, 'deallocation', itemId, null, transactionId, {
           action: 'deallocation_completed',
-          from_project_id: item.project_id,
+          from_project_id: item.projectId,
           to_transaction: transactionId,
-          amount: item.project_price || item.market_value || '0.00'
+          amount: item.projectPrice || item.marketValue || '0.00'
         })
       } catch (auditError) {
         console.warn('⚠️ Failed to log deallocation completion:', auditError)
@@ -2877,7 +2660,7 @@ export const deallocationService = {
       throw new Error('User must be authenticated to create transactions')
     }
 
-    console.log('🏦 Creating/updating sale transaction for item:', item.item_id)
+    console.log('🏦 Creating/updating sale transaction for item:', item.itemId)
 
     // Get project name for source field
     let projectName = 'Other'
@@ -2890,17 +2673,17 @@ export const deallocationService = {
 
     // Defensive check: if the item is still linked to a purchase for this
     // project, treat as purchase-reversion and do not create an INV_SALE.
-    if (item.transaction_id && item.transaction_id.startsWith('INV_PURCHASE_')) {
-      const purchaseProjectId = item.transaction_id.replace('INV_PURCHASE_', '')
+    if (item.transactionId && item.transactionId.startsWith('INV_PURCHASE_')) {
+      const purchaseProjectId = item.transactionId.replace('INV_PURCHASE_', '')
       if (purchaseProjectId === projectId) {
         console.log('ℹ️ ensureSaleTransaction detected existing INV_PURCHASE for same project; performing purchase-reversion instead of creating INV_SALE')
 
         // Remove the item from the purchase and return to inventory
-        await unifiedItemsService.removeItemFromTransaction(accountId, item.item_id, item.transaction_id, item.project_price || item.market_value || '0.00')
-        await unifiedItemsService.updateItem(accountId, item.item_id, {
-          project_id: null,
-          inventory_status: 'available',
-          transaction_id: null
+        await unifiedItemsService.removeItemFromTransaction(accountId, item.itemId, item.transactionId, item.projectPrice || item.marketValue || '0.00')
+        await unifiedItemsService.updateItem(accountId, item.itemId, {
+          projectId: null,
+          inventoryStatus: 'available',
+          transactionId: null
         })
 
         // Return null to indicate no INV_SALE was created
@@ -2923,7 +2706,7 @@ export const deallocationService = {
       // Transaction exists - merge the new item and recalculate amount
       console.log('📋 Existing INV_SALE transaction found, updating with new item')
       const existingItemIds = existingTransaction.item_ids || []
-      const updatedItemIds = [...new Set([...existingItemIds, item.item_id])] // Avoid duplicates
+      const updatedItemIds = [...new Set([...existingItemIds, item.itemId])] // Avoid duplicates
 
       // Get all items to recalculate amount
       const { data: itemsData, error: itemsError } = await supabase
@@ -2958,7 +2741,7 @@ export const deallocationService = {
       console.log('🔄 Updated INV_SALE transaction with', updatedItemIds.length, 'items, amount:', totalAmount)
     } else {
       // Calculate amount from item for new transaction
-      const calculatedAmount = item.project_price || item.market_value || '0.00'
+      const calculatedAmount = item.projectPrice || item.marketValue || '0.00'
 
       // New transaction - create Sale transaction (project moving item TO inventory)
       const now = new Date()
@@ -2977,7 +2760,7 @@ export const deallocationService = {
         status: 'pending' as const,
         reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
         trigger_event: 'Inventory sale' as const,
-        item_ids: [item.item_id],
+        item_ids: [item.itemId],
         created_by: currentUser.id,
         created_at: now.toISOString(),
         updated_at: now.toISOString()

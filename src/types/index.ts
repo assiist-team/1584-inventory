@@ -96,40 +96,41 @@ export interface ProjectMetadata {
 }
 
 export interface Item {
-  // Note: This interface defines the FORM field names used in AddItem/EditItem forms
-  // Field mapping to Supabase happens in the service layer:
-  // - purchase_price (form) ↔ purchase_price (Supabase)
-  // - project_price (form) ↔ project_price (Supabase) - formerly resale_price
-  // - market_value (form) ↔ market_value (Supabase) - direct mapping
-  item_id: string;
+  // Note: This interface uses camelCase for all fields (TypeScript/JavaScript convention)
+  // Field mapping to Supabase (snake_case) happens in the service layer conversion functions
+  itemId: string;
+  accountId?: string;
+  projectId?: string | null;   // null = business inventory, string = allocated to project
+  transactionId?: string | null;
+  name?: string;
   description: string;
   source: string;
   sku: string;
   price?: string;               // What we paid for the item (used in forms)
-  purchase_price?: string;      // What we paid for the item
-  project_price?: string;       // What we sell it for (Design Business project price) - formerly resale_price
-  market_value?: string;        // Current market value - direct mapping
-  payment_method: string;
+  purchasePrice?: string;      // What we paid for the item
+  projectPrice?: string;       // What we sell it for (Design Business project price) - formerly resale_price
+  marketValue?: string;        // Current market value - direct mapping
+  paymentMethod: string;
   disposition?: string;
   notes?: string;
   space?: string;               // Space/location where item is placed
-  qr_key: string;
+  qrKey: string;
   bookmark: boolean;
-  transaction_id?: string | null;
-  project_id?: string | null;   // null = business inventory, string = allocated to project
-  date_created: string;
-  last_updated: string;
+  dateCreated: string;
+  lastUpdated: string;
   images?: ItemImage[];         // Images associated with this item
   // Tax fields
-  tax_rate_pct?: number; // percentage, e.g., 8.25
-  tax_amount?: string; // USD string, reserved for future auto-calculation
+  taxRatePct?: number; // percentage, e.g., 8.25
+  taxAmount?: string; // USD string, reserved for future auto-calculation
+  createdBy?: string;
+  createdAt?: Date;
 
   // Optional transaction selection for form UI
   selectedTransactionId?: string; // UI field for selecting transaction
 
   // Business Inventory fields (unified with Item)
-  inventory_status?: 'available' | 'allocated' | 'sold';
-  business_inventory_location?: string; // Warehouse location details
+  inventoryStatus?: 'available' | 'allocated' | 'sold';
+  businessInventoryLocation?: string; // Warehouse location details
 }
 
 // Note: ItemCategory and ItemStatus enums have been removed as they don't align
@@ -201,33 +202,33 @@ export interface ApiError {
 }
 
 export interface Transaction {
-  transaction_id: string;
-  project_id?: string | null;
-  project_name?: string | null;
-  transaction_date: string;
+  transactionId: string;
+  projectId?: string | null;
+  projectName?: string | null;
+  transactionDate: string;
   source: string;
-  transaction_type: string;
-  payment_method: string;
+  transactionType: string;
+  paymentMethod: string;
   amount: string;
-  budget_category?: string;
+  budgetCategory?: string;
   notes?: string;
-  transaction_images?: TransactionImage[]; // Legacy field for backward compatibility
-  receipt_images?: TransactionImage[]; // New field for receipt images
-  other_images?: TransactionImage[]; // New field for other images
-  receipt_emailed: boolean;
-  created_at: string;
-  created_by: string;
+  transactionImages?: TransactionImage[]; // Legacy field for backward compatibility
+  receiptImages?: TransactionImage[]; // New field for receipt images
+  otherImages?: TransactionImage[]; // New field for other images
+  receiptEmailed: boolean;
+  createdAt: string;
+  createdBy: string;
 
   // NEW: Pending Transaction fields for Enhanced Transaction System
   status?: 'pending' | 'completed' | 'canceled';
-  reimbursement_type?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
-  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
+  reimbursementType?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
+  triggerEvent?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
 
   // NEW: Item linkage for unified inventory system
-  item_ids?: string[]; // Links to items in the top-level items collection
+  itemIds?: string[]; // Links to items in the top-level items collection
   // Tax fields
-  tax_rate_preset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
-  tax_rate_pct?: number; // percentage, e.g., 8.25 (calculated from preset or subtotal)
+  taxRatePreset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
+  taxRatePct?: number; // percentage, e.g., 8.25 (calculated from preset or subtotal)
   subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
 }
 
@@ -252,23 +253,23 @@ export enum ErrorType {
 
 // Transaction form types and validation
 export interface TransactionFormData {
-  transaction_date: string;
+  transactionDate: string;
   source: string;
-  transaction_type: string;
-  payment_method: string;
+  transactionType: string;
+  paymentMethod: string;
   amount: string;
-  budget_category?: string;
+  budgetCategory?: string;
   notes?: string;
   status?: 'pending' | 'completed' | 'canceled';
-  reimbursement_type?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
-  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
-  transaction_images?: File[]; // Legacy field for backward compatibility
-  receipt_images?: File[]; // New field for receipt image files
-  other_images?: File[]; // New field for other image files
-  receipt_emailed?: boolean;
+  reimbursementType?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
+  triggerEvent?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
+  transactionImages?: File[]; // Legacy field for backward compatibility
+  receiptImages?: File[]; // New field for receipt image files
+  otherImages?: File[]; // New field for other image files
+  receiptEmailed?: boolean;
   items?: TransactionItemFormData[];
   // Tax form fields
-  tax_rate_preset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
+  taxRatePreset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
   subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
 }
 
@@ -277,9 +278,9 @@ export interface TransactionItemFormData {
   description: string;
   sku?: string;
   price?: string; // What we paid for the item (used in forms)
-  purchase_price?: string; // What we paid for the item
-  project_price?: string; // What we sell it for (Design Business project price) - formerly resale_price
-  market_value?: string;
+  purchasePrice?: string; // What we paid for the item
+  projectPrice?: string; // What we sell it for (Design Business project price) - formerly resale_price
+  marketValue?: string;
   space?: string;
   notes?: string;
   images?: ItemImage[]; // Images associated with this item
@@ -287,20 +288,20 @@ export interface TransactionItemFormData {
 }
 
 export interface TransactionValidationErrors {
-  transaction_date?: string;
+  transactionDate?: string;
   source?: string;
-  transaction_type?: string;
-  payment_method?: string;
+  transactionType?: string;
+  paymentMethod?: string;
   amount?: string;
-  budget_category?: string;
+  budgetCategory?: string;
   notes?: string;
   status?: string;
-  reimbursement_type?: string;
-  trigger_event?: string;
-  transaction_images?: string; // Legacy field for backward compatibility
-  receipt_images?: string; // New field for receipt image errors
-  other_images?: string; // New field for other image errors
-  receipt_emailed?: string;
+  reimbursementType?: string;
+  triggerEvent?: string;
+  transactionImages?: string; // Legacy field for backward compatibility
+  receiptImages?: string; // New field for receipt image errors
+  otherImages?: string; // New field for other image errors
+  receiptEmailed?: string;
   items?: string; // General error for items
   general?: string; // General form error
 }
@@ -309,9 +310,9 @@ export interface TransactionItemValidationErrors {
   description?: string;
   sku?: string;
   price?: string; // Used in form validation
-  purchase_price?: string;
-  project_price?: string; // What we sell it for (Design Business project price) - formerly resale_price
-  market_value?: string;
+  purchasePrice?: string;
+  projectPrice?: string; // What we sell it for (Design Business project price) - formerly resale_price
+  marketValue?: string;
   space?: string;
   notes?: string;
 }
@@ -341,6 +342,6 @@ export type DateValue = Date | string | number | { toDate?: () => Date; seconds?
 
 // Common interface for items that can be bookmarked
 export interface BookmarkableItem {
-  item_id: string;
+  itemId: string;
   bookmark: boolean;
 }

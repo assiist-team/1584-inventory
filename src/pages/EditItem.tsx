@@ -15,10 +15,10 @@ import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, COMPANY_NAME } from
 // Get canonical transaction title for display
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
+  if (transaction.transactionId?.startsWith('INV_SALE_')) {
     return COMPANY_INVENTORY_SALE
   }
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) {
     return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
@@ -65,10 +65,10 @@ export default function EditItem() {
     description: '',
     source: '',
     sku: '',
-    purchase_price: '',
-    project_price: '',
-    market_value: '',
-    payment_method: '',
+    purchasePrice: '',
+    projectPrice: '',
+    marketValue: '',
+    paymentMethod: '',
     space: '',
     notes: '',
     selectedTransactionId: ''
@@ -98,10 +98,10 @@ export default function EditItem() {
 
   // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
   useEffect(() => {
-    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
+    if (formData.purchasePrice && !formData.projectPrice && !projectPriceEditedRef.current) {
+      setFormData(prev => ({ ...prev, projectPrice: formData.purchasePrice }))
     }
-  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+  }, [formData.purchasePrice]) // Only depend on purchasePrice, not projectPrice
 
 
   // Load item data
@@ -117,21 +117,21 @@ export default function EditItem() {
               description: String(fetchedItem.description || ''),
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
-              purchase_price: String(fetchedItem.purchase_price || ''),
-              project_price: String(fetchedItem.project_price || ''),
-              market_value: String(fetchedItem.market_value || ''),
-              payment_method: String(fetchedItem.payment_method || ''),
+              purchasePrice: String(fetchedItem.purchasePrice || ''),
+              projectPrice: String(fetchedItem.projectPrice || ''),
+              marketValue: String(fetchedItem.marketValue || ''),
+              paymentMethod: String(fetchedItem.paymentMethod || ''),
               space: String(fetchedItem.space || ''),
               notes: String(fetchedItem.notes || ''),
-              selectedTransactionId: String(fetchedItem.transaction_id || '')
+              selectedTransactionId: String(fetchedItem.transactionId || '')
             })
             console.log('Form data set:', {
               description: String(fetchedItem.description || ''),
               source: String(fetchedItem.source || ''),
               sku: String(fetchedItem.sku || ''),
-              purchase_price: String(fetchedItem.purchase_price || ''),
-              market_value: String(fetchedItem.market_value || ''),
-              payment_method: String(fetchedItem.payment_method || ''),
+              purchasePrice: String(fetchedItem.purchasePrice || ''),
+              marketValue: String(fetchedItem.marketValue || ''),
+              paymentMethod: String(fetchedItem.paymentMethod || ''),
               notes: String(fetchedItem.notes || '')
             })
           }
@@ -185,9 +185,17 @@ export default function EditItem() {
     setSaving(true)
 
     const itemData = {
-      ...formData,
-      transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
-      last_updated: new Date().toISOString()
+      description: formData.description,
+      source: formData.source,
+      sku: formData.sku,
+      purchasePrice: formData.purchasePrice,
+      projectPrice: formData.projectPrice,
+      marketValue: formData.marketValue,
+      paymentMethod: formData.paymentMethod,
+      space: formData.space,
+      notes: formData.notes,
+      transactionId: formData.selectedTransactionId || undefined,
+      lastUpdated: new Date().toISOString()
     }
 
     try {
@@ -235,8 +243,8 @@ export default function EditItem() {
       return newData
     })
 
-    // Mark project_price as manually edited if user is editing it
-    if (field === 'project_price') {
+    // Mark projectPrice as manually edited if user is editing it
+    if (field === 'projectPrice') {
       projectPriceEditedRef.current = true
     }
 
@@ -344,8 +352,8 @@ export default function EditItem() {
                   <option disabled>Loading transactions...</option>
                 ) : (
                   transactions.map((transaction) => (
-                    <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                      {new Date(transaction.transaction_date).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
+                    <option key={transaction.transactionId} value={transaction.transactionId}>
+                      {new Date(transaction.transactionDate).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
                     </option>
                   ))
                 )}
@@ -427,9 +435,9 @@ export default function EditItem() {
                         id={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`}
                         name="payment_method"
                         value={method}
-                        checked={formData.payment_method === method}
+                        checked={formData.paymentMethod === method}
                         onChange={(e) => {
-                          handleInputChange('payment_method', e.target.value)
+                          handleInputChange('paymentMethod', e.target.value)
                         }}
                         className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                       />
@@ -439,8 +447,8 @@ export default function EditItem() {
                     </div>
                   ))}
                 </div>
-                {errors.payment_method && (
-                  <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+                {errors.paymentMethod && (
+                  <p className="mt-1 text-sm text-red-600">{errors.paymentMethod}</p>
                 )}
               </div>
 
@@ -461,7 +469,7 @@ export default function EditItem() {
 
               {/* Purchase Price */}
               <div>
-                <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-700">
                   Purchase Price
                 </label>
                 <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
@@ -471,23 +479,23 @@ export default function EditItem() {
                   </div>
                   <input
                     type="text"
-                    id="purchase_price"
-                    value={formData.purchase_price}
-                    onChange={(e) => handleInputChange('purchase_price', e.target.value)}
+                    id="purchasePrice"
+                    value={formData.purchasePrice}
+                    onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
                     placeholder="0.00"
                     className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                      errors.purchase_price ? 'border-red-300' : 'border-gray-300'
+                      errors.purchasePrice ? 'border-red-300' : 'border-gray-300'
                     }`}
                   />
                 </div>
-                {errors.purchase_price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
+                {errors.purchasePrice && (
+                  <p className="mt-1 text-sm text-red-600">{errors.purchasePrice}</p>
                 )}
               </div>
 
               {/* Project Price */}
               <div>
-                <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="projectPrice" className="block text-sm font-medium text-gray-700">
                   Project Price
                 </label>
                 <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
@@ -497,23 +505,23 @@ export default function EditItem() {
                   </div>
                   <input
                     type="text"
-                    id="project_price"
-                    value={formData.project_price}
-                    onChange={(e) => handleInputChange('project_price', e.target.value)}
+                    id="projectPrice"
+                    value={formData.projectPrice}
+                    onChange={(e) => handleInputChange('projectPrice', e.target.value)}
                     placeholder="0.00"
                     className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                      errors.project_price ? 'border-red-300' : 'border-gray-300'
+                      errors.projectPrice ? 'border-red-300' : 'border-gray-300'
                     }`}
                   />
                 </div>
-                {errors.project_price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
+                {errors.projectPrice && (
+                  <p className="mt-1 text-sm text-red-600">{errors.projectPrice}</p>
                 )}
               </div>
 
               {/* Market Value */}
               <div>
-                <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="marketValue" className="block text-sm font-medium text-gray-700">
                   Market Value
                 </label>
                 <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
@@ -523,17 +531,17 @@ export default function EditItem() {
                   </div>
                   <input
                     type="text"
-                    id="market_value"
-                    value={formData.market_value}
-                    onChange={(e) => handleInputChange('market_value', e.target.value)}
+                    id="marketValue"
+                    value={formData.marketValue}
+                    onChange={(e) => handleInputChange('marketValue', e.target.value)}
                     placeholder="0.00"
                     className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                      errors.market_value ? 'border-red-300' : 'border-gray-300'
+                      errors.marketValue ? 'border-red-300' : 'border-gray-300'
                     }`}
                   />
                 </div>
-                {errors.market_value && (
-                  <p className="mt-1 text-sm text-red-600">{errors.market_value}</p>
+                {errors.marketValue && (
+                  <p className="mt-1 text-sm text-red-600">{errors.marketValue}</p>
                 )}
               </div>
 
