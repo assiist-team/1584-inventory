@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase, getCurrentUser } from './supabase'
 import { convertTimestamps, ensureAuthenticatedForDatabase } from './databaseService'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
@@ -495,6 +495,14 @@ export const transactionService = {
     try {
       await ensureAuthenticatedForDatabase()
 
+      // Get current user ID for created_by field
+      const currentUser = await getCurrentUser()
+      const userId = transactionData.created_by || currentUser?.id || null
+      
+      if (!userId) {
+        throw new Error('User must be authenticated to create transactions')
+      }
+
       const now = new Date()
       // Generate a unique transaction_id (UUID format)
       const transactionId = crypto.randomUUID()
@@ -521,7 +529,7 @@ export const transactionService = {
         tax_rate_preset: transactionData.tax_rate_preset || null,
         tax_rate_pct: null,
         subtotal: transactionData.subtotal || null,
-        created_by: transactionData.created_by || 'system',
+        created_by: userId,
         created_at: now.toISOString(),
         updated_at: now.toISOString()
       }
@@ -2172,6 +2180,12 @@ export const unifiedItemsService = {
     } else {
       // Create new transaction
       try {
+        // Get current user ID for created_by field
+        const currentUser = await getCurrentUser()
+        if (!currentUser?.id) {
+          throw new Error('User must be authenticated to create transactions')
+        }
+
         const projectId = transactionId.replace(transactionType === 'Purchase' ? 'INV_PURCHASE_' : 'INV_SALE_', '')
         const project = await projectService.getProject(accountId, projectId)
         const projectName = project?.name || 'Other'
@@ -2193,7 +2207,7 @@ export const unifiedItemsService = {
           reimbursement_type: transactionType === 'Purchase' ? CLIENT_OWES_COMPANY : COMPANY_OWES_CLIENT,
           trigger_event: triggerEvent,
           item_ids: [itemId],
-          created_by: 'system',
+          created_by: currentUser.id,
           created_at: now.toISOString(),
           updated_at: now.toISOString()
         }
@@ -2426,6 +2440,12 @@ export const unifiedItemsService = {
   ): Promise<string> {
     await ensureAuthenticatedForDatabase()
 
+    // Get current user ID for created_by field
+    const currentUser = await getCurrentUser()
+    if (!currentUser?.id) {
+      throw new Error('User must be authenticated to create transactions')
+    }
+
     // Get project name for source field
     let projectName = 'Other'
     try {
@@ -2455,7 +2475,7 @@ export const unifiedItemsService = {
       reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
       trigger_event: 'Inventory sale' as const,
       item_ids: [itemId],
-      created_by: 'system',
+      created_by: currentUser.id,
       created_at: now.toISOString(),
       updated_at: now.toISOString()
     }
@@ -2851,6 +2871,12 @@ export const deallocationService = {
   ): Promise<string | null> {
     await ensureAuthenticatedForDatabase()
 
+    // Get current user ID for created_by field
+    const currentUser = await getCurrentUser()
+    if (!currentUser?.id) {
+      throw new Error('User must be authenticated to create transactions')
+    }
+
     console.log('🏦 Creating/updating sale transaction for item:', item.item_id)
 
     // Get project name for source field
@@ -2952,7 +2978,7 @@ export const deallocationService = {
         reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
         trigger_event: 'Inventory sale' as const,
         item_ids: [item.item_id],
-        created_by: 'system',
+        created_by: currentUser.id,
         created_at: now.toISOString(),
         updated_at: now.toISOString()
       }

@@ -18,7 +18,7 @@ import { getTaxPresets } from '@/services/taxPresetsService'
 export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { hasRole } = useAuth()
+  const { hasRole, user } = useAuth()
   const { currentAccountId } = useAccount()
 
   // Check if user has permission to add transactions (DESIGNER role or higher)
@@ -180,11 +180,15 @@ export default function AddTransaction() {
       // Create transaction data, excluding image File objects from formData since they contain File objects
       const { transaction_images, receipt_images, other_images, ...formDataWithoutImages } = formData
 
+      if (!user?.id) {
+        throw new Error('User must be authenticated to create transactions')
+      }
+
       const transactionData = {
         ...formDataWithoutImages,
         project_id: projectId,
         project_name: projectName,
-        created_by: 'system',
+        created_by: user.id,
         tax_rate_preset: taxRatePreset,
         receipt_emailed: formData.receipt_emailed ?? false,
         subtotal: taxRatePreset === 'Other' ? subtotal : ''

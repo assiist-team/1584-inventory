@@ -7,11 +7,13 @@ import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { getTaxPresets } from '@/services/taxPresetsService'
 import { useAccount } from '@/contexts/AccountContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function AddBusinessInventoryTransaction() {
   const navigate = useNavigate()
   const location = useLocation()
   const { currentAccountId } = useAccount()
+  const { user } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [formData, setFormData] = useState({
@@ -169,19 +171,25 @@ export default function AddBusinessInventoryTransaction() {
       const projectId = formData.project_id === 'business-inventory' ? null : formData.project_id
       const projectName = formData.project_id === 'business-inventory' ? null : projects.find(p => p.id === formData.project_id)?.name || ''
 
-      const newTransaction: Omit<Transaction, 'transaction_id' | 'created_at'> = {
-        ...formData,
-        project_id: projectId,
-        project_name: projectName,
-        created_by: 'system', // Add required created_by field
-        tax_rate_preset: taxRatePreset,
-        subtotal: taxRatePreset === 'Other' ? subtotal : ''
+      if (!user?.id) {
+        setFormErrors({ general: 'User must be authenticated to create transactions' })
+        setIsSubmitting(false)
+        return
       }
 
       if (!currentAccountId) {
         setFormErrors({ general: 'Account ID is required' })
         setIsSubmitting(false)
         return
+      }
+
+      const newTransaction: Omit<Transaction, 'transaction_id' | 'created_at'> = {
+        ...formData,
+        project_id: projectId,
+        project_name: projectName,
+        created_by: user.id,
+        tax_rate_preset: taxRatePreset,
+        subtotal: taxRatePreset === 'Other' ? subtotal : ''
       }
       await transactionService.createTransaction(currentAccountId, projectId, newTransaction, [])
       navigate(`/business-inventory`)

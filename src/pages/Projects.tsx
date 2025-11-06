@@ -33,7 +33,7 @@ export default function Projects() {
     try {
       await projectService.createProject(currentAccountId, {
         ...projectData,
-        createdBy: user.email
+        createdBy: user.id
       })
 
       // Reload projects and transactions

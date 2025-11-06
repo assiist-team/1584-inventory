@@ -98,7 +98,10 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    console.debug('ProjectForm: submit clicked', { formData })
+
     if (!validateForm()) {
+      console.debug('ProjectForm: validation failed', { formData })
       return
     }
 
@@ -116,7 +119,9 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
       }
 
       const cleanedData = cleanObject(formData) as ProjectFormData
+      console.debug('ProjectForm: calling onSubmit with', { cleanedData })
       await onSubmit(cleanedData)
+      console.debug('ProjectForm: onSubmit resolved')
     } catch (error) {
       console.error('Error submitting form:', error)
     }
