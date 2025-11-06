@@ -33,10 +33,10 @@ const removeUnwantedIcons = () => {
 // Get canonical transaction title for display
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
+  if (transaction.transactionId?.startsWith('INV_SALE_')) {
     return COMPANY_INVENTORY_SALE
   }
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) {
     return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
@@ -124,7 +124,7 @@ export default function TransactionDetail() {
 
           // Fetch the actual item details for regular project transactions
           if (transactionItems.length > 0 && actualProjectId) {
-            const itemIds = transactionItems.map(item => item.item_id)
+            const itemIds = transactionItems.map(item => item.itemId)
             const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
@@ -137,7 +137,7 @@ export default function TransactionDetail() {
 
         const convertedTransaction: Transaction = {
           ...transactionData,
-          transaction_images: Array.isArray(transactionData?.transaction_images) ? transactionData.transaction_images : []
+          transactionImages: Array.isArray(transactionData?.transactionImages) ? transactionData.transactionImages : []
         } as Transaction
 
         console.log('TransactionDetail - loaded transactionData:', transactionData)
@@ -149,9 +149,9 @@ export default function TransactionDetail() {
         // Fetch transaction items for business inventory transactions
         if (!projectId && actualProjectId) {
           // For business inventory transactions, fetch items after we have the project ID
-          const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId!, transactionId)
+            const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId!, transactionId)
           if (transactionItems.length > 0) {
-            const itemIds = transactionItems.map(item => item.item_id)
+            const itemIds = transactionItems.map(item => item.itemId)
             const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
@@ -177,9 +177,8 @@ export default function TransactionDetail() {
   // Set up real-time subscription for transaction updates
   useEffect(() => {
     if (!transactionId || !transaction) return
-
     // Use the actual project ID (whether from URL params or discovered from transaction lookup)
-    const actualProjectId = projectId || transaction.project_id
+    const actualProjectId = projectId || transaction.projectId
 
     if (!actualProjectId) return
 
@@ -266,18 +265,18 @@ export default function TransactionDetail() {
       const newReceiptImages = ImageUploadService.convertFilesToReceiptImages(uploadResults)
 
       // Update transaction with new receipt images
-      const currentReceiptImages = transaction?.receipt_images || []
+      const currentReceiptImages = transaction?.receiptImages || []
       const updatedReceiptImages = [...currentReceiptImages, ...newReceiptImages]
 
-      const updateProjectId = transaction?.project_id || projectId
+      const updateProjectId = transaction?.projectId || projectId
       if (!currentAccountId) return
       await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
-        receipt_images: updatedReceiptImages,
-        transaction_images: updatedReceiptImages // Also update legacy field for compatibility
+        receiptImages: updatedReceiptImages,
+        transactionImages: updatedReceiptImages // Also update legacy field for compatibility
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
+      const refreshProjectId = transaction?.projectId || projectId
       const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
@@ -307,17 +306,17 @@ export default function TransactionDetail() {
       const newOtherImages = ImageUploadService.convertFilesToOtherImages(uploadResults)
 
       // Update transaction with new other images
-      const currentOtherImages = transaction?.other_images || []
+      const currentOtherImages = transaction?.otherImages || []
       const updatedOtherImages = [...currentOtherImages, ...newOtherImages]
 
-      const updateProjectId = transaction?.project_id || projectId
+      const updateProjectId = transaction?.projectId || projectId
       if (!currentAccountId) return
       await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
-        other_images: updatedOtherImages
+        otherImages: updatedOtherImages
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
+      const refreshProjectId = transaction?.projectId || projectId
       const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
@@ -335,17 +334,17 @@ export default function TransactionDetail() {
 
     try {
       // Filter out the image to be deleted
-      const currentReceiptImages = transaction.receipt_images || []
+      const currentReceiptImages = transaction.receiptImages || []
       const updatedReceiptImages = currentReceiptImages.filter(img => img.url !== imageUrl)
 
-      const updateProjectId = transaction?.project_id || projectId
+      const updateProjectId = transaction?.projectId || projectId
       await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
-        receipt_images: updatedReceiptImages,
-        transaction_images: updatedReceiptImages // Also update legacy field for compatibility
+        receiptImages: updatedReceiptImages,
+        transactionImages: updatedReceiptImages // Also update legacy field for compatibility
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
+      const refreshProjectId = transaction?.projectId || projectId
       const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
@@ -361,17 +360,17 @@ export default function TransactionDetail() {
 
     try {
       // Filter out the image to be deleted
-      const currentOtherImages = transaction.other_images || []
+      const currentOtherImages = transaction.otherImages || []
       const updatedOtherImages = currentOtherImages.filter(img => img.url !== imageUrl)
 
-      const updateProjectId = transaction?.project_id || projectId
+      const updateProjectId = transaction?.projectId || projectId
       if (!currentAccountId) return
       await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
-        other_images: updatedOtherImages
+        otherImages: updatedOtherImages
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
+      const refreshProjectId = transaction?.projectId || projectId
       const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
@@ -397,18 +396,18 @@ export default function TransactionDetail() {
       // Create the item linked to the existing transaction
       const itemData = {
         ...item,
-        project_id: projectId,
-        transaction_id: transactionId,
-        date_created: transaction.transaction_date || new Date().toISOString(),
+        projectId: projectId,
+        transactionId: transactionId,
+        dateCreated: transaction.transactionDate || new Date().toISOString(),
         source: transaction.source,
-        inventory_status: 'available' as const,
-        payment_method: 'Unknown',
-        qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        inventoryStatus: 'available' as const,
+        paymentMethod: 'Unknown',
+        qrKey: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         bookmark: false,
         sku: item.sku || '',
-        purchase_price: item.purchase_price || '',
-        project_price: item.project_price || '',
-        market_value: item.market_value || '',
+        purchasePrice: item.purchasePrice || '',
+        projectPrice: item.projectPrice || '',
+        marketValue: item.marketValue || '',
         notes: item.notes || '',
         space: item.space || '',
         disposition: 'keep'
@@ -472,7 +471,7 @@ export default function TransactionDetail() {
 
       // Refresh the transaction items list
       const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
-      const itemIds = transactionItems.map(item => item.item_id)
+      const itemIds = transactionItems.map(item => item.itemId)
       const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
       const items = await Promise.all(itemsPromises)
       const validItems = items.filter(item => item !== null) as Item[]
@@ -496,11 +495,11 @@ export default function TransactionDetail() {
 
   // Convert all transaction images (receipt and other) to ItemImage format for the gallery
   const allTransactionImages = [
-    ...(transaction?.receipt_images || []),
-    ...(transaction?.other_images || [])
+    ...(transaction?.receiptImages || []),
+    ...(transaction?.otherImages || [])
   ]
 
-  const itemImages = allTransactionImages.map((img, index) => ({
+    const itemImages = allTransactionImages.map((img, index) => ({
     url: img.url,
     alt: img.fileName,
     fileName: img.fileName,
@@ -587,24 +586,24 @@ export default function TransactionDetail() {
             <div>
               <dt className="text-sm font-medium text-gray-500">Budget Category</dt>
               <dd className="mt-1">
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                  transaction.budget_category === 'Design Fee'
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                  transaction.budgetCategory === 'Design Fee'
                     ? 'bg-amber-100 text-amber-800'
-                    : transaction.budget_category === 'Furnishings'
+                    : transaction.budgetCategory === 'Furnishings'
                     ? 'bg-yellow-100 text-yellow-800'
-                    : transaction.budget_category === 'Property Management'
+                    : transaction.budgetCategory === 'Property Management'
                     ? 'bg-orange-100 text-orange-800'
-                    : transaction.budget_category === 'Kitchen'
+                    : transaction.budgetCategory === 'Kitchen'
                     ? 'bg-amber-200 text-amber-900'
-                    : transaction.budget_category === 'Install'
+                    : transaction.budgetCategory === 'Install'
                     ? 'bg-yellow-200 text-yellow-900'
-                    : transaction.budget_category === 'Storage & Receiving'
+                    : transaction.budgetCategory === 'Storage & Receiving'
                     ? 'bg-orange-200 text-orange-900'
-                    : transaction.budget_category === 'Fuel'
+                    : transaction.budgetCategory === 'Fuel'
                     ? 'bg-amber-300 text-amber-900'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {transaction.budget_category || 'Not specified'}
+                  {transaction.budgetCategory || 'Not specified'}
                 </span>
               </dd>
             </div>
@@ -613,15 +612,15 @@ export default function TransactionDetail() {
               <dt className="text-sm font-medium text-gray-500">Transaction Type</dt>
               <dd className="mt-1">
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
-                  transaction.transaction_type === 'Purchase'
+                  transaction.transactionType === 'Purchase'
                     ? 'bg-green-100 text-green-800'
-                    : transaction.transaction_type === 'Return'
+                    : transaction.transactionType === 'Return'
                     ? 'bg-red-100 text-red-800'
-                    : transaction.transaction_type === 'To Inventory'
+                    : transaction.transactionType === 'To Inventory'
                     ? 'bg-primary-100 text-primary-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {transaction.transaction_type}
+                  {transaction.transactionType}
                 </span>
               </dd>
             </div>
@@ -631,15 +630,15 @@ export default function TransactionDetail() {
               <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.amount)}</dd>
             </div>
 
-            {transaction.tax_rate_preset && (
+            {transaction.taxRatePreset && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Tax Rate Preset</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {transaction.tax_rate_preset === 'Other' 
+                  {transaction.taxRatePreset === 'Other' 
                     ? 'Custom'
                     : (() => {
-                        const preset = taxPresets.find(p => p.id === transaction.tax_rate_preset)
-                        return preset ? `${preset.name} (${preset.rate.toFixed(2)}%)` : transaction.tax_rate_preset
+                        const preset = taxPresets.find(p => p.id === transaction.taxRatePreset)
+                        return preset ? `${preset.name} (${preset.rate.toFixed(2)}%)` : transaction.taxRatePreset
                       })()
                   }
                 </dd>
@@ -653,23 +652,23 @@ export default function TransactionDetail() {
               </div>
             )}
 
-            {transaction.tax_rate_pct !== undefined && (
+            {transaction.taxRatePct !== undefined && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Tax Rate</dt>
-                <dd className="mt-1 text-sm text-gray-900">{Number(transaction.tax_rate_pct).toFixed(2)}%</dd>
+                <dd className="mt-1 text-sm text-gray-900">{Number(transaction.taxRatePct).toFixed(2)}%</dd>
               </div>
             )}
 
             <div>
               <dt className="text-sm font-medium text-gray-500">Transaction Date</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {transaction.transaction_date ? formatDate(transaction.transaction_date) : 'No date'}
+                {transaction.transactionDate ? formatDate(transaction.transactionDate) : 'No date'}
               </dd>
             </div>
 
             <div>
               <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
-              <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
+              <dd className="mt-1 text-sm text-gray-900">{transaction.paymentMethod}</dd>
             </div>
 
             <div>
@@ -679,16 +678,16 @@ export default function TransactionDetail() {
               </dd>
             </div>
 
-            {transaction.reimbursement_type && (transaction.reimbursement_type as string) !== '' && (
+            {transaction.reimbursementType && (transaction.reimbursementType as string) !== '' && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Reimbursement Type</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {transaction.reimbursement_type === CLIENT_OWES_COMPANY ? CLIENT_OWES_COMPANY : COMPANY_OWES_CLIENT}
+                  {transaction.reimbursementType === CLIENT_OWES_COMPANY ? CLIENT_OWES_COMPANY : COMPANY_OWES_CLIENT}
                 </dd>
               </div>
             )}
 
-            {transaction.receipt_emailed && (
+            {transaction.receiptEmailed && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">
                   Receipt Emailed
@@ -717,7 +716,7 @@ export default function TransactionDetail() {
               <ImageIcon className="h-5 w-5 mr-2" />
               Receipt Images
             </h3>
-            {transaction.receipt_images && transaction.receipt_images.length > 0 && (
+                {transaction.receiptImages && transaction.receiptImages.length > 0 && (
               <button
                 onClick={() => {
                   // Trigger file input click programmatically
@@ -741,9 +740,9 @@ export default function TransactionDetail() {
               </button>
             )}
           </div>
-          {transaction.receipt_images && transaction.receipt_images.length > 0 ? (
+          {transaction.receiptImages && transaction.receiptImages.length > 0 ? (
             <TransactionImagePreview
-              images={transaction.receipt_images}
+              images={transaction.receiptImages}
               onRemoveImage={handleDeleteReceiptImage}
               onImageClick={handleImageClick}
               maxImages={5}
@@ -781,7 +780,7 @@ export default function TransactionDetail() {
         </div>
 
         {/* Other Images - Only show if there are other images */}
-        {transaction.other_images && transaction.other_images.length > 0 && (
+            {transaction.otherImages && transaction.otherImages.length > 0 && (
           <div className="px-6 py-6 border-t border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900 flex items-center">
@@ -811,12 +810,12 @@ export default function TransactionDetail() {
               </button>
             </div>
             <TransactionImagePreview
-              images={transaction.other_images}
+              images={transaction.otherImages}
               onRemoveImage={handleDeleteOtherImage}
               onImageClick={(index) => {
                 // Find the correct index in the combined array for gallery navigation
-                const receiptCount = transaction.receipt_images?.length || 0
-                const legacyCount = transaction.transaction_images?.length || 0
+                const receiptCount = transaction.receiptImages?.length || 0
+                const legacyCount = transaction.transactionImages?.length || 0
                 const galleryIndex = receiptCount + legacyCount + index
                 handleImageClick(galleryIndex)
               }}
@@ -860,15 +859,15 @@ export default function TransactionDetail() {
               {transactionItems.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {transactionItems.map((item) => {
-                    // Check if item has been deallocated to inventory (project_id is null)
-                    const isDeallocated = item.project_id === null
+                    // Check if item has been deallocated to inventory (projectId is null)
+                    const isDeallocated = item.projectId === null
                     const itemLink = isDeallocated
-                      ? buildContextUrl(`/business-inventory/${item.item_id}`, { from: 'business-inventory-item' })
-                      : buildContextUrl(`/project/${projectId}/item/${item.item_id}`, { from: 'transaction' })
+                      ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                      : buildContextUrl(`/project/${projectId}/item/${item.itemId}`, { from: 'transaction' })
 
                     return (
                       <Link
-                        key={item.item_id}
+                        key={item.itemId}
                         to={itemLink}
                         className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
                       >
@@ -936,18 +935,18 @@ export default function TransactionDetail() {
 
                       {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                        {(item.project_price || item.purchase_price) && (
-                          <span className="font-medium text-gray-700">{formatCurrency(item.project_price || item.purchase_price || '0')}</span>
+                        {(item.projectPrice || item.purchasePrice) && (
+                          <span className="font-medium text-gray-700">{formatCurrency(item.projectPrice || item.purchasePrice || '0')}</span>
                         )}
                         {item.source && (
                           <>
-                            {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                            {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
                             <span className="font-medium text-gray-700">{item.source}</span>
                           </>
                         )}
                         {item.sku && (
                           <>
-                            {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                            {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
                             <span className="font-medium text-gray-700">{item.sku}</span>
                           </>
                         )}
@@ -994,12 +993,12 @@ export default function TransactionDetail() {
             <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
               <div>
                 <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
-                <dd className="mt-1 text-sm text-gray-900">{project?.name || transaction.project_name}</dd>
+                <dd className="mt-1 text-sm text-gray-900">{project?.name || transaction.projectName}</dd>
               </div>
               <div>
                 <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {formatDate(transaction.created_at)}
+                  {formatDate(transaction.createdAt)}
                 </dd>
               </div>
             </dl>

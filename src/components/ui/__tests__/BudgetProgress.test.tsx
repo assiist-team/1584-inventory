@@ -5,16 +5,16 @@ import BudgetProgress from '../BudgetProgress'
 import { BudgetCategory, ProjectBudgetCategories, Transaction } from '@/types'
 
 const makeTransaction = (overrides: Partial<Transaction>): Transaction => ({
-  transaction_id: overrides.transaction_id || Math.random().toString(36).slice(2),
-  transaction_date: overrides.transaction_date || new Date().toISOString(),
+  transactionId: overrides.transactionId || Math.random().toString(36).slice(2),
+  transactionDate: overrides.transactionDate || new Date().toISOString(),
   source: overrides.source || 'Test',
-  transaction_type: overrides.transaction_type || 'Purchase',
-  payment_method: overrides.payment_method || 'Card',
+  transactionType: overrides.transactionType || 'Purchase',
+  paymentMethod: overrides.paymentMethod || 'Card',
   amount: overrides.amount || '0',
-  budget_category: overrides.budget_category,
-  receipt_emailed: false,
-  created_at: new Date().toISOString(),
-  created_by: 'test',
+  budgetCategory: overrides.budgetCategory,
+  receiptEmailed: false,
+  createdAt: new Date().toISOString(),
+  createdBy: 'test',
   status: overrides.status || 'completed',
 })
 
@@ -31,9 +31,9 @@ describe('BudgetProgress calculations', () => {
     }
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '300', budget_category: BudgetCategory.FURNISHINGS, transaction_type: 'Purchase' }),
-      makeTransaction({ amount: '200', budget_category: BudgetCategory.FURNISHINGS, transaction_type: 'Purchase' }),
-      makeTransaction({ amount: '100', budget_category: BudgetCategory.FURNISHINGS, transaction_type: 'Return' }),
+      makeTransaction({ amount: '300', budgetCategory: BudgetCategory.FURNISHINGS, transactionType: 'Purchase' }),
+      makeTransaction({ amount: '200', budgetCategory: BudgetCategory.FURNISHINGS, transactionType: 'Purchase' }),
+      makeTransaction({ amount: '100', budgetCategory: BudgetCategory.FURNISHINGS, transactionType: 'Return' }),
     ]
 
     const { container } = render(
@@ -74,8 +74,8 @@ describe('BudgetProgress calculations', () => {
     }
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '300', budget_category: BudgetCategory.INSTALL, transaction_type: 'Purchase' }),
-      makeTransaction({ amount: '200', budget_category: BudgetCategory.INSTALL, transaction_type: 'Purchase' }),
+      makeTransaction({ amount: '300', budgetCategory: BudgetCategory.INSTALL, transactionType: 'Purchase' }),
+      makeTransaction({ amount: '200', budgetCategory: BudgetCategory.INSTALL, transactionType: 'Purchase' }),
     ]
 
     const { container } = render(
@@ -116,8 +116,8 @@ describe('BudgetProgress calculations', () => {
     }
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '250', budget_category: BudgetCategory.STORAGE_RECEIVING, transaction_type: 'Purchase' }),
-      makeTransaction({ amount: '50', budget_category: BudgetCategory.STORAGE_RECEIVING, transaction_type: 'Return' }),
+      makeTransaction({ amount: '250', budgetCategory: BudgetCategory.STORAGE_RECEIVING, transactionType: 'Purchase' }),
+      makeTransaction({ amount: '50', budgetCategory: BudgetCategory.STORAGE_RECEIVING, transactionType: 'Return' }),
     ]
 
     const { container } = render(
@@ -156,7 +156,7 @@ describe('BudgetProgress calculations', () => {
     }
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '50', budget_category: BudgetCategory.FUEL, transaction_type: 'Purchase' }),
+      makeTransaction({ amount: '50', budgetCategory: BudgetCategory.FUEL, transactionType: 'Purchase' }),
     ]
 
     render(
@@ -188,8 +188,8 @@ describe('BudgetProgress calculations', () => {
     const designFeeAmount = 1000
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '400', budget_category: BudgetCategory.DESIGN_FEE, transaction_type: 'Purchase' }),
-      makeTransaction({ amount: '100', budget_category: BudgetCategory.DESIGN_FEE, transaction_type: 'Return' }),
+      makeTransaction({ amount: '400', budgetCategory: BudgetCategory.DESIGN_FEE, transactionType: 'Purchase' }),
+      makeTransaction({ amount: '100', budgetCategory: BudgetCategory.DESIGN_FEE, transactionType: 'Return' }),
     ]
 
     const { container } = render(
@@ -230,7 +230,7 @@ describe('BudgetProgress calculations', () => {
     }
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '600', budget_category: BudgetCategory.KITCHEN, transaction_type: 'Purchase' }),
+      makeTransaction({ amount: '600', budgetCategory: BudgetCategory.KITCHEN, transactionType: 'Purchase' }),
     ]
 
     const { container } = render(
@@ -270,8 +270,8 @@ describe('BudgetProgress calculations', () => {
     }
 
     const transactions: Transaction[] = [
-      makeTransaction({ amount: '100', budget_category: BudgetCategory.PROPERTY_MANAGEMENT, transaction_type: 'Purchase' }),
-      makeTransaction({ amount: '50', budget_category: BudgetCategory.PROPERTY_MANAGEMENT, transaction_type: 'Return' }),
+      makeTransaction({ amount: '100', budgetCategory: BudgetCategory.PROPERTY_MANAGEMENT, transactionType: 'Purchase' }),
+      makeTransaction({ amount: '50', budgetCategory: BudgetCategory.PROPERTY_MANAGEMENT, transactionType: 'Return' }),
     ]
 
     const { container } = render(

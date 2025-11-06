@@ -506,7 +506,7 @@ export default function ItemDetail() {
 
             <button
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              onClick={() => window.open(`/qr-image/${item.qr_key}`, '_blank')}
+              onClick={() => window.open(`/qr-image/${item.qrKey}`, '_blank')}
               title="View QR Code"
             >
               <QrCode className="h-4 w-4" />

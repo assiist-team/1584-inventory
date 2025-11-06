@@ -86,10 +86,9 @@ export default function ProjectDetail() {
     const clientOwesTransactions = transactions.filter(transaction => {
       // For "owed to Design Business", we want transactions where the client owes Design Business
       // This happens when Design Business paid for the transaction
-
-      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === CLIENT_OWES_COMPANY
+      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursementType === CLIENT_OWES_COMPANY
       const isLegacyClientOwes = (!transaction.status || transaction.status === 'pending') &&
-                                transaction.payment_method === COMPANY_CARD
+                                transaction.paymentMethod === COMPANY_CARD
 
       return isExplicitlyClientOwes || isLegacyClientOwes
     })
@@ -101,10 +100,9 @@ export default function ProjectDetail() {
     const weOweTransactions = transactions.filter(transaction => {
       // For "owed to client", we want transactions where Design Business owes the client
       // This happens when the client paid for the transaction
-
-      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === COMPANY_OWES_CLIENT
+      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursementType === COMPANY_OWES_CLIENT
       const isLegacyWeOwe = (!transaction.status || transaction.status === 'pending') &&
-                           transaction.payment_method === 'Client Card'
+                           transaction.paymentMethod === 'Client Card'
 
       return isExplicitlyWeOwe || isLegacyWeOwe
     })

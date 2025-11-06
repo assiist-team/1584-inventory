@@ -19,18 +19,18 @@ export default function EditBusinessInventoryTransaction() {
   const [projects, setProjects] = useState<Project[]>([])
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [formData, setFormData] = useState({
-    project_id: '',
-    transaction_date: '',
+    projectId: '',
+    transactionDate: '',
     source: '',
-    transaction_type: 'Reimbursement',
-    payment_method: 'Pending',
+    transactionType: 'Reimbursement',
+    paymentMethod: 'Pending',
     amount: '',
-    budget_category: 'Furnishings',
+    budgetCategory: 'Furnishings',
     notes: '',
     status: 'pending' as 'pending' | 'completed' | 'canceled',
-    reimbursement_type: '' as '' | typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | null | undefined,
-    trigger_event: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
-    receipt_emailed: false
+    reimbursementType: '' as '' | typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | null | undefined,
+    triggerEvent: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
+    receiptEmailed: false
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isCustomSource, setIsCustomSource] = useState(false)
@@ -106,23 +106,23 @@ export default function EditBusinessInventoryTransaction() {
           const sourceIsCustom = Boolean(resolvedSource && !TRANSACTION_SOURCES.includes(resolvedSource as any))
           
           setFormData({
-            project_id: transactionData.project_id || '',
-            transaction_date: toDateOnlyString(transactionData.transaction_date) || '',
+            projectId: transactionData.projectId || '',
+            transactionDate: toDateOnlyString(transactionData.transactionDate) || '',
             source: resolvedSource,
-            transaction_type: transactionData.transaction_type,
-            payment_method: transactionData.payment_method,
+            transactionType: transactionData.transactionType || 'Reimbursement',
+            paymentMethod: transactionData.paymentMethod || 'Pending',
             amount: transactionData.amount,
-            budget_category: transactionData.budget_category || 'Furnishings',
+            budgetCategory: transactionData.budgetCategory || 'Furnishings',
             notes: transactionData.notes || '',
             status: transactionData.status || 'pending',
-            reimbursement_type: transactionData.reimbursement_type || '',
-            trigger_event: transactionData.trigger_event || 'Manual',
-            receipt_emailed: transactionData.receipt_emailed
+            reimbursementType: transactionData.reimbursementType || '',
+            triggerEvent: transactionData.triggerEvent || 'Manual',
+            receiptEmailed: transactionData.receiptEmailed || false
           })
 
           // Populate tax fields if present
-          if (transactionData.tax_rate_preset) {
-            setTaxRatePreset(transactionData.tax_rate_preset)
+          if (transactionData.taxRatePreset) {
+            setTaxRatePreset(transactionData.taxRatePreset)
           }
           setSubtotal(transactionData.subtotal || '')
           
@@ -160,8 +160,8 @@ export default function EditBusinessInventoryTransaction() {
       errors.source = 'Source is required'
     }
 
-    if (!formData.budget_category?.trim()) {
-      errors.budget_category = 'Budget category is required'
+    if (!formData.budgetCategory?.trim()) {
+      errors.budgetCategory = 'Budget category is required'
     }
 
     if (!formData.amount.trim()) {
@@ -194,13 +194,13 @@ export default function EditBusinessInventoryTransaction() {
 
     try {
       // Determine project_id based on selection
-      const actualProjectId = formData.project_id === 'business-inventory' ? null : formData.project_id
+      const actualProjectId = formData.projectId === 'business-inventory' ? null : formData.projectId
 
       const updateData: Partial<Transaction> = {
         ...formData,
-        project_id: actualProjectId,
+        projectId: actualProjectId,
         // Include tax fields only when a tax rate preset is explicitly selected.
-        ...(taxRatePreset ? { tax_rate_preset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
+        ...(taxRatePreset ? { taxRatePreset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
       if (!currentAccountId) {
@@ -288,15 +288,15 @@ export default function EditBusinessInventoryTransaction() {
 
           {/* Project Selection */}
           <div>
-            <label htmlFor="project_id" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="projectId" className="block text-sm font-medium text-gray-700">
               Project
             </label>
             <select
-              id="project_id"
-              value={formData.project_id}
-              onChange={(e) => handleInputChange('project_id', e.target.value)}
+              id="projectId"
+              value={formData.projectId}
+              onChange={(e) => handleInputChange('projectId', e.target.value)}
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                formErrors.project_id ? 'border-red-300' : 'border-gray-300'
+                formErrors.projectId ? 'border-red-300' : 'border-gray-300'
               }`}
             >
               <option value="">Select a project...</option>
@@ -307,8 +307,8 @@ export default function EditBusinessInventoryTransaction() {
                 </option>
               ))}
             </select>
-            {formErrors.project_id && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.project_id}</p>
+            {formErrors.projectId && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.projectId}</p>
             )}
           </div>
 
@@ -382,10 +382,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_design_fee"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Design Fee"
-                  checked={formData.budget_category === 'Design Fee'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Design Fee'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
@@ -396,10 +396,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_furnishings"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Furnishings"
-                  checked={formData.budget_category === 'Furnishings'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Furnishings'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
@@ -410,10 +410,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_property_management"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Property Management"
-                  checked={formData.budget_category === 'Property Management'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Property Management'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
@@ -424,10 +424,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_kitchen"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Kitchen"
-                  checked={formData.budget_category === 'Kitchen'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Kitchen'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
@@ -438,10 +438,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_install"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Install"
-                  checked={formData.budget_category === 'Install'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Install'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
@@ -452,10 +452,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_storage_receiving"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Storage & Receiving"
-                  checked={formData.budget_category === 'Storage & Receiving'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Storage & Receiving'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
@@ -466,10 +466,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="budget_fuel"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Fuel"
-                  checked={formData.budget_category === 'Fuel'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Fuel'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
@@ -477,8 +477,8 @@ export default function EditBusinessInventoryTransaction() {
                 </label>
               </div>
             </div>
-            {formErrors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.budget_category}</p>
+            {formErrors.budgetCategory && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.budgetCategory}</p>
             )}
           </div>
 
@@ -492,11 +492,11 @@ export default function EditBusinessInventoryTransaction() {
               <div className="flex items-center">
                 <input
                   type="radio"
-                  id="reimbursement_none"
-                  name="reimbursement_type"
+                id="reimbursement_none"
+                  name="reimbursementType"
                   value=""
-                  checked={!formData.reimbursement_type}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={!formData.reimbursementType}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_none" className="ml-2 block text-sm text-gray-900">
@@ -507,10 +507,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_client_owes"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value={CLIENT_OWES_COMPANY}
-                  checked={formData.reimbursement_type === CLIENT_OWES_COMPANY}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={formData.reimbursementType === CLIENT_OWES_COMPANY}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
@@ -521,10 +521,10 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_we_owe"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value={COMPANY_OWES_CLIENT}
-                  checked={formData.reimbursement_type === COMPANY_OWES_CLIENT}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={formData.reimbursementType === COMPANY_OWES_CLIENT}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
@@ -532,8 +532,8 @@ export default function EditBusinessInventoryTransaction() {
                 </label>
               </div>
             </div>
-            {formErrors.reimbursement_type && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.reimbursement_type}</p>
+            {formErrors.reimbursementType && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.reimbursementType}</p>
             )}
           </div>
 
@@ -546,10 +546,10 @@ export default function EditBusinessInventoryTransaction() {
               <div className="flex items-center">
                 <input
                   type="radio"
-                  id="receipt_yes"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === true}
-                  onChange={() => handleInputChange('receipt_emailed', true)}
+                id="receipt_yes"
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === true}
+                  onChange={() => handleInputChange('receiptEmailed', true)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
@@ -559,10 +559,10 @@ export default function EditBusinessInventoryTransaction() {
               <div className="flex items-center">
                 <input
                   type="radio"
-                  id="receipt_no"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === false}
-                  onChange={() => handleInputChange('receipt_emailed', false)}
+                id="receipt_no"
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === false}
+                  onChange={() => handleInputChange('receiptEmailed', false)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
@@ -606,7 +606,7 @@ export default function EditBusinessInventoryTransaction() {
                   <input
                     type="radio"
                     id={`tax_preset_${preset.id}`}
-                    name="tax_rate_preset"
+                    name="taxRatePreset"
                     value={preset.id}
                     checked={taxRatePreset === preset.id}
                     onChange={(e) => setTaxRatePreset(e.target.value)}
@@ -621,7 +621,7 @@ export default function EditBusinessInventoryTransaction() {
                 <input
                   type="radio"
                   id="tax_preset_other"
-                  name="tax_rate_preset"
+                  name="taxRatePreset"
                   value="Other"
                   checked={taxRatePreset === 'Other'}
                   onChange={(e) => setTaxRatePreset(e.target.value)}
@@ -665,20 +665,20 @@ export default function EditBusinessInventoryTransaction() {
 
           {/* Transaction Date */}
           <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="transactionDate" className="block text-sm font-medium text-gray-700">
               Transaction Date
             </label>
             <input
               type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
-              onChange={(e) => handleInputChange('transaction_date', e.target.value)}
+              id="transactionDate"
+              value={formData.transactionDate}
+              onChange={(e) => handleInputChange('transactionDate', e.target.value)}
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                formErrors.transaction_date ? 'border-red-300' : 'border-gray-300'
+                formErrors.transactionDate ? 'border-red-300' : 'border-gray-300'
               }`}
             />
-            {formErrors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.transaction_date}</p>
+            {formErrors.transactionDate && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.transactionDate}</p>
             )}
           </div>
 

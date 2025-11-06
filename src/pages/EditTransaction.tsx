@@ -550,10 +550,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_furnishings"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Furnishings"
-                  checked={formData.budget_category === 'Furnishings'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Furnishings'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
@@ -564,10 +564,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_property_management"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Property Management"
-                  checked={formData.budget_category === 'Property Management'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Property Management'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
@@ -578,10 +578,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_kitchen"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Kitchen"
-                  checked={formData.budget_category === 'Kitchen'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Kitchen'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
@@ -592,10 +592,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_install"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Install"
-                  checked={formData.budget_category === 'Install'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Install'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
@@ -606,10 +606,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_storage_receiving"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Storage & Receiving"
-                  checked={formData.budget_category === 'Storage & Receiving'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Storage & Receiving'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
@@ -620,10 +620,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_fuel"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Fuel"
-                  checked={formData.budget_category === 'Fuel'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Fuel'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
@@ -660,10 +660,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="type_to_inventory"
-                  name="transaction_type"
+                  name="transactionType"
                   value="To Inventory"
-                  checked={formData.transaction_type === 'To Inventory'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  checked={formData.transactionType === 'To Inventory'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="type_to_inventory" className="ml-2 block text-sm text-gray-900">
@@ -674,10 +674,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="type_return"
-                  name="transaction_type"
+                  name="transactionType"
                   value="Return"
-                  checked={formData.transaction_type === 'Return'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  checked={formData.transactionType === 'Return'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
@@ -768,10 +768,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="method_1584_card"
-                  name="payment_method"
+                  name="paymentMethod"
                   value={COMPANY_NAME}
-                  checked={formData.payment_method === COMPANY_NAME}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  checked={formData.paymentMethod === COMPANY_NAME}
+                  onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
@@ -809,7 +809,7 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_client_owes"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value={CLIENT_OWES_COMPANY}
                   checked={formData.reimbursementType === CLIENT_OWES_COMPANY}
                   onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
@@ -823,7 +823,7 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_we_owe"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value={COMPANY_OWES_CLIENT}
                   checked={formData.reimbursementType === COMPANY_OWES_CLIENT}
                   onChange={(e) => handleInputChange('reimbursementType', e.target.value)}

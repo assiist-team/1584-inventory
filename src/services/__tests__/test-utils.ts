@@ -126,10 +126,10 @@ export const createUniqueConstraintError = (): PostgrestError => ({
 export const createMockUser = (overrides?: Partial<any>) => ({
   id: 'test-user-id',
   email: 'test@example.com',
-  display_name: 'Test User',
+  displayName: 'Test User',
   role: null,
-  created_at: new Date().toISOString(),
-  last_login: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
+  lastLogin: new Date().toISOString(),
   ...overrides
 })
 
@@ -139,8 +139,8 @@ export const createMockUser = (overrides?: Partial<any>) => ({
 export const createMockAccount = (overrides?: Partial<any>) => ({
   id: 'test-account-id',
   name: 'Test Account',
-  created_by: 'test-user-id',
-  created_at: new Date().toISOString(),
+  createdBy: 'test-user-id',
+  createdAt: new Date().toISOString(),
   ...overrides
 })
 
@@ -149,13 +149,13 @@ export const createMockAccount = (overrides?: Partial<any>) => ({
  */
 export const createMockProject = (overrides?: Partial<any>) => ({
   id: 'test-project-id',
-  account_id: 'test-account-id',
+  accountId: 'test-account-id',
   name: 'Test Project',
   description: 'Test Description',
-  client_name: 'Test Client',
+  clientName: 'Test Client',
   budget: 10000,
-  design_fee: 1000,
-  budget_categories: {
+  designFee: 1000,
+  budgetCategories: {
     designFee: 1000,
     furnishings: 5000,
     propertyManagement: 1000,
@@ -164,9 +164,9 @@ export const createMockProject = (overrides?: Partial<any>) => ({
     storageReceiving: 300,
     fuel: 200
   },
-  created_by: 'test-user-id',
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  createdBy: 'test-user-id',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
   ...overrides
 })
 
@@ -174,27 +174,27 @@ export const createMockProject = (overrides?: Partial<any>) => ({
  * Mock item data for testing
  */
 export const createMockItem = (overrides?: Partial<any>) => ({
-  item_id: 'test-item-id',
-  account_id: 'test-account-id',
-  project_id: null,
+  itemId: 'test-item-id',
+  accountId: 'test-account-id',
+  projectId: null,
   description: 'Test Item',
   source: 'Test Source',
   sku: 'TEST-SKU-001',
-  purchase_price: '100.00',
-  project_price: '150.00',
-  market_value: '120.00',
-  payment_method: 'Credit Card',
+  purchasePrice: '100.00',
+  projectPrice: '150.00',
+  marketValue: '120.00',
+  paymentMethod: 'Credit Card',
   disposition: 'Available',
   notes: 'Test notes',
   space: 'Living Room',
-  qr_key: 'test-qr-key',
+  qrKey: 'test-qr-key',
   bookmark: false,
-  transaction_id: null,
-  date_created: new Date().toISOString(),
-  last_updated: new Date().toISOString(),
+  transactionId: null,
+  dateCreated: new Date().toISOString(),
+  lastUpdated: new Date().toISOString(),
   images: [],
-  tax_rate_pct: 8.375,
-  tax_amount: '8.38',
+  taxRatePct: 8.375,
+  taxAmount: '8.38',
   ...overrides
 })
 
@@ -202,27 +202,27 @@ export const createMockItem = (overrides?: Partial<any>) => ({
  * Mock transaction data for testing
  */
 export const createMockTransaction = (overrides?: Partial<any>) => ({
-  id: 'test-transaction-id',
-  account_id: 'test-account-id',
-  project_id: 'test-project-id',
-  transaction_date: new Date().toISOString().split('T')[0],
+  transactionId: 'test-transaction-id',
+  accountId: 'test-account-id',
+  projectId: 'test-project-id',
+  transactionDate: new Date().toISOString().split('T')[0],
   source: 'Test Source',
-  transaction_type: 'Purchase',
-  payment_method: 'Credit Card',
+  transactionType: 'Purchase',
+  paymentMethod: 'Credit Card',
   amount: '100.00',
-  budget_category: 'Furnishings',
-  tax_state: 'NV',
+  budgetCategory: 'Furnishings',
+  taxState: 'NV',
   subtotal: '92.38',
-  tax_rate_pct: 8.25,
-  tax_amount: '7.62',
-  reimbursement_type: CLIENT_OWES_COMPANY,
+  taxRatePct: 8.25,
+  taxAmount: '7.62',
+  reimbursementType: CLIENT_OWES_COMPANY,
   status: 'pending',
   notes: 'Test transaction',
-  receipt_images: [],
-  other_images: [],
-  created_by: 'test-user-id',
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  receiptImages: [],
+  otherImages: [],
+  createdBy: 'test-user-id',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
   ...overrides
 })
 

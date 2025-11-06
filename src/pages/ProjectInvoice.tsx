@@ -24,8 +24,8 @@ type InvoiceTransactionLine = {
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
+  if (transaction.transactionId?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
   return transaction.source
 }
 
@@ -77,16 +77,17 @@ export default function ProjectInvoice() {
 
         const invoiceable = txs
           .filter(t => t.status !== 'canceled')
-          .filter(t => (t.reimbursement_type === CLIENT_OWES_COMPANY || t.reimbursement_type === COMPANY_OWES_CLIENT))
+          .filter(t => (t.reimbursementType === CLIENT_OWES_COMPANY || t.reimbursementType === COMPANY_OWES_CLIENT))
 
         // Sort by transaction_date ascending within each group later
         // Fetch items for each transaction in parallel
         const lines = await Promise.all(invoiceable.map(async (tx): Promise<InvoiceTransactionLine> => {
-          const items: Item[] = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, tx.transaction_id)
+        const items: Item[] = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, tx.transactionId)
 
           const itemLines: InvoiceItemLine[] = items.map((it) => {
-            const hasPrice = !!it.project_price && it.project_price.trim() !== ''
-            const amt = hasPrice ? toNumber(it.project_price || '0') : 0
+            const projectPriceValue = it.projectPrice
+            const hasPrice = !!projectPriceValue && String(projectPriceValue).trim() !== ''
+            const amt = hasPrice ? toNumber(projectPriceValue || '0') : 0
             return { item: it, amount: amt, missingPrice: !hasPrice }
           })
 
@@ -99,12 +100,12 @@ export default function ProjectInvoice() {
         }))
 
         const clientOwes = lines
-          .filter(l => l.transaction.reimbursement_type === CLIENT_OWES_COMPANY)
-          .sort((a, b) => (a.transaction.transaction_date || '').localeCompare(b.transaction.transaction_date || ''))
+          .filter(l => l.transaction.reimbursementType === CLIENT_OWES_COMPANY)
+          .sort((a, b) => (a.transaction.transactionDate || '').localeCompare(b.transaction.transactionDate || ''))
 
         const credits = lines
-          .filter(l => l.transaction.reimbursement_type === COMPANY_OWES_CLIENT)
-          .sort((a, b) => (a.transaction.transaction_date || '').localeCompare(b.transaction.transaction_date || ''))
+          .filter(l => l.transaction.reimbursementType === COMPANY_OWES_CLIENT)
+          .sort((a, b) => (a.transaction.transactionDate || '').localeCompare(b.transaction.transactionDate || ''))
 
         setClientOwesLines(clientOwes)
         setCreditLines(credits)
@@ -205,7 +206,7 @@ export default function ProjectInvoice() {
                 {clientOwesLines.map(line => {
                 const transactionTitle = getCanonicalTransactionTitle(line.transaction)
                 const formattedDate = formatDate(
-                  line.transaction.transaction_date,
+                  line.transaction.transactionDate,
                   '',
                   {
                     year: undefined,
@@ -215,7 +216,7 @@ export default function ProjectInvoice() {
                 )
 
                 return (
-                  <div key={line.transaction.transaction_id} className="py-4 px-4">
+                  <div key={line.transaction.transactionId} className="py-4 px-4">
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-900">
@@ -233,7 +234,7 @@ export default function ProjectInvoice() {
                       <div className="mt-2 ml-4">
                         <ul className="space-y-1">
                           {line.items.map((it) => (
-                            <li key={it.item.item_id} className="flex items-start justify-between text-sm">
+                            <li key={it.item.itemId} className="flex items-start justify-between text-sm">
                               <div className="text-gray-700">
                                 {it.item.description || 'Item'}
                                 {it.missingPrice && (
@@ -268,7 +269,7 @@ export default function ProjectInvoice() {
                 {creditLines.map(line => {
                 const transactionTitle = getCanonicalTransactionTitle(line.transaction)
                 const formattedDate = formatDate(
-                  line.transaction.transaction_date,
+                  line.transaction.transactionDate,
                   '',
                   {
                     year: undefined,
@@ -278,7 +279,7 @@ export default function ProjectInvoice() {
                 )
 
                 return (
-                  <div key={line.transaction.transaction_id} className="py-4 px-4">
+                  <div key={line.transaction.transactionId} className="py-4 px-4">
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-900">
@@ -296,7 +297,7 @@ export default function ProjectInvoice() {
                       <div className="mt-2 ml-4">
                         <ul className="space-y-1">
                           {line.items.map((it) => (
-                            <li key={it.item.item_id} className="flex items-start justify-between text-sm">
+                            <li key={it.item.itemId} className="flex items-start justify-between text-sm">
                               <div className="text-gray-700">
                                 {it.item.description || 'Item'}
                                 {it.missingPrice && (

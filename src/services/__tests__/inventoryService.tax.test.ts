@@ -27,16 +27,16 @@ describe('Tax System Integration', () => {
   describe('Tax Rate Mapping for NV/UT States', () => {
     it('should validate NV state tax rate exists', () => {
       const transactionData = {
-        project_id: 'project-1',
-        transaction_date: '2023-01-01',
+        projectId: 'project-1',
+        transactionDate: '2023-01-01',
         source: 'Test Source',
-        transaction_type: 'Purchase',
-        payment_method: 'Credit Card',
+        transactionType: 'Purchase',
+        paymentMethod: 'Credit Card',
         amount: '108.38',
-        budget_category: 'Furnishings',
-        tax_state: 'NV' as const,
+        budgetCategory: 'Furnishings',
+        taxState: 'NV' as const,
         subtotal: '100.00',
-        created_by: 'test'
+        createdBy: 'test'
       }
 
       // Test that NV state has a configured tax rate
@@ -46,14 +46,14 @@ describe('Tax System Integration', () => {
 
     it('should compute tax rate correctly for Other state', async () => {
       const transactionData = {
-        project_id: 'project-1',
-        transaction_date: '2023-01-01',
+        projectId: 'project-1',
+        transactionDate: '2023-01-01',
         source: 'Test Source',
-        transaction_type: 'Purchase',
-        payment_method: 'Credit Card',
+        transactionType: 'Purchase',
+        paymentMethod: 'Credit Card',
         amount: '108.38',
-        budget_category: 'Furnishings',
-        tax_state: 'Other' as const,
+        budgetCategory: 'Furnishings',
+        taxState: 'Other' as const,
         subtotal: '100.00'
       }
 
@@ -67,14 +67,14 @@ describe('Tax System Integration', () => {
 
     it('should validate subtotal is required for Other state', async () => {
       const transactionData = {
-        project_id: 'project-1',
-        transaction_date: '2023-01-01',
+        projectId: 'project-1',
+        transactionDate: '2023-01-01',
         source: 'Test Source',
-        transaction_type: 'Purchase',
-        payment_method: 'Credit Card',
+        transactionType: 'Purchase',
+        paymentMethod: 'Credit Card',
         amount: '108.38',
-        budget_category: 'Furnishings',
-        tax_state: 'Other' as const
+        budgetCategory: 'Furnishings',
+        taxState: 'Other' as const
         // Missing subtotal
       }
 

@@ -30,21 +30,21 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
     const activeTransactions = transactions.filter(t =>
       (t.status || '').toLowerCase() !== 'canceled' &&
-      t.budget_category !== BudgetCategory.DESIGN_FEE
+      t.budgetCategory !== BudgetCategory.DESIGN_FEE
     )
 
     for (const transaction of activeTransactions) {
       console.log('BudgetProgress - Processing transaction:', {
-        id: transaction.transaction_id,
-        type: transaction.transaction_type,
-        budget_category: transaction.budget_category,
+        id: transaction.transactionId,
+        type: transaction.transactionType,
+        budgetCategory: transaction.budgetCategory,
         amount: transaction.amount
       })
 
       const transactionAmount = parseFloat(transaction.amount || '0')
       console.log('BudgetProgress - Transaction amount:', transactionAmount)
 
-      const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+      const multiplier = transaction.transactionType === 'Return' ? -1 : 1
       const finalAmount = transactionAmount * multiplier
       totalAmount += finalAmount
 
@@ -90,12 +90,12 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         if (label === BudgetCategory.DESIGN_FEE) {
           const designFeeReceived = transactions
             .filter(transaction =>
-              transaction.budget_category === BudgetCategory.DESIGN_FEE
+              transaction.budgetCategory === BudgetCategory.DESIGN_FEE
             )
             .reduce((total, transaction) => {
               const amount = parseFloat(transaction.amount || '0')
               // Apply transaction type multiplier: purchases add, returns subtract
-              const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+              const multiplier = transaction.transactionType === 'Return' ? -1 : 1
               return total + (amount * multiplier)
             }, 0)
 
@@ -113,16 +113,16 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
           const categoryTransactions = transactions.filter(transaction =>
             (transaction.status || '').toLowerCase() !== 'canceled' &&
-            transaction.budget_category === label
+            transaction.budgetCategory === label
           )
 
           console.log(`BudgetProgress - Category ${label}: Found ${categoryTransactions.length} transactions`)
 
           for (const transaction of categoryTransactions) {
             console.log(`BudgetProgress - Category ${label} - Processing transaction:`, {
-              id: transaction.transaction_id,
-              type: transaction.transaction_type,
-              budget_category: transaction.budget_category,
+              id: transaction.transactionId,
+              type: transaction.transactionType,
+              budgetCategory: transaction.budgetCategory,
               amount: transaction.amount
             })
 
@@ -131,7 +131,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
             console.log(`BudgetProgress - Category ${label} - Transaction amount:`, transactionAmount)
 
             // Apply transaction type multiplier: purchases add, returns subtract
-            const multiplier = transaction.transaction_type === 'Return' ? -1 : 1
+            const multiplier = transaction.transactionType === 'Return' ? -1 : 1
             const finalAmount = transactionAmount * multiplier
             categorySpent += finalAmount
 

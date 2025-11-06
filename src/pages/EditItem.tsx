@@ -433,7 +433,7 @@ export default function EditItem() {
                       <input
                         type="radio"
                         id={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`}
-                        name="payment_method"
+                        name="paymentMethod"
                         value={method}
                         checked={formData.paymentMethod === method}
                         onChange={(e) => {
