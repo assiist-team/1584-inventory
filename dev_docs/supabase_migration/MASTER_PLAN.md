@@ -90,7 +90,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Use SQL joins and relational queries
   - See: `08-account-service-migration.md`
 
-- [ ] **Task 3.3**: Inventory Service Migration
+- [x] **Task 3.3**: Inventory Service Migration
   - Migrate project operations
   - Migrate item operations
   - Migrate transaction operations
@@ -108,7 +108,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - See: `11-tax-presets-migration.md`
 
 ### Phase 4: Storage Migration
-- [ ] **Task 4.1**: Image Upload Service Migration
+- [x] **Task 4.1**: Image Upload Service Migration
   - Replace Firebase Storage with Supabase Storage
   - Update upload/download functions
   - Migrate progress tracking
@@ -116,7 +116,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - See: `12-image-service-migration.md`
 
 ### Phase 5: Security & Authorization
-- [ ] **Task 5.1**: Row Level Security Policies
+- [x] **Task 5.1**: Row Level Security Policies
   - Create RLS policies for all tables
   - Implement Postgres-based security policies
   - Test authorization logic
@@ -183,15 +183,15 @@ Since we're treating this as a new app (no data migration needed), we can:
 ### Phase 3: Database Migration
 - [x] Task 3.1: Core Database Service
 - [x] Task 3.2: Account Service Migration
-- [ ] Task 3.3: Inventory Service Migration
+- [x] Task 3.3: Inventory Service Migration
 - [x] Task 3.4: Business Profile Service Migration
 - [x] Task 3.5: Tax Presets Service Migration
 
 ### Phase 4: Storage Migration
-- [ ] Task 4.1: Image Upload Service Migration
+- [x] Task 4.1: Image Upload Service Migration
 
 ### Phase 5: Security & Authorization
-- [ ] Task 5.1: Row Level Security Policies
+- [x] Task 5.1: Row Level Security Policies
 - [ ] Task 5.2: Storage Policies
 
 ### Phase 6: Real-time Features

@@ -471,12 +471,31 @@ export class ImageUploadError extends Error {
 
 /**
  * Creates user-friendly error messages for common upload issues
+ * Handles both Firebase and Supabase storage errors
  */
 export function getUserFriendlyErrorMessage(error: any): string {
   if (error instanceof ImageUploadError) {
     return error.message
   }
 
+  // Handle Supabase storage errors (statusCode-based)
+  if (error?.statusCode) {
+    switch (error.statusCode) {
+      case 401:
+      case 403:
+        return 'You need to sign in to upload images. Please refresh the page and try again.'
+      case 413:
+        return 'File too large. Please upload a smaller image.'
+      case 404:
+        return 'Storage bucket not found. Please contact support.'
+      case 409:
+        return 'File already exists. Please try again with a different name.'
+      default:
+        return `Upload failed: ${error.message || 'Unknown error'}. Please try again.`
+    }
+  }
+
+  // Handle Firebase storage errors (code-based)
   if (error?.code) {
     switch (error.code) {
       case 'storage/unauthorized':
@@ -492,18 +511,27 @@ export function getUserFriendlyErrorMessage(error: any): string {
     }
   }
 
+  // Handle error messages (works for both Firebase and Supabase)
   if (error?.message) {
-    if (error.message.includes('timeout')) {
+    const message = error.message.toLowerCase()
+    
+    if (message.includes('timeout')) {
       return 'Upload timed out. Please try again with a smaller image or check your connection.'
     }
-    if (error.message.includes('network') || error.message.includes('offline')) {
+    if (message.includes('network') || message.includes('offline')) {
       return 'Network error. Please check your internet connection and try again.'
     }
-    if (error.message.includes('CORS')) {
+    if (message.includes('cors')) {
       return 'Access error. Please refresh the page and try again.'
     }
-    if (error.message.includes('permission') || error.message.includes('auth')) {
+    if (message.includes('permission') || message.includes('auth') || message.includes('unauthorized')) {
       return 'Permission error. Please sign in and try again.'
+    }
+    if (message.includes('quota') || message.includes('limit')) {
+      return 'Storage limit reached. Please contact support or delete some old images.'
+    }
+    if (message.includes('bucket') && message.includes('not found')) {
+      return 'Storage bucket not found. Please contact support.'
     }
   }
 
@@ -512,8 +540,16 @@ export function getUserFriendlyErrorMessage(error: any): string {
 
 /**
  * Determines if an error is retryable
+ * Handles both Firebase and Supabase storage errors
  */
 export function isRetryableError(error: any): boolean {
+  // Supabase errors with retryable status codes
+  if (error?.statusCode) {
+    const retryableStatusCodes = [408, 429, 500, 502, 503, 504]
+    return retryableStatusCodes.includes(error.statusCode)
+  }
+
+  // Firebase errors with retryable codes
   if (error?.code) {
     const retryableCodes = [
       'storage/retry-limit-exceeded',
@@ -523,14 +559,18 @@ export function isRetryableError(error: any): boolean {
     return retryableCodes.includes(error.code)
   }
 
+  // Check error message for retryable keywords
   if (error?.message) {
+    const message = error.message.toLowerCase()
     const retryableMessages = [
       'timeout',
       'network',
       'offline',
-      'connection'
+      'connection',
+      'server error',
+      'service unavailable'
     ]
-    return retryableMessages.some(msg => error.message.toLowerCase().includes(msg))
+    return retryableMessages.some(msg => message.includes(msg))
   }
 
   return false
@@ -538,8 +578,18 @@ export function isRetryableError(error: any): boolean {
 
 /**
  * Gets suggested actions for common errors
+ * Handles both Firebase and Supabase storage errors
  */
 export function getErrorAction(error: any): string {
+  // Supabase errors
+  if (error?.statusCode === 401 || error?.statusCode === 403) {
+    return 'Try refreshing the page to sign in again.'
+  }
+  if (error?.statusCode === 413) {
+    return 'Try uploading a smaller image file.'
+  }
+  
+  // Firebase errors
   if (error?.code === 'storage/unauthorized') {
     return 'Try refreshing the page to sign in again.'
   }
@@ -549,8 +599,17 @@ export function getErrorAction(error: any): string {
   if (error?.code === 'storage/invalid-format') {
     return 'Use JPEG, PNG, GIF, or WebP format images.'
   }
-  if (error?.message?.includes('network') || error?.message?.includes('timeout')) {
-    return 'Check your internet connection and try again.'
+  
+  // Generic error messages
+  if (error?.message) {
+    const message = error.message.toLowerCase()
+    if (message.includes('network') || message.includes('timeout')) {
+      return 'Check your internet connection and try again.'
+    }
+    if (message.includes('quota') || message.includes('limit')) {
+      return 'Contact support or delete some old images to free up space.'
+    }
   }
+  
   return 'Try again in a few moments.'
 }
