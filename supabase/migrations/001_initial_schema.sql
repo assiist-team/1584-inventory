@@ -2,7 +2,8 @@
 -- This migration creates all tables needed to replace Firestore collections
 
 -- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Use pgcrypto for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. Users table (no dependencies)
 CREATE TABLE users (

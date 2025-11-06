@@ -52,7 +52,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Set up database tables
   - See: `02-database-schema.md`
 
-- [ ] **Task 1.3**: Storage Bucket Configuration
+- [x] **Task 1.3**: Storage Bucket Configuration
   - Create Supabase storage buckets
   - Configure bucket policies
   - Set up CORS if needed
@@ -173,7 +173,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 ### Phase 1: Setup & Configuration
 - [x] Task 1.1: Supabase Project Setup
 - [x] Task 1.2: Database Schema Design
-- [ ] Task 1.3: Storage Bucket Configuration
+- [x] Task 1.3: Storage Bucket Configuration
 
 ### Phase 2: Authentication Migration
 - [ ] Task 2.1: Supabase Auth Client Setup

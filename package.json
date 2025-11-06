@@ -14,7 +14,9 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
     "firebase:deploy": "firebase deploy",
-    "firebase:setup-cors": "gsutil cors set cors.json gs://inventory-management-090999.appspot.com"
+    "firebase:setup-cors": "gsutil cors set cors.json gs://inventory-management-090999.appspot.com",
+    "setup:storage": "tsx scripts/setup-supabase-storage.ts",
+    "test:storage": "tsx scripts/test-supabase-storage.ts"
   },
   "vitest": {
     "setupFiles": [
@@ -63,6 +65,7 @@
     "jsdom": "^22.1.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
+    "tsx": "^4.7.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.8",
     "vite-plugin-pwa": "^1.0.3",
