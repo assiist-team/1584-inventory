@@ -21,6 +21,7 @@ function App() {
               <Layout>
                 <Suspense fallback={<LoadingSpinner />}>
                 <Routes>
+              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/" element={<Projects />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/settings" element={<Settings />} />
@@ -54,6 +55,7 @@ function App() {
 }
 
 // Lazy load pages for better performance
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ItemDetail = lazy(() => import('./pages/ItemDetail'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))
