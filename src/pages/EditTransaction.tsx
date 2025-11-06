@@ -46,19 +46,19 @@ export default function EditTransaction() {
   const [projectName, setProjectName] = useState<string>('')
 
   const [formData, setFormData] = useState<TransactionFormData>({
-    transaction_date: '',
+    transactionDate: '',
     source: '',
-    transaction_type: 'Purchase',
-    payment_method: '',
+    transactionType: 'Purchase',
+    paymentMethod: '',
     amount: '',
-    budget_category: 'Furnishings',
+    budgetCategory: 'Furnishings',
     notes: '',
     status: 'completed',
-    reimbursement_type: '',
-    trigger_event: 'Manual',
-    receipt_images: [],
-    other_images: [],
-    receipt_emailed: false
+    reimbursementType: '',
+    triggerEvent: 'Manual',
+    receiptImages: [],
+    otherImages: [],
+    receiptEmailed: false
   })
 
   // Tax form state
@@ -127,24 +127,24 @@ export default function EditTransaction() {
 
           // Use the transaction date directly for date input (convert Date object to YYYY-MM-DD string)
           setFormData({
-            transaction_date: toDateOnlyString(transaction.transaction_date) || '',
+            transactionDate: toDateOnlyString(transaction.transactionDate) || '',
             source: resolvedSource,
-            transaction_type: transaction.transaction_type,
-            payment_method: transaction.payment_method,
+            transactionType: transaction.transactionType,
+            paymentMethod: transaction.paymentMethod,
             amount: transaction.amount,
-            budget_category: transaction.budget_category || 'Furnishings',
+            budgetCategory: transaction.budgetCategory || 'Furnishings',
             notes: transaction.notes || '',
             status: transaction.status || 'completed',
-            reimbursement_type: transaction.reimbursement_type || '',
-            trigger_event: transaction.trigger_event || 'Manual',
-            receipt_images: [],
-            other_images: [],
-            receipt_emailed: transaction.receipt_emailed
+            reimbursementType: transaction.reimbursementType || '',
+            triggerEvent: transaction.triggerEvent || 'Manual',
+            receiptImages: [],
+            otherImages: [],
+            receiptEmailed: transaction.receiptEmailed
           })
 
           // Populate tax fields if present
-          if (transaction.tax_rate_preset) {
-            setTaxRatePreset(transaction.tax_rate_preset)
+          if (transaction.taxRatePreset) {
+            setTaxRatePreset(transaction.taxRatePreset)
           }
           setSubtotal(transaction.subtotal || '')
 
@@ -162,7 +162,7 @@ export default function EditTransaction() {
           // Handle legacy and new image fields for loading transaction data
           // Note: Legacy transaction_images is loaded but not stored in local state, receipt_images is the current field
 
-          const otherImages = transaction.other_images || []
+          const otherImages = transaction.otherImages || []
           setExistingOtherImages(Array.isArray(otherImages) ? otherImages : [])
 
           // Load transaction items
@@ -170,23 +170,23 @@ export default function EditTransaction() {
             const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
             console.log('Loaded transaction items:', transactionItems)
 
-            const transactionItemIds = transactionItems.map(item => item.item_id)
+            const transactionItemIds = transactionItems.map(item => item.itemId)
             console.log('Transaction item IDs:', transactionItemIds)
 
             const itemsWithDetails = await Promise.all(
               transactionItems.map(async (item) => {
-                console.log(`Loaded item ${item.item_id}:`, {
-                  id: item.item_id,
+                console.log(`Loaded item ${item.itemId}:`, {
+                  id: item.itemId,
                   description: item?.description || '',
-                  hasValidFormat: item.item_id.startsWith('I-') && item.item_id.length > 10
+                  hasValidFormat: item.itemId.startsWith('I-') && item.itemId.length > 10
                 })
 
                 return {
-                  id: item.item_id,
+                  id: item.itemId,
                   description: item?.description || '',
-                  price: item?.purchase_price?.toString() || '',
+                  price: item?.purchasePrice?.toString() || '',
                   sku: item?.sku || '',
-                  market_value: item?.market_value?.toString() || '',
+                  marketValue: item?.marketValue?.toString() || '',
                   notes: item?.notes || '',
                   imageFiles: [],
                   images: item?.images || []
@@ -194,9 +194,9 @@ export default function EditTransaction() {
               })
             )
             console.log('Loaded transaction items:', transactionItems.map(item => ({
-              id: item.item_id,
+              id: item.itemId,
               description: item.description,
-              isTempId: item.item_id.startsWith('temp-')
+              isTempId: item.itemId.startsWith('temp-')
             })))
             setItems(itemsWithDetails)
           } catch (itemError) {
@@ -225,8 +225,8 @@ export default function EditTransaction() {
     // TransactionType is optional
     // PaymentMethod is optional
 
-    if (!formData.budget_category?.trim()) {
-      newErrors.budget_category = 'Budget category is required'
+    if (!formData.budgetCategory?.trim()) {
+      newErrors.budgetCategory = 'Budget category is required'
     }
 
     if (!formData.amount.trim()) {
@@ -255,7 +255,7 @@ export default function EditTransaction() {
         console.log('All items before processing:', items.map(item => ({
           id: item.id,
           description: item.description,
-          price: item.purchase_price,
+          price: item.purchasePrice,
           sku: item.sku,
           isTempId: item.id.startsWith('temp-'),
           idFormat: item.id.startsWith('I-') ? 'database' : item.id.startsWith('temp-') ? 'temp' : 'unknown'
@@ -291,11 +291,11 @@ export default function EditTransaction() {
         for (const item of existingItems) {
           await unifiedItemsService.updateItem(currentAccountId, item.id, {
             description: item.description,
-            purchase_price: item.purchase_price,
+            purchasePrice: item.purchasePrice,
             sku: item.sku,
-            market_value: item.market_value,
+            marketValue: item.marketValue,
             notes: item.notes,
-            transaction_id: transactionId
+            transactionId: transactionId
           })
         }
 
@@ -306,18 +306,18 @@ export default function EditTransaction() {
             newItems.map(async (item) => {
               const itemData = {
                 ...item,
-                project_id: projectId,
-                transaction_id: transactionId,
-                date_created: formData.transaction_date,
+                projectId: projectId,
+                transactionId: transactionId,
+                dateCreated: formData.transactionDate,
                 source: formData.source,
-                inventory_status: 'available' as const,
-                payment_method: 'Unknown',
-                qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                inventoryStatus: 'available' as const,
+                paymentMethod: 'Unknown',
+                qrKey: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
                 bookmark: false,
                 sku: item.sku || '',
-                purchase_price: item.purchase_price || '',
-                project_price: item.project_price || '',
-                market_value: item.market_value || '',
+                purchasePrice: item.purchasePrice || '',
+                projectPrice: item.projectPrice || '',
+                marketValue: item.marketValue || '',
                 notes: item.notes || '',
                 space: item.space || '',
                 disposition: 'keep'
@@ -343,10 +343,10 @@ export default function EditTransaction() {
 
       // Upload other images
       let otherImages: TransactionImage[] = [...existingOtherImages]
-      if (formData.other_images && formData.other_images.length > 0) {
+      if (formData.otherImages && formData.otherImages.length > 0) {
         try {
           const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
-            formData.other_images,
+            formData.otherImages,
             projectName,
             transactionId,
             handleImageUploadProgress
@@ -357,7 +357,7 @@ export default function EditTransaction() {
           otherImages = [...existingOtherImages, ...newOtherImages]
         } catch (error) {
           console.error('Error uploading other images:', error)
-          setErrors({ other_images: 'Failed to upload other images. Please try again.' })
+          setErrors({ otherImages: 'Failed to upload other images. Please try again.' })
           setIsSubmitting(false)
           setIsUploadingImages(false)
           return
@@ -368,12 +368,12 @@ export default function EditTransaction() {
       }
 
       // Update transaction with new data and images
-      const { other_images, receipt_images, transaction_images, ...formDataWithoutImages } = formData
+      const { otherImages: _, receiptImages: __, transactionImages: ___, ...formDataWithoutImages } = formData
       const updateData = {
         ...formDataWithoutImages,
-        other_images: otherImages,
+        otherImages: otherImages,
         // Include tax fields only when a tax rate preset is explicitly selected.
-        ...(taxRatePreset ? { tax_rate_preset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
+        ...(taxRatePreset ? { taxRatePreset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
       await transactionService.updateTransaction(currentAccountId, projectId, transactionId, updateData)
@@ -387,16 +387,16 @@ export default function EditTransaction() {
     }
   }
 
-  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_rate_preset' | 'subtotal'>, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'taxRatePreset' | 'subtotal'>, value: string | boolean | File[]) => {
     setFormData(prev => {
       const newData = { ...prev, [field]: value }
 
       // Apply business rules for status and reimbursement type
-      if (field === 'status' && value === 'completed' && prev.reimbursement_type) {
+      if (field === 'status' && value === 'completed' && prev.reimbursementType) {
         // If setting status to completed, clear reimbursement type by setting to empty string
         // The service layer will convert this to deleteField()
-        newData.reimbursement_type = ''
-      } else if (field === 'reimbursement_type' && value && prev.status === 'completed') {
+        newData.reimbursementType = ''
+      } else if (field === 'reimbursementType' && value && prev.status === 'completed') {
         // If setting reimbursement type while status is completed, change status to pending
         newData.status = 'pending'
       }
@@ -536,10 +536,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="budget_design_fee"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Design Fee"
-                  checked={formData.budget_category === 'Design Fee'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Design Fee'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
@@ -631,8 +631,8 @@ export default function EditTransaction() {
                 </label>
               </div>
             </div>
-            {errors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
+            {errors.budgetCategory && (
+              <p className="mt-1 text-sm text-red-600">{errors.budgetCategory}</p>
             )}
           </div>
 
@@ -646,10 +646,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="type_purchase"
-                  name="transaction_type"
+                  name="transactionType"
                   value="Purchase"
-                  checked={formData.transaction_type === 'Purchase'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  checked={formData.transactionType === 'Purchase'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
@@ -685,8 +685,8 @@ export default function EditTransaction() {
                 </label>
               </div>
             </div>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            {errors.transactionType && (
+              <p className="mt-1 text-sm text-red-600">{errors.transactionType}</p>
             )}
           </div>
 
@@ -754,10 +754,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="method_client_card"
-                  name="payment_method"
+                  name="paymentMethod"
                   value="Client Card"
-                  checked={formData.payment_method === 'Client Card'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  checked={formData.paymentMethod === 'Client Card'}
+                  onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
@@ -779,8 +779,8 @@ export default function EditTransaction() {
                 </label>
               </div>
             </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            {errors.paymentMethod && (
+              <p className="mt-1 text-sm text-red-600">{errors.paymentMethod}</p>
             )}
           </div>
 
@@ -795,10 +795,10 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_none"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value=""
-                  checked={!formData.reimbursement_type}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={!formData.reimbursementType}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_none" className="ml-2 block text-sm text-gray-900">
@@ -811,8 +811,8 @@ export default function EditTransaction() {
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
                   value={CLIENT_OWES_COMPANY}
-                  checked={formData.reimbursement_type === CLIENT_OWES_COMPANY}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={formData.reimbursementType === CLIENT_OWES_COMPANY}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
@@ -825,8 +825,8 @@ export default function EditTransaction() {
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
                   value={COMPANY_OWES_CLIENT}
-                  checked={formData.reimbursement_type === COMPANY_OWES_CLIENT}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={formData.reimbursementType === COMPANY_OWES_CLIENT}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
@@ -834,8 +834,8 @@ export default function EditTransaction() {
                 </label>
               </div>
             </div>
-            {errors.reimbursement_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.reimbursement_type}</p>
+            {errors.reimbursementType && (
+              <p className="mt-1 text-sm text-red-600">{errors.reimbursementType}</p>
             )}
           </div>
 
@@ -849,9 +849,9 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="receipt_yes"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === true}
-                  onChange={() => handleInputChange('receipt_emailed', true)}
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === true}
+                  onChange={() => handleInputChange('receiptEmailed', true)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
@@ -862,9 +862,9 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="receipt_no"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === false}
-                  onChange={() => handleInputChange('receipt_emailed', false)}
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === false}
+                  onChange={() => handleInputChange('receiptEmailed', false)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
@@ -967,23 +967,23 @@ export default function EditTransaction() {
 
           {/* Transaction Date */}
           <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="transactionDate" className="block text-sm font-medium text-gray-700">
               Transaction Date
             </label>
             <input
               type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
+              id="transactionDate"
+              value={formData.transactionDate}
               onChange={(e) => {
                 // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
+                handleInputChange('transactionDate', e.target.value)
               }}
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+                errors.transactionDate ? 'border-red-300' : 'border-gray-300'
               }`}
             />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            {errors.transactionDate && (
+              <p className="mt-1 text-sm text-red-600">{errors.transactionDate}</p>
             )}
           </div>
 
@@ -1013,14 +1013,14 @@ export default function EditTransaction() {
               Other Images
             </h3>
             <ImageUpload
-              onImagesChange={(files) => handleInputChange('other_images', files)}
+              onImagesChange={(files) => handleInputChange('otherImages', files)}
               maxImages={5}
               maxFileSize={10}
               disabled={isSubmitting || isUploadingImages}
               className="mb-2"
             />
-            {errors.other_images && (
-              <p className="mt-1 text-sm text-red-600">{errors.other_images}</p>
+            {errors.otherImages && (
+              <p className="mt-1 text-sm text-red-600">{errors.otherImages}</p>
             )}
           </div>
 

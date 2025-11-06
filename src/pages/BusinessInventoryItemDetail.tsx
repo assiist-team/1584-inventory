@@ -48,11 +48,11 @@ export default function BusinessInventoryItemDetail() {
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
-      const { item_id, date_created, last_updated, ...itemData } = originalItem
+      const { itemId, dateCreated, lastUpdated, ...itemData } = originalItem
       return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
-        inventory_status: 'available',
-        project_id: null,
+        inventoryStatus: 'available',
+        projectId: null,
         disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
       })
     }
@@ -105,7 +105,7 @@ export default function BusinessInventoryItemDetail() {
     const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
       currentAccountId,
       (items) => {
-        const updatedItem = items.find(i => i.item_id === id)
+        const updatedItem = items.find(i => i.itemId === id)
         if (updatedItem) {
           setItem(updatedItem)
         }
@@ -192,7 +192,7 @@ export default function BusinessInventoryItemDetail() {
 
   // Image handling functions
   const handleSelectFromGallery = async () => {
-    if (!item || !item.item_id) return
+    if (!item || !item.itemId) return
 
     try {
       setIsUploadingImage(true)
@@ -228,12 +228,12 @@ export default function BusinessInventoryItemDetail() {
   }
 
   const processImageUpload = async (file: File, allFiles?: File[]) => {
-    if (!item?.item_id) return
+    if (!item?.itemId) return
 
     const uploadResult = await ImageUploadService.uploadItemImage(
       file,
       'Business Inventory',
-      item.item_id
+      item.itemId
     )
 
     const newImage = {
@@ -251,7 +251,7 @@ export default function BusinessInventoryItemDetail() {
     const currentImages = item.images || []
     const updatedImages = [...currentImages, newImage]
 
-    await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
+    await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
 
     // Show success notification on the last file
     if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
@@ -261,12 +261,12 @@ export default function BusinessInventoryItemDetail() {
   }
 
   const handleRemoveImage = async (imageUrl: string) => {
-    if (!item?.item_id || !currentAccountId) return
+    if (!item?.itemId || !currentAccountId) return
 
     try {
       // Update in database
       const updatedImages = item.images?.filter(img => img.url !== imageUrl) || []
-      await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
 
       // Update local state
       setItem({ ...item, images: updatedImages })
@@ -277,7 +277,7 @@ export default function BusinessInventoryItemDetail() {
   }
 
   const handleSetPrimaryImage = async (imageUrl: string) => {
-    if (!item?.item_id || !currentAccountId) return
+    if (!item?.itemId || !currentAccountId) return
 
     try {
       // Update in database
@@ -285,7 +285,7 @@ export default function BusinessInventoryItemDetail() {
         ...img,
         isPrimary: img.url === imageUrl
       })) || []
-      await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
 
       // Update local state
       setItem({ ...item, images: updatedImages })
@@ -339,7 +339,7 @@ export default function BusinessInventoryItemDetail() {
           </Link>
 
           <div className="flex flex-wrap gap-2 sm:space-x-2">
-            {item.inventory_status === 'available' && (
+            {item.inventoryStatus === 'available' && (
               <button
                 onClick={openAllocationModal}
                 disabled={isUpdating}
@@ -357,7 +357,7 @@ export default function BusinessInventoryItemDetail() {
               <Edit className="h-4 w-4" />
             </Link>
             <button
-              onClick={() => item && duplicateItem(item.item_id)}
+              onClick={() => item && duplicateItem(item.itemId)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Duplicate Item"
             >
@@ -437,27 +437,27 @@ export default function BusinessInventoryItemDetail() {
                 </div>
               )}
 
-              {item.purchase_price && (
+              {item.purchasePrice && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchasePrice}</dd>
                 </div>
               )}
 
-              {item.project_price && (
+              {item.projectPrice && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Project Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the client is charged</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.project_price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.projectPrice}</dd>
                 </div>
               )}
 
-              {item.market_value && (
+              {item.marketValue && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Market Value</dt>
                   <p className="text-xs text-gray-500 mt-1">The fair market value of the item</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.market_value}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.marketValue}</dd>
                 </div>
               )}
 
@@ -465,22 +465,22 @@ export default function BusinessInventoryItemDetail() {
                 <dt className="text-sm font-medium text-gray-500">Status</dt>
                 <dd className="mt-1">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    item.inventory_status === 'available'
+                    item.inventoryStatus === 'available'
                       ? 'bg-green-100 text-green-800'
-                      : item.inventory_status === 'allocated'
+                      : item.inventoryStatus === 'allocated'
                       ? 'bg-yellow-100 text-yellow-800'
                       : 'bg-red-100 text-red-800'
                   }`}>
-                    {item.inventory_status === 'available' ? 'Available' :
-                     item.inventory_status === 'allocated' ? 'Allocated' : 'Sold'}
+                    {item.inventoryStatus === 'available' ? 'Available' :
+                     item.inventoryStatus === 'allocated' ? 'Allocated' : 'Sold'}
                   </span>
                 </dd>
               </div>
 
-              {item.business_inventory_location && (
+              {item.businessInventoryLocation && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Location</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{item.business_inventory_location}</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{item.businessInventoryLocation}</dd>
                 </div>
               )}
 
@@ -500,50 +500,50 @@ export default function BusinessInventoryItemDetail() {
               <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Date Added</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.dateCreated)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Last Updated</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.last_updated)}</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.lastUpdated)}</dd>
                 </div>
 
-                {item.project_id && (
+                {item.projectId && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.project_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={`/project/${item.projectId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
-                        {formatLinkedProjectText(item.project_id)}
+                        {formatLinkedProjectText(item.projectId)}
                       </Link>
                     </dd>
                   </div>
                 )}
 
-                {item.transaction_id && (
+                {item.transactionId && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.project_id}/transaction/${item.transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={`/project/${item.projectId}/transaction/${item.transactionId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
-                        {item.transaction_id}
+                        {item.transactionId}
                       </Link>
                     </dd>
                   </div>
                 )}
 
-                {item.transaction_id && (
+                {item.transactionId && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Original Transaction</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.project_id}/transaction/${item.transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={`/project/${item.projectId}/transaction/${item.transactionId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
-                        {item.transaction_id}
+                        {item.transactionId}
                       </Link>
                     </dd>
                   </div>

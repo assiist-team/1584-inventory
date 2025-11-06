@@ -27,9 +27,9 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       id: stableTempId,
       description: '',
       sku: '',
-      purchase_price: '',
-      project_price: '',
-      market_value: '',
+      purchasePrice: '',
+      projectPrice: '',
+      marketValue: '',
       space: '',
       notes: ''
     }
@@ -52,9 +52,9 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
         id: item.id,
         description: item.description,
         sku: item.sku || '',
-        purchase_price: item.purchase_price || '',
-        project_price: item.project_price || '',
-        market_value: item.market_value || '',
+        purchasePrice: item.purchasePrice || '',
+        projectPrice: item.projectPrice || '',
+        marketValue: item.marketValue || '',
         space: item.space || '',
         notes: item.notes || ''
       })
@@ -136,11 +136,11 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
       newErrors.description = 'Description is required'
     }
 
-    if (formData.purchase_price && (isNaN(Number(formData.purchase_price)) || Number(formData.purchase_price) <= 0)) {
-      newErrors.purchase_price = 'Purchase price must be a positive number'
+    if (formData.purchasePrice && (isNaN(Number(formData.purchasePrice)) || Number(formData.purchasePrice) <= 0)) {
+      newErrors.purchasePrice = 'Purchase price must be a positive number'
     }
-    if (formData.project_price && (isNaN(Number(formData.project_price)) || Number(formData.project_price) <= 0)) {
-      newErrors.project_price = 'Project price must be a positive number'
+    if (formData.projectPrice && (isNaN(Number(formData.projectPrice)) || Number(formData.projectPrice) <= 0)) {
+      newErrors.projectPrice = 'Project price must be a positive number'
     }
 
     setErrors(newErrors)
@@ -167,7 +167,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
 
   const handleInputChange = (field: keyof TransactionItemFormData, value: string) => {
     // For price-related fields, ensure they are valid numbers or empty
-    if (field === 'purchase_price' || field === 'project_price') {
+    if (field === 'purchasePrice' || field === 'projectPrice') {
       if (value !== '' && (isNaN(Number(value)) || Number(value) < 0)) {
         return // Don't update if invalid
       }
@@ -266,7 +266,7 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
 
         {/* Purchase Price */}
         <div>
-          <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-700">
             Purchase Price
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
@@ -276,23 +276,23 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
             <input
               type="number"
               step="0.01"
-              id="purchase_price"
-              value={formData.purchase_price || ''}
-              onChange={(e) => handleInputChange('purchase_price', e.target.value)}
+              id="purchasePrice"
+              value={formData.purchasePrice || ''}
+              onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
               placeholder="0.00"
               className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.purchase_price ? 'border-red-300' : 'border-gray-300'
+                errors.purchasePrice ? 'border-red-300' : 'border-gray-300'
               }`}
             />
           </div>
-          {errors.purchase_price && (
-            <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
+          {errors.purchasePrice && (
+            <p className="mt-1 text-sm text-red-600">{errors.purchasePrice}</p>
           )}
         </div>
 
         {/* Project Price */}
         <div>
-          <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="projectPrice" className="block text-sm font-medium text-gray-700">
             Project Price
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
@@ -302,23 +302,23 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
             <input
               type="number"
               step="0.01"
-              id="project_price"
-              value={formData.project_price || ''}
-              onChange={(e) => handleInputChange('project_price', e.target.value)}
+              id="projectPrice"
+              value={formData.projectPrice || ''}
+              onChange={(e) => handleInputChange('projectPrice', e.target.value)}
               placeholder="0.00"
               className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.project_price ? 'border-red-300' : 'border-gray-300'
+                errors.projectPrice ? 'border-red-300' : 'border-gray-300'
               }`}
             />
           </div>
-          {errors.project_price && (
-            <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
+          {errors.projectPrice && (
+            <p className="mt-1 text-sm text-red-600">{errors.projectPrice}</p>
           )}
         </div>
 
         {/* Market Value */}
         <div>
-          <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="marketValue" className="block text-sm font-medium text-gray-700">
             Market Value
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
@@ -327,17 +327,17 @@ export default function TransactionItemForm({ item, onSave, onCancel, isEditing 
             </div>
             <input
               type="text"
-              id="market_value"
-              value={formData.market_value}
-              onChange={(e) => handleInputChange('market_value', e.target.value)}
+              id="marketValue"
+              value={formData.marketValue}
+              onChange={(e) => handleInputChange('marketValue', e.target.value)}
               placeholder="0.00"
               className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.market_value ? 'border-red-300' : 'border-gray-300'
+                errors.marketValue ? 'border-red-300' : 'border-gray-300'
               }`}
             />
           </div>
-          {errors.market_value && (
-            <p className="mt-1 text-sm text-red-600">{errors.market_value}</p>
+          {errors.marketValue && (
+            <p className="mt-1 text-sm text-red-600">{errors.marketValue}</p>
           )}
         </div>
 

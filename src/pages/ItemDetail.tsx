@@ -77,7 +77,7 @@ export default function ItemDetail() {
             const fetchedItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
 
             if (fetchedItem) {
-              console.log('✅ Business inventory item loaded successfully:', fetchedItem.item_id)
+              console.log('✅ Business inventory item loaded successfully:', fetchedItem.itemId)
               setItem(fetchedItem)
               setProjectName('Business Inventory') // Set a default project name for UI display
             } else {
@@ -92,7 +92,7 @@ export default function ItemDetail() {
             ])
 
             if (fetchedItem) {
-              console.log('✅ Item loaded successfully:', fetchedItem.item_id)
+              console.log('✅ Item loaded successfully:', fetchedItem.itemId)
               setItem(fetchedItem)
             } else {
               console.error('❌ Item not found in project:', projectId, 'with ID:', actualItemId)
@@ -132,7 +132,7 @@ export default function ItemDetail() {
       currentProjectId,
       (items) => {
         console.log('Real-time items update:', items.length, 'items')
-        const updatedItem = items.find(item => item.item_id === actualItemId)
+        const updatedItem = items.find(item => item.itemId === actualItemId)
         if (updatedItem) {
           console.log('Found updated item with', updatedItem.images?.length || 0, 'images')
           setItem(updatedItem)
@@ -185,7 +185,7 @@ export default function ItemDetail() {
     if (!item || !currentAccountId) return
 
     try {
-      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         bookmark: !item.bookmark
       })
       setItem({ ...item, bookmark: !item.bookmark })
@@ -195,7 +195,7 @@ export default function ItemDetail() {
   }
 
   const updateDisposition = async (newDisposition: string) => {
-    console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.item_id)
+    console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.itemId)
 
     if (!item || !currentAccountId) {
       console.error('❌ No item available for disposition update')
@@ -206,7 +206,7 @@ export default function ItemDetail() {
 
     try {
       // Update the disposition in the database first
-      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         disposition: newDisposition
       })
       console.log('💾 Database updated successfully')
@@ -217,24 +217,24 @@ export default function ItemDetail() {
 
       // If disposition is set to 'inventory', trigger deallocation process
       if (newDisposition === 'inventory') {
-        console.log('🚀 Starting deallocation process for item:', item.item_id)
+        console.log('🚀 Starting deallocation process for item:', item.itemId)
         try {
           await integrationService.handleItemDeallocation(
             currentAccountId,
-            item.item_id,
-            item.project_id || '',
+            item.itemId,
+            item.projectId || '',
             newDisposition
           )
           console.log('✅ Deallocation completed successfully')
           // Refresh the item data after deallocation
-          const updatedItem = await unifiedItemsService.getItemById(currentAccountId, item.item_id)
+          const updatedItem = await unifiedItemsService.getItemById(currentAccountId, item.itemId)
           if (updatedItem) {
             setItem(updatedItem)
           }
         } catch (deallocationError) {
           console.error('❌ Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
-          await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
+          await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
             disposition: item.disposition // Revert to previous disposition
           })
           setItem({ ...item, disposition: item.disposition })
@@ -248,7 +248,7 @@ export default function ItemDetail() {
   }
 
   const toggleDispositionMenu = () => {
-    console.log('🖱️ toggleDispositionMenu called, current state:', openDispositionMenu, 'item:', item?.item_id)
+    console.log('🖱️ toggleDispositionMenu called, current state:', openDispositionMenu, 'item:', item?.itemId)
     setOpenDispositionMenu(!openDispositionMenu)
   }
 
@@ -278,7 +278,7 @@ export default function ItemDetail() {
     }
 
     try {
-      await unifiedItemsService.deleteItem(currentAccountId, item.item_id)
+      await unifiedItemsService.deleteItem(currentAccountId, item.itemId)
       navigate(isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Failed to delete item:', error)
@@ -301,7 +301,7 @@ export default function ItemDetail() {
       const uploadResults = await ImageUploadService.uploadMultipleItemImages(
         files,
         projectName || 'Business Inventory',
-        item.item_id,
+        item.itemId,
         (fileIndex, progress) => {
           // Show progress for current file being uploaded
           const overallProgress = Math.round(((fileIndex + progress.percentage / 100) / files.length) * 100)
@@ -334,7 +334,7 @@ export default function ItemDetail() {
 
       if (projectId && currentAccountId) {
         console.log('Updating item in database with multiple new images')
-        await unifiedItemsService.updateItem(currentAccountId, item.item_id, { images: updatedImages })
+        await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
       }
 
       // Update local state
@@ -391,7 +391,7 @@ export default function ItemDetail() {
 
     try {
       // Remove from database
-      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         images: item.images?.filter(img => img.url !== imageUrl) || []
       })
 
@@ -411,7 +411,7 @@ export default function ItemDetail() {
 
     try {
       // Update in database
-      await unifiedItemsService.updateItem(currentAccountId, item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         images: item.images?.map(img => ({
           ...img,
           isPrimary: img.url === imageUrl
@@ -487,8 +487,8 @@ export default function ItemDetail() {
 
             <Link
               to={isBusinessInventoryItem
-                ? `/business-inventory/${item.item_id}/edit?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
-                : `/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+                ? `/business-inventory/${item.itemId}/edit?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+                : `/project/${projectId}/edit-item/${item.itemId}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
               }
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
@@ -497,7 +497,7 @@ export default function ItemDetail() {
             </Link>
 
             <button
-              onClick={() => duplicateItem(item.item_id)}
+              onClick={() => duplicateItem(item.itemId)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Duplicate Item"
             >
@@ -624,41 +624,41 @@ export default function ItemDetail() {
                 </div>
               )}
 
-              {item.purchase_price && (
+              {item.purchasePrice && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchasePrice}</dd>
                 </div>
               )}
 
-              {item.project_price && (
+              {item.projectPrice && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Project Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the client is charged</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.project_price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.projectPrice}</dd>
                 </div>
               )}
 
-              {item.market_value && (
+              {item.marketValue && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Market Value</dt>
                   <p className="text-xs text-gray-500 mt-1">The fair market value of the item</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.market_value}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.marketValue}</dd>
                 </div>
               )}
-              {item.tax_rate_pct !== undefined && (
+              {item.taxRatePct !== undefined && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Tax Rate</dt>
                   <p className="text-xs text-gray-500 mt-1">Applied tax rate for this item</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">{item.tax_rate_pct}%</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{item.taxRatePct}%</dd>
                 </div>
               )}
 
-              {item.payment_method && (
+              {item.paymentMethod && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{item.payment_method}</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{item.paymentMethod}</dd>
                 </div>
               )}
 
@@ -682,22 +682,22 @@ export default function ItemDetail() {
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.dateCreated)}</dd>
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
                     <Link
                       to={isBusinessInventoryItem
-                        ? buildContextUrl(`/business-inventory/transaction/${item.transaction_id}`)
-                        : buildContextUrl(`/project/${projectId}/transaction/${item.transaction_id}`)
+                        ? buildContextUrl(`/business-inventory/transaction/${item.transactionId}`)
+                        : buildContextUrl(`/project/${projectId}/transaction/${item.transactionId}`)
                       }
                     className="text-primary-600 hover:text-primary-800 underline"
                     >
-                      {item.transaction_id
-                        ? item.transaction_id.startsWith('INV_PURCHASE')
+                      {item.transactionId
+                        ? item.transactionId.startsWith('INV_PURCHASE')
                           ? 'INV_PURCHASE...'
-                          : (item.transaction_id.length > 12 ? `${item.transaction_id.slice(0, 12)}...` : item.transaction_id)
+                          : (item.transactionId.length > 12 ? `${item.transactionId.slice(0, 12)}...` : item.transactionId)
                         : ''}
                     </Link>
                   </dd>

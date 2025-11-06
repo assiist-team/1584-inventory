@@ -9,8 +9,8 @@ import { useAccount } from '@/contexts/AccountContext'
 
 // Canonical transaction title for display only
 const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
+  if (transaction.transactionId?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
   return transaction.source
 }
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
@@ -85,9 +85,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     // Apply reimbursement type filter based on filter mode
     if (filterMode !== 'all') {
       if (filterMode === 'we-owe') {
-        filtered = filtered.filter(t => t.reimbursement_type === COMPANY_OWES_CLIENT)
+        filtered = filtered.filter(t => t.reimbursementType === COMPANY_OWES_CLIENT)
       } else if (filterMode === 'client-owes') {
-        filtered = filtered.filter(t => t.reimbursement_type === CLIENT_OWES_COMPANY)
+        filtered = filtered.filter(t => t.reimbursementType === CLIENT_OWES_COMPANY)
       }
     }
 
@@ -96,7 +96,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(t =>
         t.source?.toLowerCase().includes(query) ||
-        t.transaction_type?.toLowerCase().includes(query) ||
+        t.transactionType?.toLowerCase().includes(query) ||
         t.notes?.toLowerCase().includes(query)
       )
     }
@@ -250,9 +250,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
             {filteredTransactions.map((transaction) => (
-              <li key={transaction.transaction_id} className="relative">
+              <li key={transaction.transactionId} className="relative">
                 <Link
-                  to={`/project/${projectId}/transaction/${transaction.transaction_id}`}
+                  to={`/project/${projectId}/transaction/${transaction.transactionId}`}
                   className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
                   <div className="px-4 py-4 sm:px-6">
@@ -264,37 +264,37 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                         </h3>
                       </div>
                       <div className="flex items-center flex-wrap gap-2">
-                        {transaction.budget_category && (
+                        {transaction.budgetCategory && (
                           <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                            transaction.budget_category === 'Design Fee'
+                            transaction.budgetCategory === 'Design Fee'
                               ? 'bg-amber-100 text-amber-800'
-                              : transaction.budget_category === 'Furnishings'
+                              : transaction.budgetCategory === 'Furnishings'
                               ? 'bg-yellow-100 text-yellow-800'
-                              : transaction.budget_category === 'Property Management'
+                              : transaction.budgetCategory === 'Property Management'
                               ? 'bg-orange-100 text-orange-800'
-                              : transaction.budget_category === 'Kitchen'
+                              : transaction.budgetCategory === 'Kitchen'
                               ? 'bg-amber-200 text-amber-900'
-                              : transaction.budget_category === 'Install'
+                              : transaction.budgetCategory === 'Install'
                               ? 'bg-yellow-200 text-yellow-900'
-                              : transaction.budget_category === 'Storage & Receiving'
+                              : transaction.budgetCategory === 'Storage & Receiving'
                               ? 'bg-orange-200 text-orange-900'
-                              : transaction.budget_category === 'Fuel'
+                              : transaction.budgetCategory === 'Fuel'
                               ? 'bg-amber-300 text-amber-900'
                               : 'bg-gray-100 text-gray-800'
                           }`}>
-                            {transaction.budget_category}
+                            {transaction.budgetCategory}
                           </span>
                         )}
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
-                          transaction.transaction_type === 'Purchase'
+                          transaction.transactionType === 'Purchase'
                             ? 'bg-green-100 text-green-800'
-                            : transaction.transaction_type === 'Return'
+                            : transaction.transactionType === 'Return'
                             ? 'bg-red-100 text-red-800'
-                            : transaction.transaction_type === 'To Inventory'
+                            : transaction.transactionType === 'To Inventory'
                             ? 'bg-primary-100 text-primary-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {transaction.transaction_type}
+                          {transaction.transactionType}
                         </span>
 
                       </div>
@@ -306,9 +306,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                       <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                         <span className="font-medium text-gray-700">{formatCurrency(transaction.amount)}</span>
                         <span className="hidden sm:inline">•</span>
-                        <span className="font-medium text-gray-700 capitalize">{transaction.payment_method}</span>
+                        <span className="font-medium text-gray-700 capitalize">{transaction.paymentMethod}</span>
                         <span className="hidden sm:inline">•</span>
-                        <span className="font-medium text-gray-700">{formatDate(transaction.transaction_date)}</span>
+                        <span className="font-medium text-gray-700">{formatDate(transaction.transactionDate)}</span>
                       </div>
 
                       {/* Notes */}

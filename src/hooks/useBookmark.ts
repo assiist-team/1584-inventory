@@ -15,7 +15,7 @@ export function useBookmark<T extends BookmarkableItem>({
 }: UseBookmarkOptions<T>) {
   const toggleBookmark = useCallback(async (itemId: string) => {
     try {
-      const item = items.find(item => item.item_id === itemId)
+      const item = items.find(item => item.itemId === itemId)
       if (!item) return
 
       const newBookmarkState = !item.bookmark
@@ -26,7 +26,7 @@ export function useBookmark<T extends BookmarkableItem>({
       // Update local state optimistically
       setItems(prevItems =>
         prevItems.map(item =>
-          item.item_id === itemId
+          item.itemId === itemId
             ? { ...item, bookmark: newBookmarkState }
             : item
         )

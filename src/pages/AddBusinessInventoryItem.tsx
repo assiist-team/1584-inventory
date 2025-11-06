@@ -18,10 +18,10 @@ import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/
 // Get canonical transaction title for display
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
+  if (transaction.transactionId?.startsWith('INV_SALE_')) {
     return COMPANY_INVENTORY_SALE
   }
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) {
     return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
@@ -73,21 +73,21 @@ export default function AddBusinessInventoryItem() {
     description: string
     source: string
     sku: string
-    purchase_price: string
-    project_price: string
-    market_value: string
+    purchasePrice: string
+    projectPrice: string
+    marketValue: string
     notes: string
-    business_inventory_location: string
+    businessInventoryLocation: string
     selectedTransactionId: string
   }>({
     description: '',
     source: '',
     sku: '',
-    purchase_price: '',
-    project_price: '',
-    market_value: '',
+    purchasePrice: '',
+    projectPrice: '',
+    marketValue: '',
     notes: '',
-    business_inventory_location: '',
+    businessInventoryLocation: '',
     selectedTransactionId: ''
   })
 
@@ -118,7 +118,7 @@ export default function AddBusinessInventoryItem() {
         allTransactions.push(...inventoryRelatedTransactions)
 
         // Sort by creation date, newest first
-        allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        allTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         setTransactions(allTransactions)
       } catch (error) {
         console.error('Error fetching transactions:', error)
@@ -140,12 +140,12 @@ export default function AddBusinessInventoryItem() {
     }
   }, [formData.source])
 
-  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
+  // Auto-fill projectPrice when purchasePrice is set and projectPrice is empty and hasn't been manually edited
   useEffect(() => {
-    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
+    if (formData.purchasePrice && !formData.projectPrice && !projectPriceEditedRef.current) {
+      setFormData(prev => ({ ...prev, projectPrice: formData.purchasePrice }))
     }
-  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+  }, [formData.purchasePrice]) // Only depend on purchasePrice, not projectPrice
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -171,14 +171,21 @@ export default function AddBusinessInventoryItem() {
 
     try {
       const itemData = {
-        ...formData,
-        qr_key: `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        description: formData.description,
+        source: formData.source,
+        sku: formData.sku,
+        purchasePrice: formData.purchasePrice,
+        projectPrice: formData.projectPrice,
+        marketValue: formData.marketValue,
+        notes: formData.notes,
+        businessInventoryLocation: formData.businessInventoryLocation,
+        qrKey: `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         bookmark: false,
-        transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
-        inventory_status: 'available' as const,
-        payment_method: 'Cash', // Default payment method for business inventory
-        date_created: new Date().toISOString(),
-        last_updated: new Date().toISOString(),
+        transactionId: formData.selectedTransactionId || '', // Use selected transaction or empty string
+        inventoryStatus: 'available' as const,
+        paymentMethod: 'Cash', // Default payment method for business inventory
+        dateCreated: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
@@ -199,8 +206,8 @@ export default function AddBusinessInventoryItem() {
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
-    // Mark project_price as manually edited if user is editing it
-    if (field === 'project_price') {
+    // Mark projectPrice as manually edited if user is editing it
+    if (field === 'projectPrice') {
       projectPriceEditedRef.current = true
     }
 
@@ -211,7 +218,7 @@ export default function AddBusinessInventoryItem() {
   }
 
   const handleTransactionChange = (transactionId: string) => {
-    const selectedTransaction = transactions.find(t => t.transaction_id === transactionId)
+    const selectedTransaction = transactions.find(t => t.transactionId === transactionId)
 
     setFormData(prev => ({
       ...prev,
@@ -427,8 +434,8 @@ export default function AddBusinessInventoryItem() {
               <option disabled>Loading transactions...</option>
             ) : (
               transactions.map((transaction) => (
-                <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                  {new Date(transaction.transaction_date).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
+                <option key={transaction.transactionId} value={transaction.transactionId}>
+                  {new Date(transaction.transactionDate).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
                 </option>
               ))
             )}
@@ -529,7 +536,7 @@ export default function AddBusinessInventoryItem() {
 
             {/* Purchase Price */}
             <div>
-              <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-700">
                 Purchase Price
               </label>
               <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
@@ -539,23 +546,23 @@ export default function AddBusinessInventoryItem() {
               </div>
               <input
                 type="text"
-                id="purchase_price"
-                value={formData.purchase_price}
-                onChange={(e) => handleInputChange('purchase_price', e.target.value)}
+                id="purchasePrice"
+                value={formData.purchasePrice}
+                onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.purchase_price ? 'border-red-300' : 'border-gray-300'
+                  errors.purchasePrice ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.purchase_price && (
-              <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
+            {errors.purchasePrice && (
+              <p className="mt-1 text-sm text-red-600">{errors.purchasePrice}</p>
             )}
           </div>
 
           {/* Project Price */}
           <div>
-            <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="projectPrice" className="block text-sm font-medium text-gray-700">
               Project Price
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
@@ -565,23 +572,23 @@ export default function AddBusinessInventoryItem() {
               </div>
               <input
                 type="text"
-                id="project_price"
-                value={formData.project_price}
-                onChange={(e) => handleInputChange('project_price', e.target.value)}
+                id="projectPrice"
+                value={formData.projectPrice}
+                onChange={(e) => handleInputChange('projectPrice', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.project_price ? 'border-red-300' : 'border-gray-300'
+                  errors.projectPrice ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.project_price && (
-              <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
+            {errors.projectPrice && (
+              <p className="mt-1 text-sm text-red-600">{errors.projectPrice}</p>
             )}
           </div>
 
           {/* Market Value */}
           <div>
-            <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="marketValue" className="block text-sm font-medium text-gray-700">
               Market Value
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
@@ -591,37 +598,37 @@ export default function AddBusinessInventoryItem() {
               </div>
               <input
                 type="text"
-                id="market_value"
-                value={formData.market_value}
-                onChange={(e) => handleInputChange('market_value', e.target.value)}
+                id="marketValue"
+                value={formData.marketValue}
+                onChange={(e) => handleInputChange('marketValue', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.market_value ? 'border-red-300' : 'border-gray-300'
+                  errors.marketValue ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.market_value && (
-              <p className="mt-1 text-sm text-red-600">{errors.market_value}</p>
+            {errors.marketValue && (
+              <p className="mt-1 text-sm text-red-600">{errors.marketValue}</p>
             )}
           </div>
 
           {/* Storage Location */}
                 <div>
-                  <label htmlFor="business_inventory_location" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="businessInventoryLocation" className="block text-sm font-medium text-gray-700">
                     Storage Location
                   </label>
                   <input
                     type="text"
-                    id="business_inventory_location"
-                    value={formData.business_inventory_location}
-                    onChange={(e) => handleInputChange('business_inventory_location', e.target.value)}
+                    id="businessInventoryLocation"
+                    value={formData.businessInventoryLocation}
+                    onChange={(e) => handleInputChange('businessInventoryLocation', e.target.value)}
                     placeholder="e.g., Warehouse A - Section 3 - Shelf 5"
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.business_inventory_location ? 'border-red-300' : 'border-gray-300'
+                errors.businessInventoryLocation ? 'border-red-300' : 'border-gray-300'
               }`}
             />
-            {errors.business_inventory_location && (
-              <p className="mt-1 text-sm text-red-600">{errors.business_inventory_location}</p>
+            {errors.businessInventoryLocation && (
+              <p className="mt-1 text-sm text-red-600">{errors.businessInventoryLocation}</p>
                   )}
                 </div>
 

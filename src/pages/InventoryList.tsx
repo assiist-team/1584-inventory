@@ -3,33 +3,12 @@ import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, Q
 import { Link } from 'react-router-dom'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
-import { ItemImage } from '@/types'
+import { Item, ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useAccount } from '@/contexts/AccountContext'
-
-interface InventoryListItem {
-  item_id: string
-  description: string
-  source: string
-  sku: string
-  purchase_price?: string
-  project_price?: string
-  market_value?: string
-  payment_method: string
-  notes?: string
-  space?: string
-  qr_key: string
-  bookmark: boolean
-  disposition?: string
-  date_created: string
-  last_updated: string
-  transaction_id?: string | null
-  project_id?: string | null
-  images?: ItemImage[]
-}
 
 interface InventoryListProps {
   projectId: string
@@ -40,7 +19,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const { currentAccountId } = useAccount()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
-  const [items, setItems] = useState<InventoryListItem[]>([])
+  const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
@@ -113,7 +92,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedItems(new Set(items.map(item => item.item_id)))
+      setSelectedItems(new Set(items.map(item => item.itemId)))
     } else {
       setSelectedItems(new Set())
     }
@@ -130,7 +109,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   }
 
   // Use centralized bookmark hook
-  const { toggleBookmark } = useBookmark<InventoryListItem>({
+  const { toggleBookmark } = useBookmark<Item>({
     items,
     setItems,
     updateItemService: (itemId, updates) => {
@@ -154,7 +133,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     console.log('🎯 InventoryList updateDisposition called:', itemId, newDisposition)
 
     try {
-      const item = items.find((item: InventoryListItem) => item.item_id === itemId)
+      const item = items.find((item: Item) => item.itemId === itemId)
       if (!item) {
         console.error('❌ Item not found for disposition update:', itemId)
         return
@@ -174,7 +153,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           await integrationService.handleItemDeallocation(
             currentAccountId,
             itemId,
-            item.project_id || '',
+            item.projectId || '',
             newDisposition
           )
           console.log('✅ Deallocation completed successfully')
@@ -192,7 +171,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       } else {
         // For non-inventory dispositions, update local state optimistically
         setItems(items.map(item =>
-          item.item_id === itemId
+          item.itemId === itemId
             ? { ...item, disposition: newDisposition }
             : item
         ))
@@ -322,8 +301,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     // Apply search filter
     const matchesSearch = item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.payment_method.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.paymentMethod?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.space && item.space.toLowerCase().includes(searchQuery.toLowerCase()))
 
     // Apply filter based on filterMode
@@ -534,15 +513,15 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (
-                <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
+                <li key={item.itemId} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                   {/* Top row: Controls - stays outside Link */}
                   <div className="flex items-center justify-between mb-0 px-4 py-3">
                     <div className="flex items-center">
                       <input
                         type="checkbox"
                         className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4 flex-shrink-0"
-                        checked={selectedItems.has(item.item_id)}
-                        onChange={(e) => handleSelectItem(item.item_id, e.target.checked)}
+                        checked={selectedItems.has(item.itemId)}
+                        onChange={(e) => handleSelectItem(item.itemId, e.target.checked)}
                       />
                     </div>
 
@@ -552,7 +531,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          toggleBookmark(item.item_id)
+                          toggleBookmark(item.itemId)
                         }}
                         className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md transition-colors ${
                           item.bookmark
@@ -564,7 +543,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
                       <Link
-                        to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+                        to={`/project/${projectId}/edit-item/${item.itemId}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Edit item"
@@ -575,7 +554,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          duplicateItem(item.item_id)
+                          duplicateItem(item.itemId)
                         }}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Duplicate item"
@@ -587,7 +566,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              toggleDispositionMenu(item.item_id)
+                              toggleDispositionMenu(item.itemId)
                             }}
                           className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
                         >
@@ -596,7 +575,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                           </span>
 
                           {/* Dropdown menu */}
-                          {openDispositionMenu === item.item_id && (
+                          {openDispositionMenu === item.itemId && (
                             <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                               <div className="py-1">
                                 {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
@@ -605,7 +584,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                                     onClick={(e) => {
                                       e.preventDefault()
                                       e.stopPropagation()
-                                      updateDisposition(item.item_id, disposition)
+                                      updateDisposition(item.itemId, disposition)
                                     }}
                                     className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
                                       (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
@@ -625,7 +604,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                   </div>
 
                   {/* Main tappable content - wrapped in Link */}
-                  <Link to={buildContextUrl(`/item/${item.item_id}`, { project: projectId })}>
+                  <Link to={buildContextUrl(`/item/${item.itemId}`, { project: projectId })}>
                     <div className="block bg-transparent">
                       <div className="px-4 pb-3 sm:px-6">
                         {/* Middle row: Thumbnail and Description - now tappable */}
@@ -651,9 +630,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
-                                  handleAddImage(item.item_id)
+                                  handleAddImage(item.itemId)
                                 }}
-                                disabled={uploadingImages.has(item.item_id)}
+                                disabled={uploadingImages.has(item.itemId)}
                                 className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
                                 title="Add image (camera or gallery)"
                               >
@@ -682,18 +661,18 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         <div className="space-y-2">
                           {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                            {(item.project_price || item.purchase_price) && (
-                              <span className="font-medium text-gray-700">${item.project_price || item.purchase_price}</span>
+                            {(item.projectPrice || item.purchasePrice) && (
+                              <span className="font-medium text-gray-700">${item.projectPrice || item.purchasePrice}</span>
                             )}
                             {item.source && (
                               <>
-                                {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                                {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.source}</span>
                               </>
                             )}
                             {item.sku && (
                               <>
-                                {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                                {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.sku}</span>
                               </>
                             )}

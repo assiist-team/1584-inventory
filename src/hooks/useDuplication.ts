@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useToast } from '@/components/ui/ToastContext'
 
-interface UseDuplicationOptions<T extends { item_id: string }> {
+interface UseDuplicationOptions<T extends { itemId: string }> {
   items: T[]
   setItems?: (items: T[] | ((prev: T[]) => T[])) => void
   projectId?: string | undefined
@@ -9,7 +9,7 @@ interface UseDuplicationOptions<T extends { item_id: string }> {
   duplicationService?: (itemId: string) => Promise<string>
 }
 
-export function useDuplication<T extends { item_id: string }>({
+export function useDuplication<T extends { itemId: string }>({
   items,
   setItems: _setItems,
   projectId,
@@ -20,7 +20,7 @@ export function useDuplication<T extends { item_id: string }>({
 
   const duplicateItem = useCallback(async (itemId: string) => {
     try {
-      const item = items.find(item => item.item_id === itemId)
+      const item = items.find(item => item.itemId === itemId)
       if (!item) {
         showError('Item not found')
         return

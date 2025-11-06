@@ -21,26 +21,26 @@ export default function EditBusinessInventoryItem() {
     description: string;
     source: string;
     sku: string;
-    purchase_price: string;
-    project_price: string;
-    market_value: string;
+    purchasePrice: string;
+    projectPrice: string;
+    marketValue: string;
     disposition: string;
     notes: string;
     bookmark: boolean;
-    business_inventory_location: string;
-    inventory_status: 'available' | 'allocated' | 'sold' | undefined;
+    businessInventoryLocation: string;
+    inventoryStatus: 'available' | 'allocated' | 'sold' | undefined;
   }>({
     description: '',
     source: '',
     sku: '',
-    purchase_price: '',
-    project_price: '',
-    market_value: '',
+    purchasePrice: '',
+    projectPrice: '',
+    marketValue: '',
     disposition: 'keep',
     notes: '',
     bookmark: false,
-    business_inventory_location: '',
-    inventory_status: 'available' as 'available' | 'allocated' | 'sold' | undefined
+    businessInventoryLocation: '',
+    inventoryStatus: 'available' as 'available' | 'allocated' | 'sold' | undefined
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -61,12 +61,12 @@ export default function EditBusinessInventoryItem() {
     }
   }, [id, currentAccountId])
 
-  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
+  // Auto-fill projectPrice when purchasePrice is set and projectPrice is empty and hasn't been manually edited
   useEffect(() => {
-    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
+    if (formData.purchasePrice && !formData.projectPrice && !projectPriceEditedRef.current) {
+      setFormData(prev => ({ ...prev, projectPrice: formData.purchasePrice }))
     }
-  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+  }, [formData.purchasePrice]) // Only depend on purchasePrice, not projectPrice
 
   const loadItem = async () => {
     if (!id || !currentAccountId) return
@@ -79,14 +79,14 @@ export default function EditBusinessInventoryItem() {
           description: itemData.description,
           source: itemData.source,
           sku: itemData.sku,
-          purchase_price: itemData.purchase_price || '',
-          project_price: itemData.project_price || '',
-          market_value: itemData.market_value || '',
+          purchasePrice: itemData.purchasePrice || '',
+          projectPrice: itemData.projectPrice || '',
+          marketValue: itemData.marketValue || '',
           disposition: itemData.disposition || 'keep',
           notes: itemData.notes || '',
           bookmark: itemData.bookmark,
-          business_inventory_location: itemData.business_inventory_location || '',
-          inventory_status: itemData.inventory_status
+          businessInventoryLocation: itemData.businessInventoryLocation || '',
+          inventoryStatus: itemData.inventoryStatus
         })
       }
     } catch (error) {
@@ -99,8 +99,8 @@ export default function EditBusinessInventoryItem() {
   const handleInputChange = (field: keyof typeof formData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
-    // Mark project_price as manually edited if user is editing it
-    if (field === 'project_price') {
+    // Mark projectPrice as manually edited if user is editing it
+    if (field === 'projectPrice') {
       projectPriceEditedRef.current = true
     }
 
@@ -249,7 +249,7 @@ export default function EditBusinessInventoryItem() {
 
             {/* Purchase Price */}
             <div>
-              <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-700">
                 Purchase Price
               </label>
               <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
@@ -260,23 +260,23 @@ export default function EditBusinessInventoryItem() {
                 <input
                   type="number"
                   step="0.01"
-                  id="purchase_price"
-                  value={formData.purchase_price}
-                  onChange={(e) => handleInputChange('purchase_price', e.target.value)}
+                  id="purchasePrice"
+                  value={formData.purchasePrice}
+                  onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
                   placeholder="0.00"
                   className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    formErrors.purchase_price ? 'border-red-300' : 'border-gray-300'
+                    formErrors.purchasePrice ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
               </div>
-              {formErrors.purchase_price && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.purchase_price}</p>
+              {formErrors.purchasePrice && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.purchasePrice}</p>
               )}
             </div>
 
           {/* Project Price */}
           <div>
-            <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="projectPrice" className="block text-sm font-medium text-gray-700">
               Project Price
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
@@ -287,23 +287,23 @@ export default function EditBusinessInventoryItem() {
               <input
                 type="number"
                 step="0.01"
-                id="project_price"
-                value={formData.project_price}
-                onChange={(e) => handleInputChange('project_price', e.target.value)}
+                id="projectPrice"
+                value={formData.projectPrice}
+                onChange={(e) => handleInputChange('projectPrice', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  formErrors.project_price ? 'border-red-300' : 'border-gray-300'
+                  formErrors.projectPrice ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {formErrors.project_price && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.project_price}</p>
+            {formErrors.projectPrice && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.projectPrice}</p>
             )}
           </div>
 
             {/* Market Value */}
             <div>
-              <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="marketValue" className="block text-sm font-medium text-gray-700">
                 Market Value
               </label>
               <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
@@ -314,9 +314,9 @@ export default function EditBusinessInventoryItem() {
                 <input
                   type="number"
                   step="0.01"
-                  id="market_value"
-                  value={formData.market_value}
-                  onChange={(e) => handleInputChange('market_value', e.target.value)}
+                  id="marketValue"
+                  value={formData.marketValue}
+                  onChange={(e) => handleInputChange('marketValue', e.target.value)}
                   placeholder="0.00"
                   className="mt-1 block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 />
@@ -325,21 +325,21 @@ export default function EditBusinessInventoryItem() {
 
             {/* Storage Location */}
             <div>
-              <label htmlFor="business_inventory_location" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="businessInventoryLocation" className="block text-sm font-medium text-gray-700">
                 Storage Location
               </label>
               <input
                 type="text"
-                id="business_inventory_location"
-                value={formData.business_inventory_location}
-                onChange={(e) => handleInputChange('business_inventory_location', e.target.value)}
+                id="businessInventoryLocation"
+                value={formData.businessInventoryLocation}
+                onChange={(e) => handleInputChange('businessInventoryLocation', e.target.value)}
                 placeholder="e.g., Warehouse A - Section 3 - Shelf 5"
                 className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  formErrors.business_inventory_location ? 'border-red-300' : 'border-gray-300'
+                  formErrors.businessInventoryLocation ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
-              {formErrors.business_inventory_location && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.business_inventory_location}</p>
+              {formErrors.businessInventoryLocation && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.businessInventoryLocation}</p>
               )}
             </div>
 
@@ -360,23 +360,23 @@ export default function EditBusinessInventoryItem() {
 
             {/* Inventory Status */}
             <div>
-              <label htmlFor="inventory_status" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="inventoryStatus" className="block text-sm font-medium text-gray-700">
                 Inventory Status
               </label>
             <select
-                id="inventory_status"
-                value={formData.inventory_status}
-                onChange={(e) => handleInputChange('inventory_status', e.target.value)}
+                id="inventoryStatus"
+                value={formData.inventoryStatus}
+                onChange={(e) => handleInputChange('inventoryStatus', e.target.value)}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               >
                 <option value="available">Available</option>
                 <option value="allocated">Allocated</option>
                 <option value="sold">Sold</option>
               </select>
-              {item.project_id && (
+              {item.projectId && (
                 <div className="mt-4 p-4 bg-yellow-50 rounded-md">
                   <p className="text-sm text-yellow-800">
-                    <strong>Note:</strong> This item is currently allocated to project {item.project_id}.
+                    <strong>Note:</strong> This item is currently allocated to project {item.projectId}.
                     Changing the status may affect the pending transaction.
                   </p>
                 </div>

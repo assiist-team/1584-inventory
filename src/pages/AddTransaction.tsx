@@ -65,22 +65,22 @@ export default function AddTransaction() {
   }, [projectId, currentAccountId])
 
   const [formData, setFormData] = useState<TransactionFormData>({
-    transaction_date: (() => {
+    transactionDate: (() => {
       const today = new Date()
       return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     })(), // YYYY-MM-DD format
     source: '',
-    transaction_type: 'Purchase',
-    payment_method: '',
+    transactionType: 'Purchase',
+    paymentMethod: '',
     amount: '',
-    budget_category: 'Furnishings',
+    budgetCategory: 'Furnishings',
     notes: '',
     status: 'completed',
-    reimbursement_type: '',
-    trigger_event: 'Manual',
-    transaction_images: [], // Legacy field for backward compatibility
-    receipt_images: [],
-    other_images: [],
+    reimbursementType: '',
+    triggerEvent: 'Manual',
+    transactionImages: [], // Legacy field for backward compatibility
+    receiptImages: [],
+    otherImages: [],
     items: []
   })
 
@@ -143,8 +143,8 @@ export default function AddTransaction() {
     // Transaction type is optional
     // Payment method is optional
 
-    if (!formData.budget_category?.trim()) {
-      newErrors.budget_category = 'Budget category is required'
+    if (!formData.budgetCategory?.trim()) {
+      newErrors.budgetCategory = 'Budget category is required'
     }
 
     if (!formData.amount.trim()) {
@@ -178,7 +178,7 @@ export default function AddTransaction() {
 
     try {
       // Create transaction data, excluding image File objects from formData since they contain File objects
-      const { transaction_images, receipt_images, other_images, ...formDataWithoutImages } = formData
+      const { transactionImages, receiptImages, otherImages, ...formDataWithoutImages } = formData
 
       if (!user?.id) {
         throw new Error('User must be authenticated to create transactions')
@@ -186,29 +186,29 @@ export default function AddTransaction() {
 
       const transactionData = {
         ...formDataWithoutImages,
-        project_id: projectId,
-        project_name: projectName,
-        created_by: user.id,
-        tax_rate_preset: taxRatePreset,
-        receipt_emailed: formData.receipt_emailed ?? false,
+        projectId: projectId,
+        projectName: projectName,
+        createdBy: user.id,
+        taxRatePreset: taxRatePreset,
+        receiptEmailed: formData.receiptEmailed ?? false,
         subtotal: taxRatePreset === 'Other' ? subtotal : ''
       }
 
       console.log('Attempting to create transaction with data:', transactionData)
-      console.log('Transaction date value:', transactionData.transaction_date)
-      console.log('Transaction date type:', typeof transactionData.transaction_date)
+      console.log('Transaction date value:', transactionData.transactionDate)
+      console.log('Transaction date type:', typeof transactionData.transactionDate)
       console.log('Transaction items:', items)
 
       // Create transaction with items first to get the real transaction ID
       const transactionId = await transactionService.createTransaction(currentAccountId, projectId, transactionData, items)
 
       // Now upload receipt images using the real transaction ID
-      if (formData.receipt_images && formData.receipt_images.length > 0) {
+      if (formData.receiptImages && formData.receiptImages.length > 0) {
         setIsUploadingImages(true)
 
         try {
           const uploadResults = await ImageUploadService.uploadMultipleReceiptImages(
-            formData.receipt_images,
+            formData.receiptImages,
             projectName,
             transactionId,
             handleImageUploadProgress
@@ -224,7 +224,7 @@ export default function AddTransaction() {
             console.log('Updating transaction with receipt images...')
             try {
               await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
-                receipt_images: receiptImages
+                receiptImages: receiptImages
               })
               console.log('Transaction updated successfully with receipt images')
             } catch (updateError) {
@@ -252,7 +252,7 @@ export default function AddTransaction() {
             errorMessage = 'Upload blocked by browser security policy. Please check Supabase Storage configuration or try refreshing the page.'
           }
 
-          setErrors({ receipt_images: errorMessage })
+          setErrors({ receiptImages: errorMessage })
           setIsSubmitting(false)
           setIsUploadingImages(false)
           return
@@ -262,12 +262,12 @@ export default function AddTransaction() {
       }
 
       // Now upload other images using the real transaction ID
-      if (formData.other_images && formData.other_images.length > 0) {
+      if (formData.otherImages && formData.otherImages.length > 0) {
         setIsUploadingImages(true)
 
         try {
           const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
-            formData.other_images,
+            formData.otherImages,
             projectName,
             transactionId,
             handleImageUploadProgress
@@ -283,7 +283,7 @@ export default function AddTransaction() {
             console.log('Updating transaction with other images...')
             try {
               await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
-                other_images: otherImages
+                otherImages: otherImages
               })
               console.log('Transaction updated successfully with other images')
             } catch (updateError) {
@@ -311,7 +311,7 @@ export default function AddTransaction() {
             errorMessage = 'Upload blocked by browser security policy. Please check Supabase Storage configuration or try refreshing the page.'
           }
 
-          setErrors({ other_images: errorMessage })
+          setErrors({ otherImages: errorMessage })
           setIsSubmitting(false)
           setIsUploadingImages(false)
           return
@@ -326,7 +326,7 @@ export default function AddTransaction() {
           console.log('Starting image upload process...')
           // Get the created items and extract their IDs
           const createdItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
-          const createdItemIds = createdItems.map(item => item.item_id)
+          const createdItemIds = createdItems.map(item => item.itemId)
           console.log('Created item IDs:', createdItemIds)
 
           // Upload images for each item
@@ -406,7 +406,7 @@ export default function AddTransaction() {
     }
   }
 
-  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'tax_rate_preset' | 'subtotal'>, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'taxRatePreset' | 'subtotal'>, value: string | boolean | File[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Clear error when user starts typing
@@ -416,18 +416,18 @@ export default function AddTransaction() {
   }
 
   const handleReceiptImagesChange = (files: File[]) => {
-    setFormData(prev => ({ ...prev, receipt_images: files }))
+    setFormData(prev => ({ ...prev, receiptImages: files }))
     // Clear any existing image errors
-    if (errors.receipt_images) {
-      setErrors(prev => ({ ...prev, receipt_images: undefined }))
+    if (errors.receiptImages) {
+      setErrors(prev => ({ ...prev, receiptImages: undefined }))
     }
   }
 
   const handleOtherImagesChange = (files: File[]) => {
-    setFormData(prev => ({ ...prev, other_images: files }))
+    setFormData(prev => ({ ...prev, otherImages: files }))
     // Clear any existing image errors
-    if (errors.other_images) {
-      setErrors(prev => ({ ...prev, other_images: undefined }))
+    if (errors.otherImages) {
+      setErrors(prev => ({ ...prev, otherImages: undefined }))
     }
   }
 
@@ -559,10 +559,10 @@ export default function AddTransaction() {
                 <input
                   type="radio"
                   id="budget_design_fee"
-                  name="budget_category"
+                  name="budgetCategory"
                   value="Design Fee"
-                  checked={formData.budget_category === 'Design Fee'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
+                  checked={formData.budgetCategory === 'Design Fee'}
+                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
@@ -654,8 +654,8 @@ export default function AddTransaction() {
                 </label>
               </div>
             </div>
-            {errors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
+            {errors.budgetCategory && (
+              <p className="mt-1 text-sm text-red-600">{errors.budgetCategory}</p>
             )}
           </div>
 
@@ -669,10 +669,10 @@ export default function AddTransaction() {
                 <input
                   type="radio"
                   id="type_purchase"
-                  name="transaction_type"
+                  name="transactionType"
                   value="Purchase"
-                  checked={formData.transaction_type === 'Purchase'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  checked={formData.transactionType === 'Purchase'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
@@ -708,8 +708,8 @@ export default function AddTransaction() {
                 </label>
               </div>
             </div>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            {errors.transactionType && (
+              <p className="mt-1 text-sm text-red-600">{errors.transactionType}</p>
             )}
           </div>
 
@@ -723,10 +723,10 @@ export default function AddTransaction() {
                 <input
                   type="radio"
                   id="method_client_card"
-                  name="payment_method"
+                  name="paymentMethod"
                   value="Client Card"
-                  checked={formData.payment_method === 'Client Card'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  checked={formData.paymentMethod === 'Client Card'}
+                  onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
@@ -748,8 +748,8 @@ export default function AddTransaction() {
                 </label>
               </div>
             </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            {errors.paymentMethod && (
+              <p className="mt-1 text-sm text-red-600">{errors.paymentMethod}</p>
             )}
           </div>
 
@@ -764,10 +764,10 @@ export default function AddTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_none"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value=""
-                  checked={!formData.reimbursement_type}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={!formData.reimbursementType}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_none" className="ml-2 block text-sm text-gray-900">
@@ -780,8 +780,8 @@ export default function AddTransaction() {
                   id="reimbursement_client_owes"
                   name="reimbursement_type"
                   value={CLIENT_OWES_COMPANY}
-                  checked={formData.reimbursement_type === CLIENT_OWES_COMPANY}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={formData.reimbursementType === CLIENT_OWES_COMPANY}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
@@ -794,8 +794,8 @@ export default function AddTransaction() {
                   id="reimbursement_we_owe"
                   name="reimbursement_type"
                   value={COMPANY_OWES_CLIENT}
-                  checked={formData.reimbursement_type === COMPANY_OWES_CLIENT}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={formData.reimbursementType === COMPANY_OWES_CLIENT}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
@@ -803,8 +803,8 @@ export default function AddTransaction() {
                 </label>
               </div>
             </div>
-            {errors.reimbursement_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.reimbursement_type}</p>
+            {errors.reimbursementType && (
+              <p className="mt-1 text-sm text-red-600">{errors.reimbursementType}</p>
             )}
           </div>
 
@@ -818,9 +818,9 @@ export default function AddTransaction() {
                 <input
                   type="radio"
                   id="receipt_yes"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === true}
-                  onChange={() => handleInputChange('receipt_emailed', true)}
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === true}
+                  onChange={() => handleInputChange('receiptEmailed', true)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
@@ -831,9 +831,9 @@ export default function AddTransaction() {
                 <input
                   type="radio"
                   id="receipt_no"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === false}
-                  onChange={() => handleInputChange('receipt_emailed', false)}
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === false}
+                  onChange={() => handleInputChange('receiptEmailed', false)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
@@ -877,7 +877,7 @@ export default function AddTransaction() {
                   <input
                     type="radio"
                     id={`tax_preset_${preset.id}`}
-                    name="tax_rate_preset"
+                    name="taxRatePreset"
                     value={preset.id}
                     checked={taxRatePreset === preset.id}
                     onChange={(e) => setTaxRatePreset(e.target.value)}
@@ -936,23 +936,23 @@ export default function AddTransaction() {
 
           {/* Transaction Date */}
           <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="transactionDate" className="block text-sm font-medium text-gray-700">
               Transaction Date
             </label>
             <input
               type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
+              id="transactionDate"
+              value={formData.transactionDate}
               onChange={(e) => {
                 // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
+                handleInputChange('transactionDate', e.target.value)
               }}
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+                errors.transactionDate ? 'border-red-300' : 'border-gray-300'
               }`}
             />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            {errors.transactionDate && (
+              <p className="mt-1 text-sm text-red-600">{errors.transactionDate}</p>
             )}
           </div>
 
@@ -1008,8 +1008,8 @@ export default function AddTransaction() {
               disabled={isSubmitting || isUploadingImages}
               className="mb-2"
             />
-            {errors.receipt_images && (
-              <p className="mt-1 text-sm text-red-600">{errors.receipt_images}</p>
+            {errors.receiptImages && (
+              <p className="mt-1 text-sm text-red-600">{errors.receiptImages}</p>
             )}
           </div>
 
@@ -1025,8 +1025,8 @@ export default function AddTransaction() {
               disabled={isSubmitting || isUploadingImages}
               className="mb-2"
             />
-            {errors.other_images && (
-              <p className="mt-1 text-sm text-red-600">{errors.other_images}</p>
+            {errors.otherImages && (
+              <p className="mt-1 text-sm text-red-600">{errors.otherImages}</p>
             )}
           </div>
 

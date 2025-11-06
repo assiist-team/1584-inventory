@@ -77,10 +77,10 @@ export default function BusinessInventory() {
       const matchesSearch = !inventorySearchQuery ||
         item.description?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
         item.sku?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
-        item.business_inventory_location?.toLowerCase().includes(inventorySearchQuery.toLowerCase())
+        item.businessInventoryLocation?.toLowerCase().includes(inventorySearchQuery.toLowerCase())
 
       // Apply status filter
-      const matchesStatus = !filters.status || item.inventory_status === filters.status
+      const matchesStatus = !filters.status || item.inventoryStatus === filters.status
 
       // Apply bookmark filter
       const matchesFilter = filterMode === 'all' || (filterMode === 'bookmarked' && item.bookmark)
@@ -96,8 +96,8 @@ export default function BusinessInventory() {
     // Apply status filter based on filter mode
     if (transactionFilterMode !== 'all') {
       if (transactionFilterMode === 'inventory-only') {
-        // Show only business inventory transactions (project_id == null)
-        filtered = filtered.filter(t => t.project_id === null)
+        // Show only business inventory transactions (projectId == null)
+        filtered = filtered.filter(t => t.projectId === null)
       } else {
         // Apply status filter for other modes
         filtered = filtered.filter(t => t.status === transactionFilterMode)
@@ -109,8 +109,8 @@ export default function BusinessInventory() {
       const query = transactionSearchQuery.toLowerCase()
       filtered = filtered.filter(t =>
         t.source?.toLowerCase().includes(query) ||
-        t.transaction_type?.toLowerCase().includes(query) ||
-        t.project_name?.toLowerCase().includes(query) ||
+        t.transactionType?.toLowerCase().includes(query) ||
+        t.projectName?.toLowerCase().includes(query) ||
         t.notes?.toLowerCase().includes(query)
       )
     }
@@ -120,8 +120,8 @@ export default function BusinessInventory() {
 
   // Canonical transaction title for display only
   const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
-    if (transaction.transaction_id?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
-    if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
+    if (transaction.transactionId?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+    if (transaction.transactionId?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
     return transaction.source
   }
 
@@ -149,9 +149,9 @@ export default function BusinessInventory() {
             const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions(currentAccountId)
             allTransactions.push(...inventoryRelatedTransactions)
             const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
-              index === self.findIndex(t => t.transaction_id === transaction.transaction_id)
+              index === self.findIndex(t => t.transactionId === transaction.transactionId)
             )
-            uniqueTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             setTransactions(uniqueTransactions)
             
             // Load projects
@@ -237,11 +237,11 @@ export default function BusinessInventory() {
 
       // Remove duplicates (same transaction might appear in both queries)
       const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
-        index === self.findIndex(t => t.transaction_id === transaction.transaction_id)
+        index === self.findIndex(t => t.transactionId === transaction.transactionId)
       )
 
       // Sort by creation date, newest first
-      uniqueTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       setTransactions(uniqueTransactions)
     } catch (error) {
       console.error('Error loading business transactions:', error)
@@ -284,11 +284,11 @@ export default function BusinessInventory() {
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
-      const { item_id, date_created, last_updated, ...itemData } = originalItem
+      const { itemId, dateCreated, lastUpdated, ...itemData } = originalItem
       return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
-        inventory_status: 'available',
-        project_id: null,
+        inventoryStatus: 'available',
+        projectId: null,
         disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
       })
     }
@@ -410,7 +410,7 @@ export default function BusinessInventory() {
   // Filter handlers (matching InventoryList.tsx)
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedItems(new Set(filteredItems.map(item => item.item_id)))
+      setSelectedItems(new Set(filteredItems.map(item => item.itemId)))
     } else {
       setSelectedItems(new Set())
     }
@@ -606,15 +606,15 @@ export default function BusinessInventory() {
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <ul className="divide-y divide-gray-200">
                     {filteredItems.map((item) => (
-                      <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
+                      <li key={item.itemId} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                         {/* Top row: Controls - stays outside Link */}
                         <div className="flex items-center justify-between mb-0 px-4 py-3">
                           <div className="flex items-center">
                             <input
                               type="checkbox"
                               className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4 flex-shrink-0"
-                              checked={selectedItems.has(item.item_id)}
-                              onChange={(e) => handleSelectItem(item.item_id, e.target.checked)}
+                              checked={selectedItems.has(item.itemId)}
+                              onChange={(e) => handleSelectItem(item.itemId, e.target.checked)}
                             />
                           </div>
 
@@ -630,13 +630,13 @@ export default function BusinessInventory() {
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                toggleBookmark(item.item_id)
+                                toggleBookmark(item.itemId)
                               }}
                             >
                               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                             </button>
                             <Link
-                              to={`/business-inventory/${item.item_id}/edit?returnTo=/business-inventory`}
+                              to={`/business-inventory/${item.itemId}/edit?returnTo=/business-inventory`}
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Edit item"
@@ -647,7 +647,7 @@ export default function BusinessInventory() {
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                duplicateItem(item.item_id)
+                                duplicateItem(item.itemId)
                               }}
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Duplicate item"
@@ -656,20 +656,20 @@ export default function BusinessInventory() {
                             </button>
                             {/* Status badge moved to top-right corner */}
                             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                              item.inventory_status === 'available'
+                              item.inventoryStatus === 'available'
                                 ? 'bg-green-100 text-green-800'
-                                : item.inventory_status === 'allocated'
+                                : item.inventoryStatus === 'allocated'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                             }`}>
-                              {item.inventory_status === 'available' ? 'Available' :
-                               item.inventory_status === 'allocated' ? 'Allocated' : 'Sold'}
+                              {item.inventoryStatus === 'available' ? 'Available' :
+                               item.inventoryStatus === 'allocated' ? 'Allocated' : 'Sold'}
                             </span>
                           </div>
                         </div>
 
                         {/* Main tappable content - wrapped in Link */}
-                        <Link to={`/business-inventory/${item.item_id}`}>
+                        <Link to={`/business-inventory/${item.itemId}`}>
                           <div className="block bg-transparent">
                             <div className="px-4 pb-3 sm:px-6">
                               {/* Middle row: Thumbnail and Description - now tappable */}
@@ -695,9 +695,9 @@ export default function BusinessInventory() {
                                       onClick={(e) => {
                                         e.preventDefault()
                                         e.stopPropagation()
-                                        handleAddImage(item.item_id)
+                                        handleAddImage(item.itemId)
                                       }}
-                                      disabled={uploadingImages.has(item.item_id)}
+                                      disabled={uploadingImages.has(item.itemId)}
                                       className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
                                       title="Add image (camera or gallery)"
                                     >
@@ -713,9 +713,9 @@ export default function BusinessInventory() {
                                       {item.description}
                                     </h3>
                                     {/* Storage Location field */}
-                                    {item.business_inventory_location && (
+                                    {item.businessInventoryLocation && (
                                       <p className="text-sm text-gray-600 mt-1">
-                                        {item.business_inventory_location}
+                                        {item.businessInventoryLocation}
                                       </p>
                                     )}
                                   </div>
@@ -726,18 +726,18 @@ export default function BusinessInventory() {
                               <div className="space-y-2">
                                 {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                                  {(item.project_price || item.purchase_price) && (
-                                    <span className="font-medium text-gray-700">${item.project_price || item.purchase_price}</span>
+                                  {(item.projectPrice || item.purchasePrice) && (
+                                    <span className="font-medium text-gray-700">${item.projectPrice || item.purchasePrice}</span>
                                   )}
                                   {item.source && (
                                     <>
-                                      {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                                      {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.source}</span>
                                     </>
                                   )}
                                   {item.sku && (
                                     <>
-                                      {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                                      {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.sku}</span>
                                     </>
                                   )}
@@ -892,8 +892,8 @@ export default function BusinessInventory() {
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <ul className="divide-y divide-gray-200">
                     {filteredTransactions.map((transaction) => (
-                      <li key={transaction.transaction_id} className="relative">
-                        <Link to={`/business-inventory/transaction/${transaction.transaction_id}`}>
+                      <li key={transaction.transactionId} className="relative">
+                        <Link to={`/business-inventory/transaction/${transaction.transactionId}`}>
                           <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                             <div className="px-4 py-4 sm:px-6">
                             {/* Top row: Header with source and status */}
@@ -924,17 +924,17 @@ export default function BusinessInventory() {
                               {/* Details row - Price, project, date */}
                               <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                 <span className="font-medium text-gray-700">{formatCurrency(transaction.amount)}</span>
-                                {transaction.project_name && (
+                                {transaction.projectName && (
                                   <>
                                     <span className="hidden sm:inline">•</span>
                                     <span className="font-medium text-gray-700">
-                                      {transaction.project_name}
+                                      {transaction.projectName}
                                     </span>
                                   </>
                                 )}
                                 <span className="hidden sm:inline">•</span>
                                 <span className="font-medium text-gray-700">
-                                  {formatDate(transaction.transaction_date)}
+                                  {formatDate(transaction.transactionDate)}
                                 </span>
                               </div>
 
