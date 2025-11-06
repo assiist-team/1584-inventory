@@ -65,29 +65,29 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Update auth context
   - See: `04-auth-client-setup.md`
 
-- [ ] **Task 2.2**: Authentication Service Migration
+- [x] **Task 2.2**: Authentication Service Migration
   - Migrate sign-in/sign-out functions
   - Update user document creation logic
   - Handle auth state persistence
   - See: `05-auth-service-migration.md`
 
-- [ ] **Task 2.3**: Auth Context Update
+- [x] **Task 2.3**: Auth Context Update
   - Update AuthContext to use Supabase
   - Maintain same interface for components
   - Update auth state listeners
   - See: `06-auth-context-update.md`
 
 ### Phase 3: Database Migration
-- [ ] **Task 3.1**: Core Database Service
-  - Create Supabase client wrapper
-  - Implement timestamp conversion utilities
-  - Create query helper functions
+- [x] **Task 3.1**: Core Database Service
+  - Create database utility functions (timestamp conversion, error handling)
+  - Services use Supabase's native query builder directly
+  - Optimize for Postgres/SQL patterns, not Firestore abstractions
   - See: `07-database-service.md`
 
 - [ ] **Task 3.2**: Account Service Migration
-  - Migrate account CRUD operations
+  - Migrate account CRUD operations using Supabase query builder
   - Update account membership logic
-  - Convert Firestore queries to SQL
+  - Use SQL joins and relational queries
   - See: `08-account-service-migration.md`
 
 - [ ] **Task 3.3**: Inventory Service Migration
@@ -118,7 +118,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 ### Phase 5: Security & Authorization
 - [ ] **Task 5.1**: Row Level Security Policies
   - Create RLS policies for all tables
-  - Migrate Firestore security rules to RLS
+  - Implement Postgres-based security policies
   - Test authorization logic
   - See: `13-rls-policies.md`
 
@@ -130,7 +130,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 
 ### Phase 6: Real-time Features
 - [ ] **Task 6.1**: Real-time Subscriptions
-  - Replace Firestore `onSnapshot` with Supabase subscriptions
+  - Implement Supabase Realtime subscriptions
   - Update real-time listeners
   - Test real-time updates
   - See: `15-realtime-migration.md`
@@ -177,11 +177,11 @@ Since we're treating this as a new app (no data migration needed), we can:
 
 ### Phase 2: Authentication Migration
 - [x] Task 2.1: Supabase Auth Client Setup
-- [ ] Task 2.2: Authentication Service Migration
-- [ ] Task 2.3: Auth Context Update
+- [x] Task 2.2: Authentication Service Migration
+- [x] Task 2.3: Auth Context Update
 
 ### Phase 3: Database Migration
-- [ ] Task 3.1: Core Database Service
+- [x] Task 3.1: Core Database Service
 - [ ] Task 3.2: Account Service Migration
 - [ ] Task 3.3: Inventory Service Migration
 - [ ] Task 3.4: Business Profile Service Migration
@@ -209,20 +209,21 @@ Since we're treating this as a new app (no data migration needed), we can:
 ## Key Considerations
 
 ### Data Model Changes
-- **Firestore** uses document-based NoSQL structure
-- **Postgres** uses relational SQL structure
-- Need to map Firestore collections to Postgres tables
-- Need to handle nested documents (arrays/objects) appropriately
+- **Postgres** uses relational SQL structure with tables, rows, and foreign keys
+- Use SQL joins for relationships instead of document references
+- JSONB columns can store structured data when needed
+- Leverage Postgres features: indexes, constraints, triggers, functions
 
-### Query Differences
-- **Firestore**: Query builder API with `where()`, `orderBy()`, `limit()`
-- **Postgres**: SQL queries with `SELECT`, `WHERE`, `ORDER BY`, `LIMIT`
-- Some complex Firestore queries may need restructuring
+### Query Approach
+- **Use Supabase's native query builder** directly: `supabase.from(table).select()...`
+- Leverage SQL power: joins, aggregations, subqueries, window functions
+- No abstraction layer - work directly with Postgres tables and relationships
+- Use utility functions for timestamp conversion and error handling only
 
 ### Real-time Updates
-- **Firestore**: `onSnapshot()` listeners
 - **Supabase**: Realtime subscriptions via `supabase.channel()`
-- API is different but functionality is similar
+- Subscribe to table changes, filter by RLS policies
+- More powerful than Firestore listeners with SQL-based filtering
 
 ### Authentication
 - **Firebase Auth**: `signInWithPopup()`, `onAuthStateChanged()`
