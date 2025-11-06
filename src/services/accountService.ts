@@ -1,16 +1,5 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  getDocs,
-  serverTimestamp
-} from 'firebase/firestore'
-import { db, convertTimestamps } from './firebase'
+import { supabase } from './supabase'
+import { convertTimestamps } from './databaseService'
 import { Account, AccountMembership } from '@/types'
 
 /**
@@ -21,71 +10,83 @@ export const accountService = {
    * Create a new account (owners only)
    */
   async createAccount(name: string, createdBy: string): Promise<string> {
-    const accountsRef = collection(db, 'accounts')
-    const accountRef = doc(accountsRef)
-    
-    const accountData: Account = {
-      id: accountRef.id,
-      name,
-      createdAt: new Date(),
-      createdBy
-    }
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({
+        name,
+        created_by: createdBy,
+        created_at: new Date().toISOString()
+      })
+      .select('id')
+      .single()
 
-    await setDoc(accountRef, {
-      ...accountData,
-      createdAt: serverTimestamp()
-    })
-
-    return accountRef.id
+    if (error) throw error
+    return data.id
   },
 
   /**
    * Get account details
    */
   async getAccount(accountId: string): Promise<Account | null> {
-    const accountRef = doc(db, 'accounts', accountId)
-    const accountSnap = await getDoc(accountRef)
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('id', accountId)
+      .single()
 
-    if (accountSnap.exists()) {
-      const data = convertTimestamps(accountSnap.data())
-      return {
-        id: accountSnap.id,
-        ...data
-      } as Account
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null
+      }
+      throw error
     }
-    return null
+
+    const accountData = convertTimestamps(data)
+    return {
+      id: accountData.id,
+      name: accountData.name,
+      createdAt: accountData.created_at,
+      createdBy: accountData.created_by
+    } as Account
   },
 
   /**
-   * Get account for a user (from user's accountId field)
+   * Get account for a user (from account_members table)
    */
   async getUserAccount(userId: string): Promise<Account | null> {
-    const userRef = doc(db, 'users', userId)
-    const userSnap = await getDoc(userRef)
+    const { data: membershipData, error: membershipError } = await supabase
+      .from('account_members')
+      .select('account_id')
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle()
 
-    if (userSnap.exists()) {
-      const userData = userSnap.data()
-      const accountId = userData.accountId
-
-      if (accountId) {
-        return await this.getAccount(accountId)
-      }
+    if (membershipError || !membershipData?.account_id) {
+      return null
     }
-    return null
+
+    return await this.getAccount(membershipData.account_id)
   },
 
   /**
    * Get user's role in a specific account
    */
   async getUserRoleInAccount(userId: string, accountId: string): Promise<'admin' | 'user' | null> {
-    const membershipRef = doc(db, 'accounts', accountId, 'members', userId)
-    const membershipSnap = await getDoc(membershipRef)
+    const { data, error } = await supabase
+      .from('account_members')
+      .select('role')
+      .eq('account_id', accountId)
+      .eq('user_id', userId)
+      .single()
 
-    if (membershipSnap.exists()) {
-      const data = membershipSnap.data() as AccountMembership
-      return data.role
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null
+      }
+      throw error
     }
-    return null
+
+    return data.role as 'admin' | 'user'
   },
 
   /**
@@ -96,19 +97,16 @@ export const accountService = {
     accountId: string,
     role: 'admin' | 'user'
   ): Promise<void> {
-    const membershipRef = doc(db, 'accounts', accountId, 'members', userId)
-    
-    const membershipData: AccountMembership = {
-      userId,
-      accountId,
-      role,
-      joinedAt: new Date()
-    }
+    const { error } = await supabase
+      .from('account_members')
+      .insert({
+        account_id: accountId,
+        user_id: userId,
+        role,
+        joined_at: new Date().toISOString()
+      })
 
-    await setDoc(membershipRef, {
-      ...membershipData,
-      joinedAt: serverTimestamp()
-    })
+    if (error) throw error
   },
 
   /**
@@ -119,34 +117,49 @@ export const accountService = {
     accountId: string,
     role: 'admin' | 'user'
   ): Promise<void> {
-    const membershipRef = doc(db, 'accounts', accountId, 'members', userId)
-    
-    await updateDoc(membershipRef, {
-      role,
-      joinedAt: serverTimestamp() // Update timestamp on role change
-    })
+    const { error } = await supabase
+      .from('account_members')
+      .update({
+        role,
+        joined_at: new Date().toISOString() // Update timestamp on role change
+      })
+      .eq('account_id', accountId)
+      .eq('user_id', userId)
+
+    if (error) throw error
   },
 
   /**
    * Remove user from account
    */
   async removeUserFromAccount(userId: string, accountId: string): Promise<void> {
-    const membershipRef = doc(db, 'accounts', accountId, 'members', userId)
-    await deleteDoc(membershipRef)
+    const { error } = await supabase
+      .from('account_members')
+      .delete()
+      .eq('account_id', accountId)
+      .eq('user_id', userId)
+
+    if (error) throw error
   },
 
   /**
    * Get all members of an account
    */
   async getAccountMembers(accountId: string): Promise<AccountMembership[]> {
-    const membersRef = collection(db, 'accounts', accountId, 'members')
-    const membersSnapshot = await getDocs(membersRef)
+    const { data, error } = await supabase
+      .from('account_members')
+      .select('*')
+      .eq('account_id', accountId)
 
-    return membersSnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    if (error) throw error
+
+    return (data || []).map(member => {
+      const converted = convertTimestamps(member)
       return {
-        userId: doc.id,
-        ...data
+        userId: converted.user_id,
+        accountId: converted.account_id,
+        role: converted.role,
+        joinedAt: converted.joined_at
       } as AccountMembership
     })
   },
@@ -155,23 +168,41 @@ export const accountService = {
    * Check if user is member of account
    */
   async isAccountMember(userId: string, accountId: string): Promise<boolean> {
-    const membershipRef = doc(db, 'accounts', accountId, 'members', userId)
-    const membershipSnap = await getDoc(membershipRef)
-    return membershipSnap.exists()
+    const { data, error } = await supabase
+      .from('account_members')
+      .select('user_id')
+      .eq('account_id', accountId)
+      .eq('user_id', userId)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return false
+      }
+      throw error
+    }
+
+    return !!data
   },
 
   /**
    * Get all accounts (owners only)
    */
   async getAllAccounts(): Promise<Account[]> {
-    const accountsRef = collection(db, 'accounts')
-    const accountsSnapshot = await getDocs(accountsRef)
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-    return accountsSnapshot.docs.map(doc => {
-      const data = convertTimestamps(doc.data())
+    if (error) throw error
+
+    return (data || []).map(account => {
+      const converted = convertTimestamps(account)
       return {
-        id: doc.id,
-        ...data
+        id: converted.id,
+        name: converted.name,
+        createdAt: converted.created_at,
+        createdBy: converted.created_by
       } as Account
     })
   }

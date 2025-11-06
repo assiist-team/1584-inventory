@@ -84,7 +84,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Optimize for Postgres/SQL patterns, not Firestore abstractions
   - See: `07-database-service.md`
 
-- [ ] **Task 3.2**: Account Service Migration
+- [x] **Task 3.2**: Account Service Migration
   - Migrate account CRUD operations using Supabase query builder
   - Update account membership logic
   - Use SQL joins and relational queries
@@ -182,7 +182,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 
 ### Phase 3: Database Migration
 - [x] Task 3.1: Core Database Service
-- [ ] Task 3.2: Account Service Migration
+- [x] Task 3.2: Account Service Migration
 - [ ] Task 3.3: Inventory Service Migration
 - [ ] Task 3.4: Business Profile Service Migration
 - [ ] Task 3.5: Tax Presets Service Migration
