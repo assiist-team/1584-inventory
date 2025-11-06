@@ -97,7 +97,7 @@ Since we're treating this as a new app (no data migration needed), we can:
   - Convert complex queries and aggregations
   - See: `09-inventory-service-migration.md`
 
-- [ ] **Task 3.4**: Business Profile Service Migration
+- [x] **Task 3.4**: Business Profile Service Migration
   - Migrate business profile operations
   - Update logo URL handling
   - See: `10-business-profile-migration.md`
@@ -184,7 +184,7 @@ Since we're treating this as a new app (no data migration needed), we can:
 - [x] Task 3.1: Core Database Service
 - [x] Task 3.2: Account Service Migration
 - [ ] Task 3.3: Inventory Service Migration
-- [ ] Task 3.4: Business Profile Service Migration
+- [x] Task 3.4: Business Profile Service Migration
 - [ ] Task 3.5: Tax Presets Service Migration
 
 ### Phase 4: Storage Migration

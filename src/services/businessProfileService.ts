@@ -1,5 +1,5 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { db, convertTimestamps } from './firebase'
+import { supabase } from './supabase'
+import { convertTimestamps } from './databaseService'
 import { BusinessProfile } from '@/types'
 
 /**
@@ -11,16 +11,27 @@ export const businessProfileService = {
    */
   async getBusinessProfile(accountId: string): Promise<BusinessProfile | null> {
     try {
-      const profileRef = doc(db, 'accounts', accountId, 'businessProfile', 'profile')
-      const profileSnap = await getDoc(profileRef)
+      const { data, error } = await supabase
+        .from('business_profiles')
+        .select('*')
+        .eq('account_id', accountId)
+        .single()
 
-      if (profileSnap.exists()) {
-        const data = convertTimestamps(profileSnap.data())
-        return {
-          ...data
-        } as BusinessProfile
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null
+        }
+        throw error
       }
-      return null
+
+      const profileData = convertTimestamps(data)
+      return {
+        accountId: profileData.account_id,
+        name: profileData.name,
+        logoUrl: profileData.logo_url,
+        updatedAt: profileData.updated_at,
+        updatedBy: profileData.updated_by
+      } as BusinessProfile
     } catch (error) {
       console.error('Error fetching business profile:', error)
       return null
@@ -37,20 +48,42 @@ export const businessProfileService = {
     updatedBy: string
   ): Promise<void> {
     try {
-      const profileRef = doc(db, 'accounts', accountId, 'businessProfile', 'profile')
-      
-      const profileData: BusinessProfile = {
-        name,
-        logoUrl,
-        updatedAt: new Date(),
-        updatedBy,
-        accountId
+      // Check if profile exists
+      const { data: existing, error: checkError } = await supabase
+        .from('business_profiles')
+        .select('account_id')
+        .eq('account_id', accountId)
+        .single()
+
+      // If there's an error checking and it's not "not found", throw it
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError
       }
 
-      await setDoc(profileRef, {
-        ...profileData,
-        updatedAt: new Date()
-      }, { merge: true })
+      const profileData = {
+        account_id: accountId,
+        name,
+        logo_url: logoUrl,
+        updated_at: new Date().toISOString(),
+        updated_by: updatedBy
+      }
+
+      if (existing) {
+        // Update existing
+        const { error } = await supabase
+          .from('business_profiles')
+          .update(profileData)
+          .eq('account_id', accountId)
+
+        if (error) throw error
+      } else {
+        // Create new
+        const { error } = await supabase
+          .from('business_profiles')
+          .insert(profileData)
+
+        if (error) throw error
+      }
 
       console.log('Business profile updated successfully')
     } catch (error) {
