@@ -860,7 +860,7 @@ export default function TransactionDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {transactionItems.map((item) => {
                     // Check if item has been deallocated to inventory (projectId is null)
-                    const isDeallocated = item.projectId === null
+                    const isDeallocated = item.projectId == null
                     const itemLink = isDeallocated
                       ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
                       : buildContextUrl(`/project/${projectId}/item/${item.itemId}`, { from: 'transaction' })

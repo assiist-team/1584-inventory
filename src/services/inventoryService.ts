@@ -266,7 +266,7 @@ export const projectService = {
             projects = projects.filter(p => p.id !== oldId)
           }
           
-          callback(projects.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()))
+          callback([...projects])
         }
       )
       .subscribe((status, err) => {
@@ -718,27 +718,52 @@ export const transactionService = {
           event: '*',
           schema: 'public',
           table: 'transactions',
-          filter: `account_id=eq.${accountId} AND project_id=eq.${projectId}`
+          // Listen at account scope so we receive updates when project_id changes
+          filter: `account_id=eq.${accountId}`
         },
         async (payload) => {
-          console.log('Transactions change received!', payload)
+          console.log('Transactions change received (account scope)!', payload)
 
           const { eventType, new: newRecord, old: oldRecord } = payload
+          const newProjectId = newRecord?.project_id ?? null
+          const oldProjectId = oldRecord?.project_id ?? null
+
+          const matchesProject = (candidate: string | null | undefined) => candidate === projectId
 
           if (eventType === 'INSERT') {
-            const newTransaction = _convertTransactionFromDb(newRecord)
-            const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [newTransaction])
-            transactions = [enrichedTransaction, ...transactions]
+            if (matchesProject(newProjectId)) {
+              const newTransaction = _convertTransactionFromDb(newRecord)
+              const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [newTransaction])
+              // Ensure no duplicates before adding
+              transactions = [enrichedTransaction, ...transactions.filter(t => t.transactionId !== enrichedTransaction.transactionId)]
+            }
           } else if (eventType === 'UPDATE') {
             const updatedTransaction = _convertTransactionFromDb(newRecord)
             const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [updatedTransaction])
-            transactions = transactions.map(t => t.transactionId === enrichedTransaction.transactionId ? enrichedTransaction : t)
+
+            const wasInProject = transactions.some(t => t.transactionId === enrichedTransaction.transactionId)
+            const isInProject = matchesProject(newProjectId)
+
+            if (isInProject && !wasInProject) {
+              // Transaction moved into this project
+              transactions = [enrichedTransaction, ...transactions]
+            } else if (!isInProject && wasInProject) {
+              // Transaction moved out of this project (or deleted project_id)
+              transactions = transactions.filter(t => t.transactionId !== enrichedTransaction.transactionId)
+            } else if (isInProject && wasInProject) {
+              // Transaction updated within this project
+              transactions = transactions.map(t => t.transactionId === enrichedTransaction.transactionId ? enrichedTransaction : t)
+            }
+            // If !isInProject && !wasInProject → change unrelated to this project, ignore
           } else if (eventType === 'DELETE') {
-            const oldId = oldRecord.transaction_id
-            transactions = transactions.filter(t => t.transactionId !== oldId)
+            if (matchesProject(oldProjectId)) {
+              const oldId = oldRecord.transaction_id
+              transactions = transactions.filter(t => t.transactionId !== oldId)
+            }
           }
-          
-          callback(transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
+
+          const sortedTransactions = [...transactions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          callback(sortedTransactions)
         }
       )
       .subscribe((status, err) => {
@@ -779,7 +804,7 @@ export const transactionService = {
           if (eventType === 'INSERT') {
             const newTransaction = _convertTransactionFromDb(newRecord)
             const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [newTransaction])
-            transactions = [enrichedTransaction, ...transactions]
+            transactions = [enrichedTransaction, ...transactions.filter(t => t.transactionId !== enrichedTransaction.transactionId)]
           } else if (eventType === 'UPDATE') {
             const updatedTransaction = _convertTransactionFromDb(newRecord)
             const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [updatedTransaction])
@@ -789,7 +814,8 @@ export const transactionService = {
             transactions = transactions.filter(t => t.transactionId !== oldId)
           }
           
-          callback(transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
+          const sortedTransactions = [...transactions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          callback(sortedTransactions)
         }
       )
       .subscribe((status, err) => {
@@ -1121,24 +1147,42 @@ export const unifiedItemsService = {
           event: '*',
           schema: 'public',
           table: 'items',
-          filter: `account_id=eq.${accountId} AND project_id=eq.${projectId}`
+          // Broaden filter to account-level to catch updates where project_id changes
+          filter: `account_id=eq.${accountId}`
         },
         (payload) => {
-          console.log('Project items change received!', payload)
+          console.log('Project items change received (broad filter)!', payload)
           const { eventType, new: newRecord, old: oldRecord } = payload
 
           if (eventType === 'INSERT') {
-            const newItem = this._convertItemFromDb(newRecord)
-            items = [newItem, ...items]
+            // Add item only if it belongs to the current project
+            if (newRecord.project_id === projectId) {
+              const newItem = this._convertItemFromDb(newRecord)
+              items = [newItem, ...items]
+            }
           } else if (eventType === 'UPDATE') {
             const updatedItem = this._convertItemFromDb(newRecord)
-            items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
+            const wasInProject = items.some(i => i.itemId === updatedItem.itemId)
+            const isInProject = updatedItem.projectId === projectId
+
+            if (isInProject && !wasInProject) {
+              // Item moved INTO this project
+              items = [updatedItem, ...items]
+            } else if (!isInProject && wasInProject) {
+              // Item moved OUT of this project
+              items = items.filter(i => i.itemId !== updatedItem.itemId)
+            } else if (isInProject && wasInProject) {
+              // Item updated WITHIN this project
+              items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
+            }
+            // If !isInProject and !wasInProject, do nothing (change between other projects)
+            
           } else if (eventType === 'DELETE') {
             const oldId = oldRecord.item_id
             items = items.filter(i => i.itemId !== oldId)
           }
           
-          callback(items.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()))
+          callback([...items])
         }
       )
       .subscribe((status, err) => {
@@ -1218,20 +1262,20 @@ export const unifiedItemsService = {
           console.log('Business inventory change received!', payload)
           const { eventType, new: newRecord, old: oldRecord } = payload
 
-          const isBusinessInventoryItem = (item: any) => !item.project_id
-
-            if (eventType === 'INSERT') {
-            if (isBusinessInventoryItem(newRecord)) {
+          if (eventType === 'INSERT') {
+            // Check raw DB record (snake_case)
+            if (!newRecord.project_id) {
               const newItem = this._convertItemFromDb(newRecord)
               items = [newItem, ...items]
             }
           } else if (eventType === 'UPDATE') {
             const updatedItem = this._convertItemFromDb(newRecord)
-            if (isBusinessInventoryItem(updatedItem)) {
+            // Check converted item (camelCase) - if projectId is null/undefined, it's business inventory
+            if (!updatedItem.projectId) {
               // It's a business inventory item, update it
               items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
             } else {
-              // It's no longer a business inventory item, remove it
+              // It's no longer a business inventory item (moved to a project), remove it
               items = items.filter(i => i.itemId !== updatedItem.itemId)
             }
           } else if (eventType === 'DELETE') {
@@ -1239,7 +1283,7 @@ export const unifiedItemsService = {
             items = items.filter(i => i.itemId !== oldId)
           }
           
-          callback(items.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()))
+          callback([...items])
         }
       )
       .subscribe((status, err) => {
