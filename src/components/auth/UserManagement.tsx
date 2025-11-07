@@ -5,9 +5,9 @@ import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
 import { supabase } from '../../services/supabase'
 import { createUserInvitation, getPendingInvitations } from '../../services/supabase'
+import { accountService } from '../../services/accountService'
 import { User, UserRole } from '../../types'
 import { Mail, Shield, Users, Crown, Copy, Check } from 'lucide-react'
-import { convertTimestamps } from '../../services/databaseService'
 
 interface UserManagementProps {
   className?: string
@@ -32,7 +32,7 @@ export default function UserManagement({ className }: UserManagementProps) {
   }>>([])
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
-  // Check if current user can manage users (admin or owner)
+  // Admins and owners can manage users
   const canManageUsers = isAdmin || isOwner()
 
   useEffect(() => {
@@ -62,52 +62,22 @@ export default function UserManagement({ className }: UserManagementProps) {
   const loadUsers = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false })
+      // Load users for the current account
+      if (!currentAccountId) {
+        setUsers([])
+        setLoading(false)
+        return
+      }
 
-      if (error) throw error
-
-      // Get account memberships for each user to determine their account role
-      const usersData = await Promise.all(
-        (data || []).map(async (userData) => {
-          const converted = convertTimestamps(userData)
-          
-          // Get account membership to determine role
-          let accountRole: UserRole | null = null
-          if (currentAccountId) {
-            const { data: membership } = await supabase
-              .from('account_members')
-              .select('role')
-              .eq('user_id', converted.id)
-              .eq('account_id', currentAccountId)
-              .maybeSingle()
-            
-            if (membership) {
-              accountRole = membership.role === 'admin' ? UserRole.ADMIN : UserRole.USER
-            }
-          }
-
-          // System-level role takes precedence
-          // For display: OWNER > account role > USER (default)
-          const displayRole = converted.role === 'owner' 
-            ? UserRole.OWNER 
-            : accountRole || UserRole.USER
-
-          return {
-            id: converted.id,
-            email: converted.email,
-            fullName: converted.full_name,
-            role: displayRole,
-            accountId: currentAccountId || '',
-            createdAt: converted.created_at ? new Date(converted.created_at) : new Date(),
-            lastLogin: converted.last_login ? new Date(converted.last_login) : new Date()
-          } as User
-        })
-      )
-
-      setUsers(usersData)
+      const usersData = await accountService.getAccountUsers(currentAccountId)
+      
+      setUsers(usersData.map(user => ({
+        ...user,
+        // Map role correctly: owner -> OWNER, admin -> ADMIN, user -> USER
+        role: user.role === 'owner' ? UserRole.OWNER 
+          : user.role === 'admin' ? UserRole.ADMIN 
+          : UserRole.USER
+      })))
     } catch (err) {
       console.error('Error loading users:', err)
       setError('Failed to load users')
@@ -118,41 +88,9 @@ export default function UserManagement({ className }: UserManagementProps) {
 
   const updateUserRole = async (userId: string, newRole: UserRole) => {
     try {
-      if (!currentAccountId) {
-        setError('Account ID is required')
-        return
-      }
-
-      // Convert UserRole enum to account role ('admin' or 'user')
-      // Note: OWNER role is system-level and cannot be assigned via account membership
-      const accountRole = newRole === UserRole.ADMIN ? 'admin' : 'user'
-
-      // Update account membership role
-      const { error: membershipError } = await supabase
-        .from('account_members')
-        .update({ role: accountRole })
-        .eq('user_id', userId)
-        .eq('account_id', currentAccountId)
-
-      if (membershipError) {
-        // If membership doesn't exist, create it
-        if (membershipError.code === 'PGRST116' || membershipError.message.includes('No rows')) {
-          const { error: insertError } = await supabase
-            .from('account_members')
-            .insert({
-              user_id: userId,
-              account_id: currentAccountId,
-              role: accountRole,
-              joined_at: new Date().toISOString()
-            })
-          
-          if (insertError) throw insertError
-        } else {
-          throw membershipError
-        }
-      }
-
-      await loadUsers() // Refresh the list
+      // In the simplified model, we can't change user roles
+      // Only system owners exist, and regular users don't have account-level roles
+      setError('User roles cannot be changed in the simplified account model')
     } catch (err) {
       console.error('Error updating user role:', err)
       setError('Failed to update user role')
@@ -290,7 +228,6 @@ export default function UserManagement({ className }: UserManagementProps) {
               onChange={(e) => setInviteRole(e.target.value as UserRole)}
             >
               <option value={UserRole.USER}>User</option>
-              <option value={UserRole.ADMIN}>Admin</option>
             </Select>
             <Button
               onClick={inviteUser}
@@ -363,16 +300,6 @@ export default function UserManagement({ className }: UserManagementProps) {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
                       {user.role}
                     </span>
-                    {user.id !== currentUser?.id && user.role !== UserRole.OWNER && (
-                      <Select
-                        size="sm"
-                        value={user.role}
-                        onChange={(e) => updateUserRole(user.id, e.target.value as UserRole)}
-                      >
-                        <option value={UserRole.USER}>User</option>
-                        <option value={UserRole.ADMIN}>Admin</option>
-                      </Select>
-                    )}
                   </div>
                 </div>
               ))}

@@ -93,18 +93,16 @@ describe('accountService', () => {
   describe('getUserAccount', () => {
     it('should return account for user', async () => {
       const mockAccount = createMockAccount()
-      const mockMembership = { account_id: mockAccount.id }
+      const mockUser = { account_id: mockAccount.id }
       
-      // Mock account_members query
-      const mockMembersQueryBuilder = createMockSupabaseClient().from('account_members')
+      // Mock users query (new system uses users.account_id)
       vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        if (table === 'account_members') {
+        if (table === 'users') {
           return {
-            ...mockMembersQueryBuilder,
+            ...createMockSupabaseClient().from('users'),
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            maybeSingle: vi.fn().mockResolvedValue({ data: mockMembership, error: null })
+            single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
           } as any
         }
         // Mock accounts query
@@ -123,14 +121,11 @@ describe('accountService', () => {
     })
 
     it('should return null when user has no account', async () => {
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
-      
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
-        ...mockQueryBuilder,
+        ...createMockSupabaseClient().from('users'),
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
-        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null })
+        single: vi.fn().mockResolvedValue({ data: { account_id: null }, error: null })
       } as any)
 
       const account = await accountService.getUserAccount('user-id')
@@ -138,141 +133,99 @@ describe('accountService', () => {
     })
   })
 
-  describe('getUserRoleInAccount', () => {
-    it('should return user role', async () => {
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
+  describe('assignUserToAccount', () => {
+    it('should assign user to account', async () => {
+      const mockQueryBuilder = createMockSupabaseClient().from('users')
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: { role: 'admin' }, error: null })
-      } as any)
-
-      const role = await accountService.getUserRoleInAccount('user-id', 'account-id')
-      expect(role).toBe('admin')
-    })
-
-    it('should return null when user is not member', async () => {
-      const notFoundError = createNotFoundError()
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
-      
-      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
-        ...mockQueryBuilder,
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: null, error: notFoundError })
-      } as any)
-
-      const role = await accountService.getUserRoleInAccount('user-id', 'account-id')
-      expect(role).toBeNull()
-    })
-  })
-
-  describe('addUserToAccount', () => {
-    it('should add user to account', async () => {
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
-      
-      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
-        ...mockQueryBuilder,
-        insert: vi.fn().mockResolvedValue({ data: null, error: null })
-      } as any)
-
-      await expect(
-        accountService.addUserToAccount('user-id', 'account-id', 'admin')
-      ).resolves.not.toThrow()
-    })
-  })
-
-  describe('updateUserRoleInAccount', () => {
-    it('should update user role', async () => {
-      // Create an awaitable chain object
-      const awaitableChain = {
         update: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        then: vi.fn((onResolve?: (value: any) => any) => {
-          return Promise.resolve({ data: null, error: null }).then(onResolve)
-        }),
-        catch: vi.fn((onReject?: (error: any) => any) => {
-          return Promise.resolve({ data: null, error: null }).catch(onReject)
-        })
-      }
-      
-      vi.mocked(supabaseModule.supabase.from).mockReturnValue(awaitableChain as any)
+        eq: vi.fn().mockResolvedValue({ data: null, error: null })
+      } as any)
 
       await expect(
-        accountService.updateUserRoleInAccount('user-id', 'account-id', 'user')
+        accountService.assignUserToAccount('user-id', 'account-id')
       ).resolves.not.toThrow()
     })
   })
 
   describe('removeUserFromAccount', () => {
     it('should remove user from account', async () => {
-      // Create an awaitable chain object
-      const awaitableChain = {
-        delete: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        then: vi.fn((onResolve?: (value: any) => any) => {
-          return Promise.resolve({ data: null, error: null }).then(onResolve)
-        }),
-        catch: vi.fn((onReject?: (error: any) => any) => {
-          return Promise.resolve({ data: null, error: null }).catch(onReject)
-        })
-      }
+      const mockQueryBuilder = createMockSupabaseClient().from('users')
       
-      vi.mocked(supabaseModule.supabase.from).mockReturnValue(awaitableChain as any)
+      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
+        ...mockQueryBuilder,
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null })
+      } as any)
 
       await expect(
-        accountService.removeUserFromAccount('user-id', 'account-id')
+        accountService.removeUserFromAccount('user-id')
       ).resolves.not.toThrow()
     })
   })
 
-  describe('getAccountMembers', () => {
-    it('should return account members', async () => {
-      const mockMembers = [
-        { user_id: 'user-1', account_id: 'account-id', role: 'admin', joined_at: new Date().toISOString() },
-        { user_id: 'user-2', account_id: 'account-id', role: 'user', joined_at: new Date().toISOString() }
+  describe('getAccountUsers', () => {
+    it('should return account users', async () => {
+      const mockUsers = [
+        { id: 'user-1', account_id: 'account-id', role: 'admin', email: 'user1@test.com', full_name: 'User 1', created_at: new Date().toISOString(), last_login: new Date().toISOString() },
+        { id: 'user-2', account_id: 'account-id', role: 'user', email: 'user2@test.com', full_name: 'User 2', created_at: new Date().toISOString(), last_login: new Date().toISOString() }
       ]
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
+      const mockQueryBuilder = createMockSupabaseClient().from('users')
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
         select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ data: mockMembers, error: null })
+        eq: vi.fn().mockResolvedValue({ data: mockUsers, error: null })
       } as any)
 
-      const members = await accountService.getAccountMembers('account-id')
-      expect(members).toHaveLength(2)
-      expect(members[0].userId).toBe('user-1')
-      expect(members[0].role).toBe('admin')
+      const users = await accountService.getAccountUsers('account-id')
+      expect(users).toHaveLength(2)
+      expect(users[0].id).toBe('user-1')
+      expect(users[0].role).toBe('admin')
     })
   })
 
   describe('isAccountMember', () => {
     it('should return true when user is member', async () => {
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
+      const mockUser = { role: 'admin', account_id: 'account-id' }
+      const mockQueryBuilder = createMockSupabaseClient().from('users')
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: { user_id: 'user-id' }, error: null })
+        single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
       } as any)
 
       const isMember = await accountService.isAccountMember('user-id', 'account-id')
       expect(isMember).toBe(true)
     })
 
-    it('should return false when user is not member', async () => {
-      const notFoundError = createNotFoundError()
-      const mockQueryBuilder = createMockSupabaseClient().from('account_members')
+    it('should return true when user is system owner', async () => {
+      const mockUser = { role: 'owner', account_id: null }
+      const mockQueryBuilder = createMockSupabaseClient().from('users')
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: null, error: notFoundError })
+        single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
+      } as any)
+
+      const isMember = await accountService.isAccountMember('user-id', 'account-id')
+      expect(isMember).toBe(true) // System owners can access all accounts
+    })
+
+    it('should return false when user is not member', async () => {
+      const mockUser = { role: 'user', account_id: 'different-account-id' }
+      const mockQueryBuilder = createMockSupabaseClient().from('users')
+      
+      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
+        ...mockQueryBuilder,
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
       } as any)
 
       const isMember = await accountService.isAccountMember('user-id', 'account-id')

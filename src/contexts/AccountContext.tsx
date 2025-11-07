@@ -1,15 +1,13 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useAuth } from './AuthContext'
 import { accountService } from '../services/accountService'
-import { Account, AccountMembership } from '../types'
+import { Account } from '../types'
 
 interface AccountContextType {
   currentAccountId: string | null
   currentAccount: Account | null
-  accountMembership: AccountMembership | null
   isOwner: boolean // System-level owner
   isAdmin: boolean // Account-level admin OR system owner
-  userRole: 'admin' | 'user' | null // Account-level role
   loading: boolean
 }
 
@@ -23,11 +21,13 @@ export function AccountProvider({ children }: AccountProviderProps) {
   const { user, loading: authLoading } = useAuth()
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null)
-  const [accountMembership, setAccountMembership] = useState<AccountMembership | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Check if user is system owner
   const isOwner = user?.role === 'owner' || false
+  
+  // Check if user is account admin (admin role OR system owner)
+  const isAdmin = isOwner || user?.role === 'admin' || false
 
   useEffect(() => {
     let isMounted = true
@@ -37,7 +37,6 @@ export function AccountProvider({ children }: AccountProviderProps) {
       if (!user) {
         setCurrentAccountId(null)
         setCurrentAccount(null)
-        setAccountMembership(null)
         if (isMounted) {
           setLoading(false)
         }
@@ -58,7 +57,19 @@ export function AccountProvider({ children }: AccountProviderProps) {
       }, 10000) // 10 second timeout
 
       try {
-        // Get user's account
+        // First check if user already has accountId from user object
+        if (user.accountId) {
+          const account = await accountService.getAccount(user.accountId)
+          if (!isMounted) return
+          
+          if (account) {
+            setCurrentAccountId(account.id)
+            setCurrentAccount(account)
+            return
+          }
+        }
+        
+        // Fallback: query database for account_id (for users created before migration)
         const account = await accountService.getUserAccount(user.id)
         
         if (!isMounted) return
@@ -66,33 +77,24 @@ export function AccountProvider({ children }: AccountProviderProps) {
         if (account) {
           setCurrentAccountId(account.id)
           setCurrentAccount(account)
-
-          // Get user's role in account
-          const role = await accountService.getUserRoleInAccount(user.id, account.id)
-          
-          if (!isMounted) return
-
-          if (role) {
-            setAccountMembership({
-              userId: user.id,
-              accountId: account.id,
-              role,
-              joinedAt: new Date() // Will be loaded from membership if needed
-            })
-          } else {
-            setAccountMembership(null)
-          }
         } else {
+          // If no account found and user is owner, try to get first account
+          if (isOwner) {
+            const allAccounts = await accountService.getAllAccounts()
+            if (allAccounts.length > 0) {
+              setCurrentAccountId(allAccounts[0].id)
+              setCurrentAccount(allAccounts[0])
+              return
+            }
+          }
           setCurrentAccountId(null)
           setCurrentAccount(null)
-          setAccountMembership(null)
         }
       } catch (error) {
         console.error('Error loading account:', error)
         if (isMounted) {
           setCurrentAccountId(null)
           setCurrentAccount(null)
-          setAccountMembership(null)
         }
       } finally {
         if (loadingTimeout) {
@@ -119,17 +121,11 @@ export function AccountProvider({ children }: AccountProviderProps) {
     }
   }, [user, authLoading])
 
-  // Calculate derived values
-  const userRole = accountMembership?.role || null
-  const isAdmin = isOwner || userRole === 'admin'
-
   const value: AccountContextType = {
     currentAccountId,
     currentAccount,
-    accountMembership,
     isOwner,
     isAdmin,
-    userRole,
     loading
   }
 

@@ -9,7 +9,6 @@ import UserManagement from '../components/auth/UserManagement'
 import AccountManagement from '../components/auth/AccountManagement'
 import TaxPresetsManager from '../components/TaxPresetsManager'
 import { Button } from '../components/ui/Button'
-import { UserRole } from '../types'
 
 export default function Settings() {
   const { user, isOwner } = useAuth()
@@ -51,20 +50,26 @@ export default function Settings() {
 
       // Upload logo if a new file was selected
       if (logoFile) {
+        console.log('Attempting to upload business logo...')
         const uploadResult = await ImageUploadService.uploadBusinessLogo(currentAccountId, logoFile)
         logoUrl = uploadResult.url
+        console.log('Business logo uploaded successfully.')
       }
 
       // Update business profile
+      console.log('Attempting to update business profile...')
       await businessProfileService.updateBusinessProfile(
         currentAccountId,
         businessNameInput.trim(),
         logoUrl,
         user.id
       )
+      console.log('Business profile updated successfully.')
 
       // Refresh profile to get updated data
+      console.log('Attempting to refresh profile...')
       await refreshProfile()
+      console.log('Profile refreshed successfully.')
       setProfileSuccess(true)
       setLogoFile(null)
       setTimeout(() => setProfileSuccess(false), 3000)
@@ -136,8 +141,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* User Management Section - Only for admins */}
-        {isAdmin && (
+        {/* User Management Section - Only for owners */}
+        {isOwner() && (
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <UserManagement />
           </div>

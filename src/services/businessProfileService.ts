@@ -59,7 +59,6 @@ export const businessProfileService = {
       if (checkError && checkError.code !== 'PGRST116') {
         throw checkError
       }
-
       const profileData = {
         account_id: accountId,
         name,

@@ -1,9 +1,11 @@
 import { supabase } from './supabase'
 import { convertTimestamps } from './databaseService'
-import { Account, AccountMembership } from '@/types'
+import { Account, User } from '@/types'
 
 /**
- * Account Service - Manages account creation, membership, and role management
+ * Account Service - Simplified account management
+ * Users belong to one account via user.account_id
+ * System owners (user.role = 'owner') can access all accounts
  */
 export const accountService = {
   /**
@@ -51,116 +53,68 @@ export const accountService = {
   },
 
   /**
-   * Get account for a user (from account_members table)
+   * Get account for a user (from user.account_id)
    */
   async getUserAccount(userId: string): Promise<Account | null> {
-    const { data: membershipData, error: membershipError } = await supabase
-      .from('account_members')
+    const { data: userData, error: userError } = await supabase
+      .from('users')
       .select('account_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle()
+      .eq('id', userId)
+      .single()
 
-    if (membershipError || !membershipData?.account_id) {
+    if (userError || !userData?.account_id) {
       return null
     }
 
-    return await this.getAccount(membershipData.account_id)
+    return await this.getAccount(userData.account_id)
   },
 
   /**
-   * Get user's role in a specific account
+   * Assign user to an account
    */
-  async getUserRoleInAccount(userId: string, accountId: string): Promise<'admin' | 'user' | null> {
+  async assignUserToAccount(userId: string, accountId: string): Promise<void> {
+    const { error } = await supabase
+      .from('users')
+      .update({ account_id: accountId })
+      .eq('id', userId)
+
+    if (error) throw error
+  },
+
+  /**
+   * Remove user from account (set account_id to null)
+   */
+  async removeUserFromAccount(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('users')
+      .update({ account_id: null })
+      .eq('id', userId)
+
+    if (error) throw error
+  },
+
+  /**
+   * Get all users in an account
+   */
+  async getAccountUsers(accountId: string): Promise<User[]> {
     const { data, error } = await supabase
-      .from('account_members')
-      .select('role')
-      .eq('account_id', accountId)
-      .eq('user_id', userId)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null
-      }
-      throw error
-    }
-
-    return data.role as 'admin' | 'user'
-  },
-
-  /**
-   * Add user to account with a role
-   */
-  async addUserToAccount(
-    userId: string,
-    accountId: string,
-    role: 'admin' | 'user'
-  ): Promise<void> {
-    const { error } = await supabase
-      .from('account_members')
-      .insert({
-        account_id: accountId,
-        user_id: userId,
-        role,
-        joined_at: new Date().toISOString()
-      })
-
-    if (error) throw error
-  },
-
-  /**
-   * Update user's role in account (owner or account admin only)
-   */
-  async updateUserRoleInAccount(
-    userId: string,
-    accountId: string,
-    role: 'admin' | 'user'
-  ): Promise<void> {
-    const { error } = await supabase
-      .from('account_members')
-      .update({
-        role,
-        joined_at: new Date().toISOString() // Update timestamp on role change
-      })
-      .eq('account_id', accountId)
-      .eq('user_id', userId)
-
-    if (error) throw error
-  },
-
-  /**
-   * Remove user from account
-   */
-  async removeUserFromAccount(userId: string, accountId: string): Promise<void> {
-    const { error } = await supabase
-      .from('account_members')
-      .delete()
-      .eq('account_id', accountId)
-      .eq('user_id', userId)
-
-    if (error) throw error
-  },
-
-  /**
-   * Get all members of an account
-   */
-  async getAccountMembers(accountId: string): Promise<AccountMembership[]> {
-    const { data, error } = await supabase
-      .from('account_members')
+      .from('users')
       .select('*')
       .eq('account_id', accountId)
 
     if (error) throw error
 
-    return (data || []).map(member => {
-      const converted = convertTimestamps(member)
+    return (data || []).map(user => {
+      const converted = convertTimestamps(user)
       return {
-        userId: converted.user_id,
+        id: converted.id,
+        email: converted.email,
+        fullName: converted.full_name,
         accountId: converted.account_id,
-        role: converted.role,
-        joinedAt: converted.joined_at
-      } as AccountMembership
+        role: converted.role || null,
+        createdAt: converted.created_at ? new Date(converted.created_at) : new Date(),
+        lastLogin: converted.last_login ? new Date(converted.last_login) : new Date()
+      } as User
     })
   },
 
@@ -168,21 +122,24 @@ export const accountService = {
    * Check if user is member of account
    */
   async isAccountMember(userId: string, accountId: string): Promise<boolean> {
-    const { data, error } = await supabase
-      .from('account_members')
-      .select('user_id')
-      .eq('account_id', accountId)
-      .eq('user_id', userId)
+    // System owners can access any account
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('role, account_id')
+      .eq('id', userId)
       .single()
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return false
-      }
-      throw error
+    if (userError) {
+      return false
     }
 
-    return !!data
+    // System owners can access all accounts
+    if (userData.role === 'owner') {
+      return true
+    }
+
+    // Regular users can only access their own account
+    return userData.account_id === accountId
   },
 
   /**

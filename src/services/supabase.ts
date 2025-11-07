@@ -204,14 +204,13 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
           // Create default account
           const accountId = await accountService.createAccount('Default Account', supabaseUser.id)
           
-          // Add owner as admin to their default account
-          await accountService.addUserToAccount(supabaseUser.id, accountId, 'admin')
+          // Assign owner to their default account
+          await accountService.assignUserToAccount(supabaseUser.id, accountId)
           console.log('First user setup complete.')
         }
       } else {
         // Subsequent new users
         let accountId: string | null = null
-        let invitationRole: 'admin' | 'user' | null = null
         let invitationId: string | null = null
 
         // Check for token-based invitation first (from localStorage)
@@ -222,9 +221,7 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
               const invData = JSON.parse(storedInvitationData)
               invitationId = invData.invitationId
               accountId = invData.accountId
-              // Handle both enum string and direct string comparison
-              invitationRole = (invData.role === UserRole.ADMIN || invData.role === 'admin') ? 'admin' : 'user'
-              console.log(`Found token-based invitation: account ${accountId}, role ${invitationRole}, invitationId ${invitationId}`)
+              console.log(`Found token-based invitation: account ${accountId}, invitationId ${invitationId}`)
             } catch (err) {
               console.error('Error parsing stored invitation data:', err)
             }
@@ -238,7 +235,7 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
             invitationId = invitation.invitationId
             const { data: invitationData, error: invError } = await supabase
               .from('invitations')
-              .select('*')
+              .select('account_id')
               .eq('id', invitation.invitationId)
               .single()
 
@@ -246,27 +243,43 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
               console.error('Error fetching invitation:', invError)
             } else if (invitationData) {
               accountId = invitationData.account_id || null
-              invitationRole = invitationData.role === UserRole.ADMIN ? 'admin' : 'user'
             }
           }
         }
 
         // Create the user document
+        // Determine role: first user in account gets 'admin', others get 'user'
+        let userRole: 'admin' | 'user' = 'user'
+        if (accountId) {
+          // Check if this is the first user in this account
+          const { data: existingAccountUsers } = await supabase
+            .from('users')
+            .select('id')
+            .eq('account_id', accountId)
+            .limit(1)
+          
+          if (!existingAccountUsers || existingAccountUsers.length === 0) {
+            // First user in this account gets admin role
+            userRole = 'admin'
+          }
+        }
+
         const { error: insertError } = await supabase
           .from('users')
           .insert({
             id: supabaseUser.id,
             email: userData.email,
             full_name: userData.fullName,
-            role: null,
+            role: userRole,
+            account_id: accountId || null,
             created_at: new Date().toISOString(),
             last_login: new Date().toISOString()
           })
 
         if (insertError) throw insertError
 
-        // If they were invited, accept the invitation and add them to the account membership
-        if (invitationId && accountId && invitationRole) {
+        // If they were invited, accept the invitation
+        if (invitationId && accountId) {
           // Only accept if not already accepted
           try {
             const { data: invCheck } = await supabase
@@ -281,23 +294,9 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
           } catch (err) {
             console.error('Error checking/accepting invitation:', err)
           }
-          
-          // Always try to add user to account (handles case where invitation was already accepted)
-          try {
-            await accountService.addUserToAccount(supabaseUser.id, accountId, invitationRole)
-            console.log(`Added invited user to account ${accountId} as ${invitationRole}`)
-          } catch (err: any) {
-            // If user already exists in account_members, that's okay - just log it
-            if (err?.code === '23505') { // Unique violation
-              console.log(`User already in account ${accountId}, updating role to ${invitationRole}`)
-              await accountService.updateUserRoleInAccount(supabaseUser.id, accountId, invitationRole)
-            } else {
-              console.error('Error adding user to account:', err)
-              throw err
-            }
-          }
-        } else {
-          console.warn('Missing invitation data:', { invitationId, accountId, invitationRole })
+        } else if (invitationId || accountId) {
+          // Partial invitation data - log warning but don't fail
+          console.warn('Incomplete invitation data:', { invitationId, accountId })
         }
       }
     }
@@ -321,25 +320,14 @@ export const getUserData = async (uid: string): Promise<AppUser | null> => {
       return null
     }
 
-    // Get account_id from account_members if user has one
-    let accountId: string | null = null
-    if (data) {
-      const { data: memberships, error: membershipError } = await supabase
-        .from('account_members')
-        .select('account_id')
-        .eq('user_id', uid)
-        .limit(1)
-      
-      if (!membershipError && memberships && memberships.length > 0) {
-        accountId = memberships[0].account_id
-      }
-    }
+    // Get account_id from user.account_id
+    const accountId = data?.account_id || null
 
     return {
       id: data.id,
       email: data.email,
       fullName: data.full_name,
-      role: data.role as 'owner' | null,
+      role: data.role as 'owner' | 'admin' | 'user' | null,
       accountId: accountId || '',
       createdAt: data.created_at ? new Date(data.created_at) : new Date(),
       lastLogin: data.last_login ? new Date(data.last_login) : new Date()

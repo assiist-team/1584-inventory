@@ -16,12 +16,6 @@ export interface Account {
   createdBy: string;
 }
 
-export interface AccountMembership {
-  userId: string;
-  accountId: string;
-  role: 'admin' | 'user';
-  joinedAt: Date;
-}
 
 export interface BusinessProfile {
   name: string;
@@ -36,7 +30,7 @@ export interface User {
   email: string;
   fullName: string;
   accountId: string; // Links user to account
-  role?: 'owner' | null; // System-level owner (optional)
+  role?: 'owner' | 'admin' | 'user' | null; // System owner, account admin, or account user
   createdAt: Date;
   lastLogin: Date;
 }

@@ -11,18 +11,18 @@ import ImageUpload from '@/components/ui/ImageUpload'
 import TransactionItemsList from '@/components/TransactionItemsList'
 import { useAuth } from '../contexts/AuthContext'
 import { useAccount } from '../contexts/AccountContext'
-import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { getTaxPresets } from '@/services/taxPresetsService'
 
 export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { hasRole, user } = useAuth()
+  const { user, isOwner } = useAuth()
   const { currentAccountId } = useAccount()
 
-  // Check if user has permission to add transactions (USER role or higher)
-  if (!hasRole(UserRole.USER)) {
+  // Check if user has permission to add transactions
+  // Users must belong to an account (have currentAccountId) or be a system owner
+  if (!currentAccountId && !isOwner()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full space-y-8 text-center">

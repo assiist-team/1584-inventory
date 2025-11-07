@@ -76,29 +76,14 @@ describe('Supabase Auth Functions', () => {
 
   describe('getUserData', () => {
     it('should return user data', async () => {
-      const mockUser = createMockUser()
-      const mockMembership = { account_id: 'test-account-id' }
+      const mockUser = { ...createMockUser(), account_id: 'test-account-id' }
 
-      vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        const mockQueryBuilder = createMockSupabaseClient().from(table)
-        if (table === 'users') {
-          return {
-            ...mockQueryBuilder,
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
-          } as any
-        }
-        if (table === 'account_members') {
-          return {
-            ...mockQueryBuilder,
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockResolvedValue({ data: [mockMembership], error: null })
-          } as any
-        }
-        return mockQueryBuilder as any
-      })
+      vi.mocked(supabaseModule.supabase.from).mockReturnValue({
+        ...createMockSupabaseClient().from('users'),
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
+      } as any)
 
       const userData = await getUserData('test-user-id')
       expect(userData).toBeTruthy()
