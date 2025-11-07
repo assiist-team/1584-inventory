@@ -17,7 +17,7 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const { currentAccountId, loading: accountLoading } = useAccount()
+  const { currentAccountId } = useAccount()
   const [searchParams, setSearchParams] = useSearchParams()
   const budgetTabParam = searchParams.get('budgetTab')
   const [project, setProject] = useState<Project | null>(null)
@@ -89,6 +89,8 @@ export default function ProjectDetail() {
   }, [transactions])
 
   useEffect(() => {
+    console.log('🔍 ProjectDetail - useEffect triggered. id:', id, 'currentAccountId:', currentAccountId, 'isLoading:', isLoading)
+    
     let transactionUnsubscribe: (() => void) | undefined
     let itemsUnsubscribe: (() => void) | undefined
 
@@ -117,24 +119,24 @@ export default function ProjectDetail() {
     }
 
     const loadData = async () => {
+      console.log('🔍 ProjectDetail - loadData called. id:', id, 'currentAccountId:', currentAccountId)
+      
       if (!id) {
         console.warn('No project ID provided, redirecting to projects')
         navigate('/projects')
         return
       }
-      
-      // Wait for account to finish loading before proceeding
-      if (accountLoading || !currentAccountId) {
-        setIsLoading(true)
+      if (!currentAccountId) {
+        console.log('🔍 ProjectDetail - No account ID yet, waiting...')
         return
       }
 
       setIsLoading(true)
       try {
-        console.log('Loading project data for ID:', id)
+        console.log('🔍 ProjectDetail - Loading project data for ID:', id)
         const projectData = await projectService.getProject(currentAccountId, id)
         if (projectData) {
-          console.log('Project loaded successfully:', projectData.name)
+          console.log('🔍 ProjectDetail - Project loaded successfully:', projectData.name)
           setProject(projectData)
 
           const [transactionsData, itemsData] = await Promise.all([
@@ -142,6 +144,7 @@ export default function ProjectDetail() {
             unifiedItemsService.getItemsByProject(currentAccountId, id)
           ])
 
+          console.log('🔍 ProjectDetail - Loaded', transactionsData.length, 'transactions and', itemsData.length, 'items')
           setTransactions(transactionsData)
           setItems(itemsData)
           setupTransactionSubscription(transactionsData)
@@ -164,7 +167,7 @@ export default function ProjectDetail() {
       if (transactionUnsubscribe) transactionUnsubscribe()
       if (itemsUnsubscribe) itemsUnsubscribe()
     }
-  }, [id, currentAccountId, accountLoading, navigate])
+  }, [id, currentAccountId, navigate])
 
   // Retry function for failed loads
   const retryLoadProject = () => {
@@ -437,7 +440,10 @@ export default function ProjectDetail() {
         {/* Tab Content */}
         <div className="px-6 py-6">
           {activeTab === 'inventory' && project && (
-            <InventoryList projectId={project.id} projectName={project.name} items={items} />
+            <>
+              {console.log('🔍 ProjectDetail - Rendering InventoryList with', items.length, 'items')}
+              <InventoryList projectId={project.id} projectName={project.name} items={items} />
+            </>
           )}
           {activeTab === 'transactions' && project && (
             <TransactionsList projectId={project.id} transactions={transactions} />

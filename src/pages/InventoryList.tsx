@@ -23,13 +23,22 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [items, setItems] = useState<Item[]>(propItems || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Show loading spinner only if account is loading - items come from props (parent handles that loading)
+  const isLoading = accountLoading
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const { showSuccess, showError } = useToast()
 
+  // Debug logging
   useEffect(() => {
+    console.log('🔍 InventoryList - accountLoading:', accountLoading, 'propItems length:', propItems?.length || 0, 'isLoading:', isLoading)
+  }, [accountLoading, propItems, isLoading])
+
+  useEffect(() => {
+    console.log('🔍 InventoryList - propItems changed:', propItems?.length || 0)
     setItems(propItems || [])
   }, [propItems])
 
@@ -443,7 +452,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {isLoading && (
         <div className="text-center py-12 px-4">
           <div className="mx-auto h-16 w-16 text-gray-400 animate-spin mb-4">
             <svg fill="none" viewBox="0 0 24 24">
@@ -473,7 +482,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
       )}
 
       {/* Items List */}
-      {!loading && !error && filteredItems.length === 0 ? (
+      {!isLoading && !error && filteredItems.length === 0 ? (
         <div className="text-center py-12 px-4">
           <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">📦</div>
           <h3 className="text-lg font-medium text-gray-900 mb-1">
@@ -481,7 +490,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
           </h3>
         </div>
       ) : (
-        !loading && !error && (
+        !isLoading && !error && (
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { Transaction, ProjectBudgetCategories, BudgetCategory } from '@/types'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -22,9 +22,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   const [showAllCategories, setShowAllCategories] = useState(false)
 
   // Calculate total spent for overall budget (exclude Design Fee transactions)
-  const calculateSpent = (): number => {
-    console.log('BudgetProgress - calculateSpent: Starting calculation for', transactions.length, 'transactions')
-
+  const calculateSpent = async (): Promise<number> => {
     // Sum all transactions (purchases add, returns subtract), excluding canceled and design fee transactions
     let totalAmount = 0
 
@@ -34,36 +32,20 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     )
 
     for (const transaction of activeTransactions) {
-      console.log('BudgetProgress - Processing transaction:', {
-        id: transaction.transactionId,
-        type: transaction.transactionType,
-        budgetCategory: transaction.budgetCategory,
-        amount: transaction.amount
-      })
-
       const transactionAmount = parseFloat(transaction.amount || '0')
-      console.log('BudgetProgress - Transaction amount:', transactionAmount)
-
       const multiplier = transaction.transactionType === 'Return' ? -1 : 1
       const finalAmount = transactionAmount * multiplier
       totalAmount += finalAmount
-
-      console.log('BudgetProgress - Added', finalAmount, 'to total. Running total:', totalAmount)
     }
 
-    console.log('BudgetProgress - Final total amount (excluding design fee):', totalAmount)
     return totalAmount
   }
 
   // Calculate spending for each budget category
-  const calculateCategoryBudgetData = (): CategoryBudgetData[] => {
+  const calculateCategoryBudgetData = async (): Promise<CategoryBudgetData[]> => {
     if (!budgetCategories) {
-      console.log('BudgetProgress - No budget categories provided')
       return []
     }
-
-    console.log('BudgetProgress - Available budget categories:', budgetCategories)
-    console.log('BudgetProgress - Total transactions available:', transactions.length)
 
     const categoryData: CategoryBudgetData[] = []
 
@@ -116,26 +98,13 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
             transaction.budgetCategory === label
           )
 
-          console.log(`BudgetProgress - Category ${label}: Found ${categoryTransactions.length} transactions`)
-
           for (const transaction of categoryTransactions) {
-            console.log(`BudgetProgress - Category ${label} - Processing transaction:`, {
-              id: transaction.transactionId,
-              type: transaction.transactionType,
-              budgetCategory: transaction.budgetCategory,
-              amount: transaction.amount
-            })
-
             // Use transaction amount directly for budget calculation
             const transactionAmount = parseFloat(transaction.amount || '0')
-            console.log(`BudgetProgress - Category ${label} - Transaction amount:`, transactionAmount)
-
             // Apply transaction type multiplier: purchases add, returns subtract
             const multiplier = transaction.transactionType === 'Return' ? -1 : 1
             const finalAmount = transactionAmount * multiplier
             categorySpent += finalAmount
-
-            console.log(`BudgetProgress - Category ${label} - Added ${finalAmount} to category total. Running total:`, categorySpent)
           }
 
           const percentage = categoryBudget > 0 ? (categorySpent / categoryBudget) * 100 : 0
@@ -153,57 +122,46 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     return categoryData
   }
 
-  // Calculate budget data synchronously using useMemo to prevent jitter
-  const budgetData = useMemo(() => {
-    console.log('BudgetProgress - useEffect triggered with:', {
-      budget,
-      designFee,
-      budgetCategories,
-      transactionCount: transactions.length
-    })
+  const [spent, setSpent] = useState(0)
+  const [percentage, setPercentage] = useState(0)
+  const [allCategoryData, setAllCategoryData] = useState<CategoryBudgetData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [computedOverallBudget, setComputedOverallBudget] = useState<number>(budget || 0)
 
-    try {
-      const spentAmount = calculateSpent()
-      const categoryData = calculateCategoryBudgetData()
+  // Calculate budget data when component mounts or when props change
+  useEffect(() => {
+    const calculateBudgetData = async () => {
+      setIsLoading(true)
 
-      // Compute overall budget as the sum of category budgets (exclude designFee key)
-      const overallFromCategories = budgetCategories ? Object.entries(budgetCategories).reduce((sum, [key, val]) => {
-        if (key === 'designFee') return sum
-        return sum + (val as number || 0)
-      }, 0) : 0
+      try {
+        const spentAmount = await calculateSpent()
+        const categoryData = await calculateCategoryBudgetData()
 
-      const spentRounded = Math.round(spentAmount)
-      const percentageValue = overallFromCategories > 0 ? (spentRounded / overallFromCategories) * 100 : 0
+        // Compute overall budget as the sum of category budgets (exclude designFee key)
+        const overallFromCategories = budgetCategories ? Object.entries(budgetCategories).reduce((sum, [key, val]) => {
+          if (key === 'designFee') return sum
+          return sum + (val as number || 0)
+        }, 0) : 0
 
-      console.log('BudgetProgress - Final results:', {
-        spentAmount,
-        spentRounded,
-        percentageValue,
-        overallFromCategories,
-        categoryDataLength: categoryData.length
-      })
+        const spentRounded = Math.round(spentAmount)
+        const percentageValue = overallFromCategories > 0 ? (spentRounded / overallFromCategories) * 100 : 0
 
-      return {
-        spent: spentRounded,
-        percentage: percentageValue,
-        categoryData,
-        overallBudget: overallFromCategories
-      }
-    } catch (error) {
-      console.error('Error calculating budget data:', error)
-      return {
-        spent: 0,
-        percentage: 0,
-        categoryData: [],
-        overallBudget: budget || 0
+        setSpent(spentRounded)
+        setPercentage(percentageValue)
+        setAllCategoryData(categoryData)
+        setComputedOverallBudget(overallFromCategories)
+      } catch (error) {
+        console.error('Error calculating budget data:', error)
+        setSpent(0)
+        setPercentage(0)
+        setAllCategoryData([])
+      } finally {
+        setIsLoading(false)
       }
     }
-  }, [budget, designFee, budgetCategories, transactions])
 
-  const spent = budgetData.spent
-  const percentage = budgetData.percentage
-  const allCategoryData = budgetData.categoryData
-  const computedOverallBudget = budgetData.overallBudget
+    calculateBudgetData()
+  }, [budget, designFee, budgetCategories, transactions])
 
   // In preview mode, determine what to show: furnishings budget if it exists, otherwise overall furnishings-only budget
   let categoryData = allCategoryData
@@ -297,6 +255,18 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   const hasOverallBudget = computedOverallBudget > 0
   const hasDesignFee = designFee !== null && designFee !== undefined && designFee > 0
   const hasCategoryBudgets = budgetCategories && Object.values(budgetCategories).some(v => v > 0)
+
+  // Show loading state while calculating
+  if (isLoading) {
+    return (
+      <div>
+        <div className="animate-pulse">
+          <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+          <div className="h-2 bg-gray-200 rounded mb-4"></div>
+        </div>
+      </div>
+    )
+  }
 
   if (!hasOverallBudget && !hasDesignFee && !hasCategoryBudgets) {
     return null

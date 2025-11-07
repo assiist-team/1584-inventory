@@ -13,10 +13,15 @@ export default function Projects() {
   const { currentAccountId, loading: accountLoading } = useAccount()
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Record<string, Transaction[]>>({})
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingData, setIsLoadingData] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  
+  // Combined loading state - show loading if account is loading OR data is loading
+  const isLoading = accountLoading || isLoadingData
 
   useEffect(() => {
+    console.log('🔍 Projects - useEffect triggered. accountLoading:', accountLoading, 'currentAccountId:', currentAccountId, 'isLoading:', isLoading)
+    
     let unsubscribe: (() => void) | undefined
 
     const setupSubscription = (initialProjects: Project[]) => {
@@ -57,15 +62,21 @@ export default function Projects() {
     }
 
     const loadInitialData = async () => {
+      console.log('🔍 Projects - loadInitialData called. accountLoading:', accountLoading, 'currentAccountId:', currentAccountId)
+      
+      // Don't load if account is still loading - wait for it to finish
+      // The useEffect will re-run when accountLoading changes to false
       if (accountLoading) {
-        setIsLoading(true)
+        console.log('🔍 Projects - Account still loading, waiting...')
         return
       }
 
       if (currentAccountId) {
-        setIsLoading(true)
+        console.log('🔍 Projects - Loading projects for account:', currentAccountId)
+        setIsLoadingData(true)
         try {
           const projectsData = await projectService.getProjects(currentAccountId)
+          console.log('🔍 Projects - Loaded', projectsData.length, 'projects')
           setProjects(projectsData)
           await loadTransactionsForProjects(projectsData)
           setupSubscription(projectsData)
@@ -74,10 +85,11 @@ export default function Projects() {
           setProjects([])
           setTransactions({})
         } finally {
-          setIsLoading(false)
+          setIsLoadingData(false)
         }
       } else {
-        setIsLoading(false)
+        console.log('🔍 Projects - No account ID, clearing data')
+        setIsLoadingData(false)
         setProjects([])
         setTransactions({})
       }

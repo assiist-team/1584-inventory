@@ -34,22 +34,20 @@ BEGIN
   UPDATE items i
   SET project_price = to_char(c.new_project_price, 'FM9999990.00'),
       market_value = to_char(
-        CASE
-          -- If existing market_value is missing or <= new project_price, set market = project + 0.01
-          WHEN NULLIF(i.market_value,'')::numeric IS NULL THEN (c.new_project_price + 0.01)
-          WHEN NULLIF(i.market_value,'')::numeric <= c.new_project_price THEN (c.new_project_price + 0.01)
-          ELSE NULLIF(i.market_value,'')::numeric
-        END
+        GREATEST(
+          COALESCE(NULLIF(i.market_value,'')::numeric, 0),
+          round(c.new_project_price * 1.30, 2)
+        )
       , 'FM9999990.00'),
       last_updated = now()
   FROM computed c
   WHERE i.id = c.id
     AND c.new_project_price IS NOT NULL
-    -- Only update when value differs or is missing
+    -- Only update when project_price differs or market_value is less than required
     AND (
       i.project_price IS NULL
       OR NULLIF(i.project_price,'')::numeric IS DISTINCT FROM c.new_project_price
-      OR NULLIF(i.market_value,'')::numeric <= c.new_project_price
+      OR COALESCE(NULLIF(i.market_value,'')::numeric, 0) < round(c.new_project_price * 1.30, 2)
     );
 
   GET DIAGNOSTICS updated_count = ROW_COUNT;
