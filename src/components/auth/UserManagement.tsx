@@ -14,8 +14,8 @@ interface UserManagementProps {
 }
 
 export default function UserManagement({ className }: UserManagementProps) {
-  const { user: currentUser, hasRole, loading: authLoading } = useAuth()
-  const { currentAccountId, loading: accountLoading } = useAccount()
+  const { user: currentUser, isOwner, loading: authLoading } = useAuth()
+  const { currentAccountId, isAdmin, loading: accountLoading } = useAccount()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -33,7 +33,7 @@ export default function UserManagement({ className }: UserManagementProps) {
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
   // Check if current user can manage users (admin or owner)
-  const canManageUsers = hasRole(UserRole.ADMIN)
+  const canManageUsers = isAdmin || isOwner()
 
   useEffect(() => {
     if (authLoading || accountLoading) {

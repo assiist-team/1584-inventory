@@ -222,8 +222,9 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
               const invData = JSON.parse(storedInvitationData)
               invitationId = invData.invitationId
               accountId = invData.accountId
-              invitationRole = invData.role === UserRole.ADMIN ? 'admin' : 'user'
-              console.log(`Found token-based invitation: account ${accountId}, role ${invitationRole}`)
+              // Handle both enum string and direct string comparison
+              invitationRole = (invData.role === UserRole.ADMIN || invData.role === 'admin') ? 'admin' : 'user'
+              console.log(`Found token-based invitation: account ${accountId}, role ${invitationRole}, invitationId ${invitationId}`)
             } catch (err) {
               console.error('Error parsing stored invitation data:', err)
             }
@@ -266,9 +267,37 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
 
         // If they were invited, accept the invitation and add them to the account membership
         if (invitationId && accountId && invitationRole) {
-          await acceptUserInvitation(invitationId)
-          await accountService.addUserToAccount(supabaseUser.id, accountId, invitationRole)
-          console.log(`Added invited user to account ${accountId} as ${invitationRole}`)
+          // Only accept if not already accepted
+          try {
+            const { data: invCheck } = await supabase
+              .from('invitations')
+              .select('status')
+              .eq('id', invitationId)
+              .single()
+            
+            if (invCheck && invCheck.status === 'pending') {
+              await acceptUserInvitation(invitationId)
+            }
+          } catch (err) {
+            console.error('Error checking/accepting invitation:', err)
+          }
+          
+          // Always try to add user to account (handles case where invitation was already accepted)
+          try {
+            await accountService.addUserToAccount(supabaseUser.id, accountId, invitationRole)
+            console.log(`Added invited user to account ${accountId} as ${invitationRole}`)
+          } catch (err: any) {
+            // If user already exists in account_members, that's okay - just log it
+            if (err?.code === '23505') { // Unique violation
+              console.log(`User already in account ${accountId}, updating role to ${invitationRole}`)
+              await accountService.updateUserRoleInAccount(supabaseUser.id, accountId, invitationRole)
+            } else {
+              console.error('Error adding user to account:', err)
+              throw err
+            }
+          }
+        } else {
+          console.warn('Missing invitation data:', { invitationId, accountId, invitationRole })
         }
       }
     }
@@ -558,11 +587,34 @@ export const checkUserInvitation = async (
 }
 
 // Check invitation by token (for link-based flow)
+// This allows checking both pending and accepted invitations
 export const checkInvitationByToken = async (
   token: string
 ): Promise<{ role: UserRole; invitationId: string; email: string; accountId: string | null } | null> => {
   try {
-    const invitation = await getInvitationByToken(token)
+    // First try to get pending invitation
+    let invitation = await getInvitationByToken(token)
+    
+    // If not found as pending, check if it was already accepted
+    if (!invitation) {
+      const { data, error } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('token', token)
+        .eq('status', 'accepted')
+        .single()
+
+      if (!error && data) {
+        invitation = {
+          id: data.id,
+          email: data.email,
+          role: data.role === 'admin' ? UserRole.ADMIN : UserRole.USER,
+          accountId: data.account_id,
+          expiresAt: data.expires_at
+        }
+      }
+    }
+
     if (!invitation) {
       return null
     }

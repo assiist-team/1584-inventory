@@ -12,7 +12,7 @@ import { Button } from '../components/ui/Button'
 import { UserRole } from '../types'
 
 export default function Settings() {
-  const { user, hasRole, isOwner } = useAuth()
+  const { user, isOwner } = useAuth()
   const { currentAccountId, isAdmin } = useAccount()
   const { businessProfile, businessName, businessLogoUrl, refreshProfile } = useBusinessProfile()
   const [businessNameInput, setBusinessNameInput] = useState(businessName)
@@ -137,14 +137,14 @@ export default function Settings() {
         )}
 
         {/* User Management Section - Only for admins */}
-        {hasRole(UserRole.ADMIN) && (
+        {isAdmin && (
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <UserManagement />
           </div>
         )}
 
         {/* Tax Presets Management Section - Only for admins */}
-        {hasRole(UserRole.ADMIN) && (
+        {isAdmin && (
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-6">
               <div className="flex items-center mb-4">
