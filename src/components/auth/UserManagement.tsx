@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useAccount } from '../../contexts/AccountContext'
 import { Button } from '../ui/Button'
@@ -35,21 +35,7 @@ export default function UserManagement({ className }: UserManagementProps) {
   // Admins and owners can manage users
   const canManageUsers = isAdmin || isOwner()
 
-  useEffect(() => {
-    if (authLoading || accountLoading) {
-      setLoading(true)
-      return
-    }
-    if (canManageUsers && currentAccountId) {
-      loadUsers()
-      loadPendingInvitations()
-    } else {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canManageUsers, currentAccountId, authLoading, accountLoading])
-
-  const loadPendingInvitations = async () => {
+  const loadPendingInvitations = useCallback(async () => {
     if (!currentAccountId) return
     try {
       const invitations = await getPendingInvitations(currentAccountId)
@@ -57,9 +43,9 @@ export default function UserManagement({ className }: UserManagementProps) {
     } catch (err) {
       console.error('Error loading pending invitations:', err)
     }
-  }
+  }, [currentAccountId])
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true)
       // Load users for the current account
@@ -84,7 +70,20 @@ export default function UserManagement({ className }: UserManagementProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentAccountId])
+
+  useEffect(() => {
+    if (authLoading || accountLoading) {
+      setLoading(true)
+      return
+    }
+    if (canManageUsers && currentAccountId) {
+      loadUsers()
+      loadPendingInvitations()
+    } else {
+      setLoading(false)
+    }
+  }, [canManageUsers, currentAccountId, authLoading, accountLoading, loadUsers, loadPendingInvitations])
 
   const updateUserRole = async (userId: string, newRole: UserRole) => {
     try {

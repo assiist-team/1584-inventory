@@ -31,15 +31,16 @@ const removeUnwantedIcons = () => {
 
 interface TransactionsListProps {
   projectId?: string
+  transactions?: Transaction[]
 }
 
-export default function TransactionsList({ projectId: propProjectId }: TransactionsListProps) {
+export default function TransactionsList({ projectId: propProjectId, transactions: propTransactions }: TransactionsListProps) {
   const { id: routeProjectId } = useParams<{ id: string }>()
   const { currentAccountId } = useAccount()
   // Use prop if provided, otherwise fall back to route param
   const projectId = propProjectId || routeProjectId
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [transactions, setTransactions] = useState<Transaction[]>(propTransactions || [])
+  const [isLoading, setIsLoading] = useState(!propTransactions)
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
@@ -47,6 +48,13 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
   const [filterMode, setFilterMode] = useState<'all' | 'we-owe' | 'client-owes'>('all')
 
   useEffect(() => {
+    // If transactions are passed as a prop, just update the state
+    if (propTransactions) {
+      setTransactions(propTransactions)
+      return
+    }
+
+    // If no transactions prop, fetch them
     let unsubscribe: (() => void) | undefined
 
     const setupSubscription = (initialTransactions: Transaction[]) => {
@@ -67,15 +75,18 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
         return
       }
 
-      try {
-        const data = await transactionService.getTransactions(currentAccountId, projectId)
-        setTransactions(data)
-        setupSubscription(data) // Setup subscription after initial data is loaded
-      } catch (error) {
-        console.error('Error loading transactions:', error)
-        setTransactions([])
-      } finally {
-        setIsLoading(false)
+      // Only load if transactions were not passed in props
+      if (!propTransactions) {
+        try {
+          const data = await transactionService.getTransactions(currentAccountId, projectId)
+          setTransactions(data)
+          setupSubscription(data)
+        } catch (error) {
+          console.error('Error loading transactions:', error)
+          setTransactions([])
+        } finally {
+          setIsLoading(false)
+        }
       }
     }
 
@@ -86,7 +97,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
         unsubscribe()
       }
     }
-  }, [projectId, currentAccountId])
+  }, [projectId, currentAccountId, propTransactions])
 
   // Filter transactions based on search and filter mode
   const filteredTransactions = useMemo(() => {

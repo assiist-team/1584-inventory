@@ -40,9 +40,10 @@ export default function Projects() {
 
       try {
         const projectIds = projectsToLoad.map(p => p.id)
-        const allTransactions = await transactionService.getTransactionsForProjects(currentAccountId, projectIds)
+        const allTransactions = await transactionService.getTransactionsForProjects(currentAccountId, projectIds, projectsToLoad)
         const transactionsByProject: Record<string, Transaction[]> = {}
         allTransactions.forEach(t => {
+          if (!t.projectId) return;
           if (!transactionsByProject[t.projectId]) {
             transactionsByProject[t.projectId] = []
           }

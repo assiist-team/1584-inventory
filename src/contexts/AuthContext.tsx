@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useMemo } from 'react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import {
   signInWithGoogle,
@@ -216,7 +216,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return user?.role === 'owner' || false
   }, [user?.role])
 
-  const value: AuthContextType = {
+  const value: AuthContextType = useMemo(() => ({
     supabaseUser,
     user,
     loading,
@@ -225,7 +225,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!supabaseUser,
     hasRole,
     isOwner
-  }
+  }), [supabaseUser, user, loading, hasRole, isOwner, signOut, signIn])
 
   return (
     <AuthContext.Provider value={value}>

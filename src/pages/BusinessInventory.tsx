@@ -136,12 +136,12 @@ export default function BusinessInventory() {
     let transactionsUnsubscribe: (() => void) | null = null
 
     const loadInitialData = async () => {
-      if (!currentAccountId) {
-        setIsLoading(false)
-        return
-      }
+    if (!currentAccountId) {
+      setIsLoading(false)
+      return
+    }
 
-      setIsLoading(true)
+        setIsLoading(true)
       try {
         const [inventoryData, businessInventoryTransactions, inventoryRelatedTransactions, projectsData] = await Promise.all([
           unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters),
@@ -149,13 +149,13 @@ export default function BusinessInventory() {
           transactionService.getInventoryRelatedTransactions(currentAccountId),
           projectService.getProjects(currentAccountId)
         ])
-        
+
         const allTransactions = [...businessInventoryTransactions, ...inventoryRelatedTransactions]
         const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
           index === self.findIndex(t => t.transactionId === transaction.transactionId)
         )
         uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        
+
         setItems(inventoryData)
         setTransactions(uniqueTransactions)
         setProjects(projectsData)
@@ -184,12 +184,12 @@ export default function BusinessInventory() {
 
       } catch (error) {
         console.error('Error loading business inventory data:', error)
-        setItems([])
-        setTransactions([])
-        setProjects([])
+          setItems([])
+          setTransactions([])
+          setProjects([])
       } finally {
-        setIsLoading(false)
-      }
+          setIsLoading(false)
+        }
     }
 
     loadInitialData()

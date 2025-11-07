@@ -323,7 +323,8 @@ function _convertTransactionFromDb(dbTransaction: any): Transaction {
  */
 async function _enrichTransactionsWithProjectNames(
   accountId: string,
-  transactions: Transaction[]
+  transactions: Transaction[],
+  projects?: Project[]
 ): Promise<Transaction[]> {
   // Extract unique project IDs (excluding null/undefined)
   const projectIds = [...new Set(transactions
@@ -409,11 +410,12 @@ export const transactionService = {
   },
 
   // Get transactions for multiple projects (account-scoped)
-  async getTransactionsForProjects(accountId: string, projectIds: string[]): Promise<Transaction[]> {
+  async getTransactionsForProjects(accountId: string, projectIds: string[], projects?: Project[]): Promise<Transaction[]> {
+    await ensureAuthenticatedForDatabase()
+
     if (projectIds.length === 0) {
       return []
     }
-    await ensureAuthenticatedForDatabase()
 
     const { data, error } = await supabase
       .from('transactions')
@@ -425,7 +427,7 @@ export const transactionService = {
     if (error) throw error
 
     const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
-    return await _enrichTransactionsWithProjectNames(accountId, transactions)
+    return await _enrichTransactionsWithProjectNames(accountId, transactions, projects)
   },
 
   // Get single transaction (account-scoped)
@@ -1082,14 +1084,16 @@ export const unifiedItemsService = {
   },
 
   // Subscribe to items for a project with real-time updates
-  subscribeToItemsByProject(
+  subscribeToProjectItems(
     accountId: string,
     projectId: string,
     callback: (items: Item[]) => void,
-    filters?: FilterOptions
+    initialItems?: Item[]
   ) {
+    let items = [...(initialItems || [])]
+
     const channel = supabase
-      .channel(`items:${accountId}:${projectId}`)
+      .channel(`project-items:${accountId}:${projectId}`)
       .on(
         'postgres_changes',
         {
@@ -1098,103 +1102,32 @@ export const unifiedItemsService = {
           table: 'items',
           filter: `account_id=eq.${accountId} AND project_id=eq.${projectId}`
         },
-        async () => {
-          // Refetch items on any change
-          try {
-            let query = supabase
-              .from('items')
-              .select('*')
-              .eq('account_id', accountId)
-              .eq('project_id', projectId)
+        (payload) => {
+          console.log('Project items change received!', payload)
+          const { eventType, new: newRecord, old: oldRecord } = payload
 
-            // Apply filters
-            if (filters?.status) {
-              query = query.eq('disposition', filters.status)
-            }
-
-            if (filters?.category) {
-              query = query.eq('source', filters.category)
-            }
-
-            if (filters?.priceRange) {
-              query = query.gte('project_price', filters.priceRange.min.toString())
-              query = query.lte('project_price', filters.priceRange.max.toString())
-            }
-
-            // Apply search (using ilike for case-insensitive search)
-            if (filters?.searchQuery) {
-              query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
-            }
-
-            // Apply sorting
-            query = query.order('last_updated', { ascending: false })
-
-            const { data, error } = await query
-
-            if (error) {
-              console.error('Error fetching items in subscription:', error)
-              return
-            }
-
-            if (data) {
-              const items = (data || []).map(item => this._convertItemFromDb(item))
-              callback(items)
-            }
-          } catch (error) {
-            console.error('Error in items subscription callback:', error)
+          if (eventType === 'INSERT') {
+            const newItem = _convertItemFromDb(newRecord)
+            items = [newItem, ...items]
+          } else if (eventType === 'UPDATE') {
+            const updatedItem = _convertItemFromDb(newRecord)
+            items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
+          } else if (eventType === 'DELETE') {
+            const oldId = oldRecord.item_id
+            items = items.filter(i => i.itemId !== oldId)
           }
+          
+          callback(items.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()))
         }
       )
-      .subscribe()
-
-    // Initial fetch
-    const fetchItems = async () => {
-      try {
-        let query = supabase
-          .from('items')
-          .select('*')
-          .eq('account_id', accountId)
-          .eq('project_id', projectId)
-
-        // Apply filters
-        if (filters?.status) {
-          query = query.eq('disposition', filters.status)
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to project items channel')
         }
-
-        if (filters?.category) {
-          query = query.eq('source', filters.category)
+        if (err) {
+          console.error('Error subscribing to project items channel:', err)
         }
-
-        if (filters?.priceRange) {
-          query = query.gte('project_price', filters.priceRange.min.toString())
-          query = query.lte('project_price', filters.priceRange.max.toString())
-        }
-
-        // Apply search (using ilike for case-insensitive search)
-        if (filters?.searchQuery) {
-          query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
-        }
-
-        // Apply sorting
-        query = query.order('last_updated', { ascending: false })
-
-        const { data, error } = await query
-
-        if (error) {
-          console.error('Error fetching initial items:', error)
-          return
-        }
-
-        if (data) {
-          const items = (data || []).map(item => this._convertItemFromDb(item))
-          callback(items)
-        }
-      } catch (error) {
-        console.error('Error in initial items fetch:', error)
-      }
-    }
-
-    fetchItems()
+      })
 
     return () => {
       channel.unsubscribe()

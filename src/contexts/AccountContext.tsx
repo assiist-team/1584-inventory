@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react'
 import { useAuth } from './AuthContext'
 import { accountService } from '../services/accountService'
 import { Account } from '../types'
@@ -113,13 +113,13 @@ export function AccountProvider({ children }: AccountProviderProps) {
     }
   }, [user, authLoading, isOwner])
 
-  const value: AccountContextType = {
+  const value: AccountContextType = useMemo(() => ({
     currentAccountId,
     currentAccount,
     isOwner,
     isAdmin,
     loading
-  }
+  }), [currentAccountId, currentAccount, isOwner, isAdmin, loading])
 
   return (
     <AccountContext.Provider value={value}>

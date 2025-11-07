@@ -13,14 +13,15 @@ import { useAccount } from '@/contexts/AccountContext'
 interface InventoryListProps {
   projectId: string
   projectName: string
+  items: Item[]
 }
 
-export default function InventoryList({ projectId, projectName }: InventoryListProps) {
+export default function InventoryList({ projectId, projectName, items: propItems }: InventoryListProps) {
   const { currentAccountId, loading: accountLoading } = useAccount()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
-  const [items, setItems] = useState<Item[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<Item[]>(propItems || [])
+  const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,51 +31,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const { showSuccess, showError } = useToast()
 
-  // Fetch real inventory data from Supabase
   useEffect(() => {
-    const fetchItems = async () => {
-      if (!currentAccountId || !hasMore) return
-      try {
-        setLoading(true)
-        setError(null)
-        console.log('Fetching items for project:', projectId, 'page:', page)
-        const newItems = await unifiedItemsService.getItemsByProject(
-          currentAccountId,
-          projectId,
-          {},
-          { page, limit: 50 }
-        )
-        console.log('Fetched items:', newItems.length, newItems)
-        setItems(prevItems => (page === 1 ? newItems : [...prevItems, ...newItems]))
-        setHasMore(newItems.length === 50)
-      } catch (error) {
-        console.error('Failed to fetch items:', error)
-        setError('Failed to load inventory items. Please try again.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (accountLoading) {
-      setLoading(true)
-      return
-    }
-
-    if (currentAccountId) {
-      fetchItems()
-
-      // Subscribe to real-time updates
-      const unsubscribe = unifiedItemsService.subscribeToItemsByProject(currentAccountId, projectId, (updatedItems) => {
-        console.log('Real-time items update:', updatedItems.length, updatedItems)
-        setItems(updatedItems)
-      })
-
-      // Cleanup subscription on unmount
-      return () => {
-        unsubscribe()
-      }
-    }
-  }, [projectId, currentAccountId, accountLoading, page, hasMore])
+    setItems(propItems || [])
+  }, [propItems])
 
   const loadMoreItems = () => {
     if (!loading && hasMore) {

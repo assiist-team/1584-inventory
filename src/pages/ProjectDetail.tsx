@@ -2,8 +2,8 @@ import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign } from 'lucide-r
 import { useMemo } from 'react'
 import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Project, Transaction } from '@/types'
-import { projectService, transactionService } from '@/services/inventoryService'
+import { Project, Transaction, Item } from '@/types'
+import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
 import { useAccount } from '@/contexts/AccountContext'
 import InventoryList from './InventoryList'
 import TransactionsList from './TransactionsList'
@@ -22,6 +22,7 @@ export default function ProjectDetail() {
   const budgetTabParam = searchParams.get('budgetTab')
   const [project, setProject] = useState<Project | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [items, setItems] = useState<Item[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -65,142 +66,77 @@ export default function ProjectDetail() {
   }
 
   useEffect(() => {
-    const nextBudgetTab = budgetTabParam === 'accounting' ? 'accounting' : 'budget'
-    setActiveBudgetTab((current) => (current === nextBudgetTab ? current : nextBudgetTab))
-  }, [budgetTabParam])
+    let transactionUnsubscribe: (() => void) | undefined
+    let itemsUnsubscribe: (() => void) | undefined
 
-  // Handle budget tab changes
-  const handleBudgetTabChange = (tabId: string) => {
-    setActiveBudgetTab(tabId)
-    const newSearchParams = new URLSearchParams(searchParams)
-    if (tabId === 'budget') {
-      newSearchParams.delete('budgetTab')
-    } else {
-      newSearchParams.set('budgetTab', tabId)
-    }
-    setSearchParams(newSearchParams)
-  }
-
-  // Calculate amounts owed
-  const calculateOwedTo1584 = () => {
-    const clientOwesTransactions = transactions.filter(transaction => {
-      // For "owed to Design Business", we want transactions where the client owes Design Business
-      // This happens when Design Business paid for the transaction
-      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursementType === CLIENT_OWES_COMPANY
-      const isLegacyClientOwes = (!transaction.status || transaction.status === 'pending') &&
-                                transaction.paymentMethod === COMPANY_CARD
-
-      return isExplicitlyClientOwes || isLegacyClientOwes
-    })
-    console.log('Owed to Design Business - Client Owes transactions:', clientOwesTransactions.length)
-    return clientOwesTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
-  }
-
-  const calculateOwedToClient = () => {
-    const weOweTransactions = transactions.filter(transaction => {
-      // For "owed to client", we want transactions where Design Business owes the client
-      // This happens when the client paid for the transaction
-      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursementType === COMPANY_OWES_CLIENT
-      const isLegacyWeOwe = (!transaction.status || transaction.status === 'pending') &&
-                           transaction.paymentMethod === 'Client Card'
-
-      return isExplicitlyWeOwe || isLegacyWeOwe
-    })
-    console.log('Owed to Client - We Owe transactions:', weOweTransactions.length)
-    return weOweTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
-  }
-
-
-  const loadProjectAndTransactions = async () => {
-    if (!id) {
-      console.warn('No project ID provided, redirecting to projects')
-      navigate('/projects')
-      return
-    }
-    if (!currentAccountId) return
-
-    setIsLoading(true)
-
-    try {
-      console.log('Loading project data for ID:', id)
-      // Load project data
-      const projectData = await projectService.getProject(currentAccountId, id)
-      if (projectData) {
-        console.log('Project loaded successfully:', projectData.name)
-        setProject(projectData)
-
-        // Load transactions for budget calculation
-        const transactionsData = await transactionService.getTransactions(currentAccountId, id)
-        console.log('Transactions loaded:', transactionsData.length)
-        setTransactions(transactionsData)
-      } else {
-        console.warn('Project not found:', id)
-        // Project not found
-        navigate('/projects')
-      }
-    } catch (error) {
-      console.error('Error loading project:', error)
-      setError('Failed to load project. Please try again.')
-      setIsLoading(false)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
-    const setupSubscription = (initialTransactions: Transaction[]) => {
-      if (!id || !currentAccountId) return;
-      unsubscribe = transactionService.subscribeToTransactions(
+    const setupTransactionSubscription = (initialTransactions: Transaction[]) => {
+      if (!id || !currentAccountId) return
+      transactionUnsubscribe = transactionService.subscribeToTransactions(
         currentAccountId,
         id,
         (updatedTransactions) => {
-          setTransactions(updatedTransactions);
+          setTransactions(updatedTransactions)
         },
         initialTransactions
-      );
-    };
+      )
+    }
+
+    const setupItemsSubscription = (initialItems: Item[]) => {
+      if (!id || !currentAccountId) return
+      itemsUnsubscribe = unifiedItemsService.subscribeToProjectItems(
+        currentAccountId,
+        id,
+        (updatedItems) => {
+          setItems(updatedItems)
+        },
+        initialItems
+      )
+    }
 
     const loadData = async () => {
       if (!id) {
-        console.warn('No project ID provided, redirecting to projects');
-        navigate('/projects');
-        return;
+        console.warn('No project ID provided, redirecting to projects')
+        navigate('/projects')
+        return
       }
-      if (!currentAccountId) return;
+      if (!currentAccountId) return
 
-      setIsLoading(true);
+      setIsLoading(true)
       try {
-        console.log('Loading project data for ID:', id);
-        const projectData = await projectService.getProject(currentAccountId, id);
+        console.log('Loading project data for ID:', id)
+        const projectData = await projectService.getProject(currentAccountId, id)
         if (projectData) {
-          console.log('Project loaded successfully:', projectData.name);
-          setProject(projectData);
-          const transactionsData = await transactionService.getTransactions(currentAccountId, id);
-          console.log('Transactions loaded:', transactionsData.length);
-          setTransactions(transactionsData);
-          setupSubscription(transactionsData);
+          console.log('Project loaded successfully:', projectData.name)
+          setProject(projectData)
+
+          const [transactionsData, itemsData] = await Promise.all([
+            transactionService.getTransactions(currentAccountId, id),
+            unifiedItemsService.getItemsByProject(currentAccountId, id)
+          ])
+
+          setTransactions(transactionsData)
+          setItems(itemsData)
+          setupTransactionSubscription(transactionsData)
+          setupItemsSubscription(itemsData)
         } else {
-          console.warn('Project not found:', id);
-          navigate('/projects');
+          console.warn('Project not found:', id)
+          navigate('/projects')
         }
       } catch (error) {
-        console.error('Error loading project:', error);
-        setError('Failed to load project. Please try again.');
+        console.error('Error loading project:', error)
+        setError('Failed to load project. Please try again.')
       } finally {
-        setIsLoading(false);
+        setIsLoading(false)
       }
-    };
+    }
 
-    loadData();
+    loadData()
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, [id, currentAccountId, navigate]);
+      if (transactionUnsubscribe) transactionUnsubscribe()
+      if (itemsUnsubscribe) itemsUnsubscribe()
+    }
+  }, [id, currentAccountId, navigate])
 
   // Retry function for failed loads
   const retryLoadProject = () => {
@@ -456,11 +392,11 @@ export default function ProjectDetail() {
 
         {/* Tab Content */}
         <div className="px-6 py-6">
-          {activeTab === 'inventory' && (
-            <InventoryList projectId={project.id} projectName={project.name} />
+          {activeTab === 'inventory' && project && (
+            <InventoryList projectId={project.id} projectName={project.name} items={items} />
           )}
-          {activeTab === 'transactions' && (
-            <TransactionsList projectId={project.id} />
+          {activeTab === 'transactions' && project && (
+            <TransactionsList projectId={project.id} transactions={transactions} />
           )}
         </div>
       </div>
