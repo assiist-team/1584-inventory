@@ -2182,33 +2182,83 @@ export const unifiedItemsService = {
     // Create Sale transaction (project selling TO us)
     const saleTransactionId = `INV_SALE_${projectId}`
 
-    const now = new Date()
-    const transactionData = {
-      account_id: accountId,
-      transaction_id: saleTransactionId,
-      project_id: projectId,
-      transaction_date: toDateOnlyString(now),
-      source: projectName,
-      transaction_type: 'To Inventory',  // Project is moving item TO inventory
-      payment_method: 'Pending',
-      amount: finalAmount,
-      budget_category: 'Furnishings',
-      notes: notes || 'Transaction for items purchased from project and moved to business inventory',
-      status: 'pending' as const,
-      reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
-      trigger_event: 'Inventory sale' as const,
-      item_ids: [itemId],
-      created_by: currentUser.id,
-      created_at: now.toISOString(),
-      updated_at: now.toISOString()
-    }
-
-    // Use upsert to create or update the transaction
-    const { error: upsertError } = await supabase
+    // Check if the canonical transaction already exists (account-scoped)
+    const { data: existingTransaction, error: fetchError } = await supabase
       .from('transactions')
-      .upsert(transactionData, { onConflict: 'transaction_id' })
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('transaction_id', saleTransactionId)
+      .single()
 
-    if (upsertError) throw upsertError
+    const now = new Date()
+
+    if (existingTransaction && !fetchError) {
+      // Transaction exists - merge the new item and recalculate amount
+      console.log('📋 Existing INV_SALE transaction found, updating with new item')
+      const existingItemIds = existingTransaction.item_ids || []
+      const updatedItemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
+
+      // Get all items to recalculate amount
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('items')
+        .select('project_price, market_value')
+        .eq('account_id', accountId)
+        .in('item_id', updatedItemIds)
+
+      if (itemsError) throw itemsError
+
+      const totalAmount = (itemsData || [])
+        .map(item => item.project_price || item.market_value || '0.00')
+        .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
+        .toFixed(2)
+
+      const updatedTransactionData = {
+        item_ids: updatedItemIds,
+        amount: totalAmount,
+        notes: notes || 'Transaction for items purchased from project and moved to business inventory',
+        updated_at: now.toISOString()
+      }
+
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update(updatedTransactionData)
+        .eq('account_id', accountId)
+        .eq('transaction_id', saleTransactionId)
+
+      if (updateError) throw updateError
+
+      console.log('🔄 Updated INV_SALE transaction with', updatedItemIds.length, 'items, amount:', totalAmount)
+    } else {
+      // Transaction doesn't exist - create new one
+      const transactionData = {
+        account_id: accountId,
+        transaction_id: saleTransactionId,
+        project_id: projectId,
+        transaction_date: toDateOnlyString(now),
+        source: projectName,
+        transaction_type: 'To Inventory',  // Project is moving item TO inventory
+        payment_method: 'Pending',
+        amount: finalAmount,
+        budget_category: 'Furnishings',
+        notes: notes || 'Transaction for items purchased from project and moved to business inventory',
+        status: 'pending' as const,
+        reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
+        trigger_event: 'Inventory sale' as const,
+        item_ids: [itemId],
+        created_by: currentUser.id,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString()
+      }
+
+      console.log('🆕 Creating new INV_SALE transaction with amount:', transactionData.amount)
+
+      // Insert the transaction (we've already checked it doesn't exist above)
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert(transactionData)
+
+      if (insertError) throw insertError
+    }
 
     // Update item status to inventory
     await this.updateItem(accountId, itemId, {
@@ -2707,12 +2757,12 @@ export const deallocationService = {
 
       console.log('🆕 Creating new INV_SALE transaction with amount:', transactionData.amount)
 
-      // Use upsert to create or update the transaction
-      const { error: upsertError } = await supabase
+      // Insert the transaction (we've already checked it doesn't exist above)
+      const { error: insertError } = await supabase
         .from('transactions')
-        .upsert(transactionData, { onConflict: 'transaction_id' })
+        .insert(transactionData)
 
-      if (upsertError) throw upsertError
+      if (insertError) throw insertError
     }
 
     console.log('✅ Sale transaction created/updated successfully')
