@@ -1,0 +1,214 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { Button } from '@/components/ui/Button'
+import type { Item, Project } from '@/types'
+import { projectService, unifiedItemsService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
+import { useBusinessProfile } from '@/contexts/BusinessProfileContext'
+
+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
+function toNumber(value: string | number | null | undefined): number {
+  if (typeof value === 'number') return isNaN(value) ? 0 : value
+  if (typeof value === 'string') {
+    const n = parseFloat(value || '0')
+    return isNaN(n) ? 0 : n
+  }
+  return 0
+}
+
+export default function PropertyManagementSummary() {
+  const { id: projectId } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const { currentAccountId } = useAccount()
+  const { businessName, businessLogoUrl } = useBusinessProfile()
+
+  const [project, setProject] = useState<Project | null>(null)
+  const [items, setItems] = useState<Item[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const today = useMemo(() => new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }), [])
+
+  useEffect(() => {
+    const load = async () => {
+      if (!projectId || !currentAccountId) {
+        if (!currentAccountId) return // Wait for account to load
+        navigate('/projects')
+        return
+      }
+
+      setIsLoading(true)
+      setError(null)
+      try {
+        const [proj, projectItems] = await Promise.all([
+          projectService.getProject(currentAccountId, projectId),
+          unifiedItemsService.getItemsByProject(currentAccountId, projectId)
+        ])
+
+        if (!proj) {
+          navigate('/projects')
+          return
+        }
+
+        setProject(proj)
+        setItems(projectItems)
+      } catch (e: any) {
+        console.error('Failed to load property management summary:', e)
+        setError('Failed to load property management summary. Please try again.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    load()
+  }, [projectId, currentAccountId, navigate])
+
+  const totalMarketValue = useMemo(() => {
+    return items.reduce((sum, item) => {
+      const marketValue = toNumber(item.marketValue)
+      return sum + marketValue
+    }, 0)
+  }, [items])
+
+  const handlePrint = () => window.print()
+  const handleBack = () => {
+    if (!projectId) return navigate('/projects')
+    navigate(`/project/${projectId}?tab=inventory`)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-600">Loading property management summary...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="mx-auto h-12 w-12 text-red-400">⚠️</div>
+        <h3 className="mt-2 text-sm font-medium text-gray-900">Error</h3>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
+        <div className="mt-6">
+          <Button onClick={handleBack}>Back</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto bg-white shadow rounded-lg p-8 print:shadow-none print:p-0">
+      {/* Action bar */}
+      <div className="flex justify-end space-x-3 mb-6 print:hidden">
+        <Button variant="secondary" onClick={handleBack}>Back</Button>
+        <Button onClick={handlePrint}>Print</Button>
+      </div>
+
+      {/* Header */}
+      <div className="border-b pb-4 mb-6">
+        <div className="flex items-start gap-4">
+          {businessLogoUrl && (
+            <img
+              src={businessLogoUrl}
+              alt={businessName}
+              className="h-24 w-auto object-contain"
+            />
+          )}
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Property Management Summary</h1>
+            <div className="mt-1 text-sm text-gray-600">
+              <div className="font-medium text-gray-800">{project?.name || 'Project'}</div>
+              {project?.clientName && <div>Client: {project.clientName}</div>}
+              <div>Date: {today}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {items.length === 0 && (
+        <div className="text-center py-12">
+          <div className="mx-auto h-12 w-12 text-gray-400">📦</div>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No items found</h3>
+          <p className="mt-1 text-sm text-gray-500">There are no items associated with this project.</p>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="space-y-6">
+          {/* Summary */}
+          <section>
+            <div className="rounded-lg border border-gray-100 overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900">Summary</h2>
+              </div>
+              <div className="px-4 py-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-medium text-gray-700">Total Items</span>
+                  <span className="text-base font-semibold text-gray-900">{items.length}</span>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                  <span className="text-base font-medium text-gray-700">Total Market Value</span>
+                  <span className="text-base font-semibold text-gray-900">{usd.format(totalMarketValue)}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Items List */}
+          <section>
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900">Items</h2>
+            </div>
+
+            <div className="rounded-lg border border-gray-100 overflow-hidden">
+              <div className="divide-y">
+                {items.map((item) => {
+                  const marketValue = toNumber(item.marketValue)
+                  
+                  return (
+                    <div key={item.itemId} className="py-4 px-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="text-gray-900 font-medium">
+                            {item.description || 'Item'}
+                          </div>
+                          {item.source && (
+                            <div className="text-sm text-gray-500 mt-1">Source: {item.source}</div>
+                          )}
+                          {item.space && (
+                            <div className="text-sm text-gray-500 mt-1">Space: {item.space}</div>
+                          )}
+                          {item.sku && (
+                            <div className="text-sm text-gray-500 mt-1">SKU: {item.sku}</div>
+                          )}
+                        </div>
+                        <div className="text-right ml-4">
+                          <div className="text-gray-700 font-medium">
+                            {usd.format(marketValue)}
+                          </div>
+                          {marketValue === 0 && (
+                            <div className="text-xs text-gray-400 mt-1">No market value set</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-100">
+                <span className="text-base font-semibold text-gray-900">Total Market Value</span>
+                <span className="text-base font-semibold text-gray-900">{usd.format(totalMarketValue)}</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  )
+}
+

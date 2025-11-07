@@ -34,6 +34,8 @@ function App() {
                         <Route path="/item/:id" element={<ItemDetail />} />
                         <Route path="/project/:id" element={<ProjectDetail />} />
                         <Route path="/project/:id/invoice" element={<ProjectInvoice />} />
+                        <Route path="/project/:id/property-management-summary" element={<PropertyManagementSummary />} />
+                        <Route path="/project/:id/client-summary" element={<ClientSummary />} />
                         <Route path="/project/:id/item/:itemId" element={<ItemDetail />} />
                         <Route path="/project/:id/item/add" element={<AddItem />} />
                         <Route path="/project/:id/edit-item/:itemId" element={<EditItem />} />
@@ -69,6 +71,8 @@ const Projects = lazy(() => import('./pages/Projects'))
 const ItemDetail = lazy(() => import('./pages/ItemDetail'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))
 const ProjectInvoice = lazy(() => import('./pages/ProjectInvoice'))
+const PropertyManagementSummary = lazy(() => import('./pages/PropertyManagementSummary'))
+const ClientSummary = lazy(() => import('./pages/ClientSummary'))
 const AddItem = lazy(() => import('./pages/AddItem'))
 const EditItem = lazy(() => import('./pages/EditItem'))
 const AddTransaction = lazy(() => import('./pages/AddTransaction'))

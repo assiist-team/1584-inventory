@@ -1,4 +1,4 @@
-import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign } from 'lucide-react'
+import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign, Building2, User, Receipt } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
@@ -359,31 +359,47 @@ export default function ProjectDetail() {
               />
             )}
             {activeBudgetTab === 'accounting' && (
-              <>
-                <div className="flex justify-end mb-4">
-                  <Button onClick={() => navigate(`/project/${project.id}/invoice`)}>
-                    Generate Invoice
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Owed to Design Business */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Design Business</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      ${owedTo1584.toFixed(2)}
+              <div className="space-y-6">
+                {/* Dashboard Section */}
+                <section>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Owed to Design Business */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Design Business</div>
+                      <div className="text-xl font-bold text-gray-900">
+                        ${owedTo1584.toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* Owed to Client */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
+                      <div className="text-xl font-bold text-gray-900">
+                        ${owedToClient.toFixed(2)}
+                      </div>
                     </div>
                   </div>
+                </section>
 
-                  {/* Owed to Client */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      ${owedToClient.toFixed(2)}
-                    </div>
+                {/* Reports Section */}
+                <section>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Reports</h2>
+                  <div className="flex flex-wrap gap-3">
+                    <Button variant="secondary" onClick={() => navigate(`/project/${project.id}/property-management-summary`)}>
+                      <Building2 className="h-4 w-4 mr-2" />
+                      Generate Property Management Summary
+                    </Button>
+                    <Button variant="secondary" onClick={() => navigate(`/project/${project.id}/client-summary`)}>
+                      <User className="h-4 w-4 mr-2" />
+                      Generate Client Summary
+                    </Button>
+                    <Button variant="secondary" onClick={() => navigate(`/project/${project.id}/invoice`)}>
+                      <Receipt className="h-4 w-4 mr-2" />
+                      Generate Invoice
+                    </Button>
                   </div>
-                </div>
-
-              </>
+                </section>
+              </div>
             )}
           </div>
         </div>
