@@ -1107,10 +1107,10 @@ export const unifiedItemsService = {
           const { eventType, new: newRecord, old: oldRecord } = payload
 
           if (eventType === 'INSERT') {
-            const newItem = _convertItemFromDb(newRecord)
+            const newItem = this._convertItemFromDb(newRecord)
             items = [newItem, ...items]
           } else if (eventType === 'UPDATE') {
-            const updatedItem = _convertItemFromDb(newRecord)
+            const updatedItem = this._convertItemFromDb(newRecord)
             items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
           } else if (eventType === 'DELETE') {
             const oldId = oldRecord.item_id
@@ -1198,13 +1198,13 @@ export const unifiedItemsService = {
 
           const isBusinessInventoryItem = (item: any) => !item.project_id
 
-          if (eventType === 'INSERT') {
+            if (eventType === 'INSERT') {
             if (isBusinessInventoryItem(newRecord)) {
-              const newItem = _convertItemFromDb(newRecord)
+              const newItem = this._convertItemFromDb(newRecord)
               items = [newItem, ...items]
             }
           } else if (eventType === 'UPDATE') {
-            const updatedItem = _convertItemFromDb(newRecord)
+            const updatedItem = this._convertItemFromDb(newRecord)
             if (isBusinessInventoryItem(updatedItem)) {
               // It's a business inventory item, update it
               items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)

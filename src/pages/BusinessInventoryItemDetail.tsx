@@ -48,7 +48,7 @@ export default function BusinessInventoryItemDetail() {
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
-      const { itemId, dateCreated, lastUpdated, ...itemData } = originalItem
+      const { itemId: originalItemId, dateCreated, lastUpdated, ...itemData } = originalItem
       return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
         inventoryStatus: 'available',
@@ -253,11 +253,6 @@ export default function BusinessInventoryItemDetail() {
 
     await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
 
-    // Show success notification on the last file
-    if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
-      const message = allFiles.length > 1 ? `${allFiles.length} images uploaded successfully!` : 'Image uploaded successfully!'
-      alert(message)
-    }
   }
 
   const handleRemoveImage = async (imageUrl: string) => {
