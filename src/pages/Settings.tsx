@@ -107,8 +107,8 @@ export default function Settings() {
                 <h4 className="text-lg font-medium text-gray-900">Profile Information</h4>
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Display Name</label>
-                    <div className="mt-1 p-2 bg-gray-50 rounded-md text-sm text-gray-900">{user?.displayName}</div>
+                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                    <div className="mt-1 p-2 bg-gray-50 rounded-md text-sm text-gray-900">{user?.fullName}</div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Email</label>

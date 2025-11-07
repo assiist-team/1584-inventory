@@ -34,7 +34,7 @@ export interface BusinessProfile {
 export interface User {
   id: string;
   email: string;
-  displayName: string;
+  fullName: string;
   accountId: string; // Links user to account
   role?: 'owner' | null; // System-level owner (optional)
   createdAt: Date;

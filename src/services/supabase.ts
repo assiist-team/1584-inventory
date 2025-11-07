@@ -98,6 +98,35 @@ export const signInWithGoogle = async (): Promise<void> => {
   }
 }
 
+// Sign up with email and password
+export const signUpWithEmailPassword = async (
+  email: string,
+  password: string
+): Promise<void> => {
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`
+      }
+    })
+    
+    if (error) throw error
+    
+    // If email confirmation is required, the user will need to verify their email
+    // The invitation token is already stored in localStorage, so it will be processed
+    // after email verification completes
+    if (data.user && !data.session) {
+      // Email confirmation required
+      console.log('Email confirmation required. Check your email.')
+    }
+  } catch (error) {
+    console.error('Email/password sign-up error:', error)
+    throw error
+  }
+}
+
 // Sign out (replaces signOutUser)
 export const signOutUser = async (): Promise<void> => {
   try {
@@ -121,10 +150,10 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
     const userData: Partial<AppUser> = {
       id: supabaseUser.id,
       email: supabaseUser.email || '',
-      displayName: supabaseUser.user_metadata?.full_name || 
-                   supabaseUser.user_metadata?.name ||
-                   supabaseUser.email?.split('@')[0] || 
-                   'User',
+      fullName: supabaseUser.user_metadata?.full_name || 
+                supabaseUser.user_metadata?.name ||
+                supabaseUser.email?.split('@')[0] || 
+                'User',
     }
 
     if (userDoc && !fetchError) {
@@ -132,7 +161,7 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
       const { error: updateError } = await supabase
         .from('users')
         .update({
-          display_name: userData.displayName,
+          full_name: userData.fullName,
           email: userData.email,
           last_login: new Date().toISOString()
         })
@@ -161,7 +190,7 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
           .insert({
             id: supabaseUser.id,
             email: userData.email,
-            display_name: userData.displayName,
+            full_name: userData.fullName,
             role: 'owner',
             created_at: new Date().toISOString(),
             last_login: new Date().toISOString()
@@ -183,10 +212,29 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
         // Subsequent new users
         let accountId: string | null = null
         let invitationRole: 'admin' | 'user' | null = null
+        let invitationId: string | null = null
 
-        if (supabaseUser.email) {
+        // Check for token-based invitation first (from localStorage)
+        if (typeof window !== 'undefined') {
+          const storedInvitationData = localStorage.getItem('pendingInvitationData')
+          if (storedInvitationData) {
+            try {
+              const invData = JSON.parse(storedInvitationData)
+              invitationId = invData.invitationId
+              accountId = invData.accountId
+              invitationRole = invData.role === UserRole.ADMIN ? 'admin' : 'user'
+              console.log(`Found token-based invitation: account ${accountId}, role ${invitationRole}`)
+            } catch (err) {
+              console.error('Error parsing stored invitation data:', err)
+            }
+          }
+        }
+
+        // Fallback to email-based invitation check if no token-based invitation found
+        if (!invitationId && supabaseUser.email) {
           const invitation = await checkUserInvitation(supabaseUser.email)
           if (invitation) {
+            invitationId = invitation.invitationId
             const { data: invitationData, error: invError } = await supabase
               .from('invitations')
               .select('*')
@@ -199,9 +247,6 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
               accountId = invitationData.account_id || null
               invitationRole = invitationData.role === UserRole.ADMIN ? 'admin' : 'user'
             }
-            
-            await acceptUserInvitation(invitation.invitationId)
-            console.log(`User accepted invitation for account ${accountId} with role ${invitationRole}`)
           }
         }
 
@@ -211,7 +256,7 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
           .insert({
             id: supabaseUser.id,
             email: userData.email,
-            display_name: userData.displayName,
+            full_name: userData.fullName,
             role: null,
             created_at: new Date().toISOString(),
             last_login: new Date().toISOString()
@@ -219,8 +264,9 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
 
         if (insertError) throw insertError
 
-        // If they were invited, add them to the account membership
-        if (accountId && invitationRole) {
+        // If they were invited, accept the invitation and add them to the account membership
+        if (invitationId && accountId && invitationRole) {
+          await acceptUserInvitation(invitationId)
           await accountService.addUserToAccount(supabaseUser.id, accountId, invitationRole)
           console.log(`Added invited user to account ${accountId} as ${invitationRole}`)
         }
@@ -263,7 +309,7 @@ export const getUserData = async (uid: string): Promise<AppUser | null> => {
     return {
       id: data.id,
       email: data.email,
-      displayName: data.display_name,
+      fullName: data.full_name,
       role: data.role as 'owner' | null,
       accountId: accountId || '',
       createdAt: data.created_at ? new Date(data.created_at) : new Date(),
@@ -296,18 +342,26 @@ export const getCurrentUserWithData = async (): Promise<{
   return { supabaseUser, appUser }
 }
 
+// Generate a random token for invitations
+const generateInvitationToken = (): string => {
+  const array = new Uint8Array(32)
+  crypto.getRandomValues(array)
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 // Invitation functions (Supabase-based)
 export const createUserInvitation = async (
   email: string,
   role: UserRole,
   invitedBy: string,
   accountId?: string
-): Promise<void> => {
+): Promise<string> => {
   try {
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + 7) // 7 days
+    const token = generateInvitationToken()
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('invitations')
       .insert({
         email,
@@ -315,16 +369,156 @@ export const createUserInvitation = async (
         account_id: accountId || null,
         invited_by: invitedBy,
         status: 'pending',
+        token,
         created_at: new Date().toISOString(),
         expires_at: expiresAt.toISOString()
       })
+      .select('id')
+      .single()
 
     if (error) throw error
 
+    const invitationLink = `${window.location.origin}/invite/${token}`
     console.log('Invitation created for:', email, 'accountId:', accountId)
+    return invitationLink
   } catch (error) {
     console.error('Error creating invitation:', error)
     throw error
+  }
+}
+
+// Get invitation by token
+export const getInvitationByToken = async (
+  token: string
+): Promise<{ 
+  id: string; 
+  email: string; 
+  role: UserRole; 
+  accountId: string | null;
+  expiresAt: string;
+} | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('token', token)
+      .eq('status', 'pending')
+      .single()
+
+    if (error || !data) {
+      return null
+    }
+
+    // Check if invitation is expired
+    if (new Date(data.expires_at) < new Date()) {
+      // Mark as expired
+      await supabase
+        .from('invitations')
+        .update({ status: 'expired' })
+        .eq('id', data.id)
+      return null
+    }
+
+    return {
+      id: data.id,
+      email: data.email,
+      role: data.role === 'admin' ? UserRole.ADMIN : UserRole.USER,
+      accountId: data.account_id,
+      expiresAt: data.expires_at
+    }
+  } catch (error) {
+    console.error('Error getting invitation by token:', error)
+    return null
+  }
+}
+
+// Get pending invitations for an account
+export const getPendingInvitations = async (
+  accountId: string
+): Promise<Array<{
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  token: string;
+  createdAt: string;
+  expiresAt: string;
+}>> => {
+  try {
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return (data || []).map(inv => ({
+      id: inv.id,
+      email: inv.email,
+      role: inv.role,
+      token: inv.token,
+      createdAt: inv.created_at,
+      expiresAt: inv.expires_at
+    }))
+  } catch (error) {
+    console.error('Error fetching pending invitations:', error)
+    return []
+  }
+}
+
+// Get all pending invitations for multiple accounts (for app owner)
+export const getAllPendingInvitationsForAccounts = async (
+  accountIds: string[]
+): Promise<Record<string, Array<{
+  id: string;
+  email: string;
+  role: 'admin' | 'user';
+  token: string;
+  createdAt: string;
+  expiresAt: string;
+}>>> => {
+  try {
+    if (accountIds.length === 0) return {}
+
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .in('account_id', accountIds)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    // Group invitations by account_id
+    const grouped: Record<string, Array<{
+      id: string;
+      email: string;
+      role: 'admin' | 'user';
+      token: string;
+      createdAt: string;
+      expiresAt: string;
+    }>> = {}
+
+    ;(data || []).forEach(inv => {
+      const accountId = inv.account_id
+      if (!grouped[accountId]) {
+        grouped[accountId] = []
+      }
+      grouped[accountId].push({
+        id: inv.id,
+        email: inv.email,
+        role: inv.role,
+        token: inv.token,
+        createdAt: inv.created_at,
+        expiresAt: inv.expires_at
+      })
+    })
+
+    return grouped
+  } catch (error) {
+    console.error('Error fetching all pending invitations:', error)
+    return {}
   }
 }
 
@@ -359,6 +553,28 @@ export const checkUserInvitation = async (
     }
   } catch (error) {
     console.error('Error checking invitation:', error)
+    return null
+  }
+}
+
+// Check invitation by token (for link-based flow)
+export const checkInvitationByToken = async (
+  token: string
+): Promise<{ role: UserRole; invitationId: string; email: string; accountId: string | null } | null> => {
+  try {
+    const invitation = await getInvitationByToken(token)
+    if (!invitation) {
+      return null
+    }
+
+    return {
+      role: invitation.role,
+      invitationId: invitation.id,
+      email: invitation.email,
+      accountId: invitation.accountId
+    }
+  } catch (error) {
+    console.error('Error checking invitation by token:', error)
     return null
   }
 }

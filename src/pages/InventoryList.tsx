@@ -16,7 +16,7 @@ interface InventoryListProps {
 }
 
 export default function InventoryList({ projectId, projectName }: InventoryListProps) {
-  const { currentAccountId } = useAccount()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<Item[]>([])
@@ -47,6 +47,11 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       }
     }
 
+    if (accountLoading) {
+      setLoading(true)
+      return
+    }
+
     if (currentAccountId) {
       fetchItems()
 
@@ -61,7 +66,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         unsubscribe()
       }
     }
-  }, [projectId, currentAccountId])
+  }, [projectId, currentAccountId, accountLoading])
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {

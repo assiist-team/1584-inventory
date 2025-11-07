@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
-import { createOrUpdateUserDocument } from '../services/supabase'
+import { createOrUpdateUserDocument, checkInvitationByToken } from '../services/supabase'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
@@ -18,8 +18,32 @@ export default function AuthCallback() {
         }
 
         if (session?.user) {
+          // Check if there's a pending invitation token
+          const pendingToken = localStorage.getItem('pendingInvitationToken')
+          if (pendingToken) {
+            try {
+              const invitation = await checkInvitationByToken(pendingToken)
+              if (invitation) {
+                // Store invitation info for use in createOrUpdateUserDocument
+                localStorage.setItem('pendingInvitationData', JSON.stringify({
+                  invitationId: invitation.invitationId,
+                  accountId: invitation.accountId,
+                  role: invitation.role
+                }))
+              }
+            } catch (err) {
+              console.error('Error checking invitation token:', err)
+            }
+            // Clear the token
+            localStorage.removeItem('pendingInvitationToken')
+          }
+
           // Create or update user document after successful OAuth redirect
           await createOrUpdateUserDocument(session.user)
+          
+          // Clear any stored invitation data
+          localStorage.removeItem('pendingInvitationData')
+          
           navigate('/')
         } else {
           navigate('/login')

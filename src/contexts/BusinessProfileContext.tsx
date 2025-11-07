@@ -19,7 +19,7 @@ interface BusinessProfileProviderProps {
 }
 
 export function BusinessProfileProvider({ children }: BusinessProfileProviderProps) {
-  const { currentAccountId } = useAccount()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -43,8 +43,12 @@ export function BusinessProfileProvider({ children }: BusinessProfileProviderPro
   }
 
   useEffect(() => {
+    if (accountLoading) {
+      setLoading(true)
+      return
+    }
     loadProfile()
-  }, [currentAccountId])
+  }, [currentAccountId, accountLoading])
 
   // Derived values with fallbacks
   const businessName = businessProfile?.name || COMPANY_NAME

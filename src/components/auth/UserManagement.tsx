@@ -4,9 +4,9 @@ import { useAccount } from '../../contexts/AccountContext'
 import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
 import { supabase } from '../../services/supabase'
-import { createUserInvitation } from '../../services/supabase'
+import { createUserInvitation, getPendingInvitations } from '../../services/supabase'
 import { User, UserRole } from '../../types'
-import { Mail, Shield, Users, Crown } from 'lucide-react'
+import { Mail, Shield, Users, Crown, Copy, Check } from 'lucide-react'
 import { convertTimestamps } from '../../services/databaseService'
 
 interface UserManagementProps {
@@ -14,24 +14,50 @@ interface UserManagementProps {
 }
 
 export default function UserManagement({ className }: UserManagementProps) {
-  const { user: currentUser, hasRole } = useAuth()
-  const { currentAccountId } = useAccount()
+  const { user: currentUser, hasRole, loading: authLoading } = useAuth()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.USER)
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState('')
+  const [pendingInvitations, setPendingInvitations] = useState<Array<{
+    id: string;
+    email: string;
+    role: 'admin' | 'user';
+    token: string;
+    createdAt: string;
+    expiresAt: string;
+  }>>([])
+  const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
   // Check if current user can manage users (admin or owner)
   const canManageUsers = hasRole(UserRole.ADMIN)
 
   useEffect(() => {
+    if (authLoading || accountLoading) {
+      setLoading(true)
+      return
+    }
     if (canManageUsers && currentAccountId) {
       loadUsers()
+      loadPendingInvitations()
+    } else {
+      setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canManageUsers, currentAccountId])
+  }, [canManageUsers, currentAccountId, authLoading, accountLoading])
+
+  const loadPendingInvitations = async () => {
+    if (!currentAccountId) return
+    try {
+      const invitations = await getPendingInvitations(currentAccountId)
+      setPendingInvitations(invitations)
+    } catch (err) {
+      console.error('Error loading pending invitations:', err)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -72,7 +98,7 @@ export default function UserManagement({ className }: UserManagementProps) {
           return {
             id: converted.id,
             email: converted.email,
-            displayName: converted.display_name,
+            fullName: converted.full_name,
             role: displayRole,
             accountId: currentAccountId || '',
             createdAt: converted.created_at ? new Date(converted.created_at) : new Date(),
@@ -150,24 +176,36 @@ export default function UserManagement({ className }: UserManagementProps) {
         return
       }
       
-      await createUserInvitation(
+      const invitationLink = await createUserInvitation(
         inviteEmail.trim(), 
         inviteRole, 
         currentUser.id, 
         currentAccountId
       )
 
-      // Show success message
-      alert(`Invitation sent to ${inviteEmail} with ${inviteRole} role. They can now sign up with Google and will be automatically assigned the ${inviteRole} role.`)
+      // Reload invitations to show the new one
+      await loadPendingInvitations()
+
+      // Copy link to clipboard
+      await navigator.clipboard.writeText(invitationLink)
+      setCopiedToken(invitationLink)
+      setTimeout(() => setCopiedToken(null), 2000)
 
       setInviteEmail('')
       setInviteRole(UserRole.USER)
     } catch (err) {
       console.error('Error inviting user:', err)
-      setError('Failed to send invitation')
+      setError('Failed to create invitation')
     } finally {
       setInviting(false)
     }
+  }
+
+  const copyInvitationLink = async (token: string) => {
+    const link = `${window.location.origin}/invite/${token}`
+    await navigator.clipboard.writeText(link)
+    setCopiedToken(token)
+    setTimeout(() => setCopiedToken(null), 2000)
   }
 
   const getRoleIcon = (role: UserRole) => {
@@ -260,13 +298,48 @@ export default function UserManagement({ className }: UserManagementProps) {
               className="w-full flex items-center justify-center space-x-2"
             >
               <Mail className="h-4 w-4" />
-              <span>{inviting ? 'Sending...' : 'Send Invitation'}</span>
+              <span>{inviting ? 'Creating...' : 'Create Invitation Link'}</span>
             </Button>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Invited users can sign up with Google and will be automatically assigned the selected role.
+            An invitation link will be generated and copied to your clipboard. Share it with the user to invite them.
           </p>
         </div>
+
+        {/* Pending Invitations */}
+        {pendingInvitations.length > 0 && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Pending Invitations</h3>
+            <div className="space-y-2">
+              {pendingInvitations.map((invitation) => {
+                const link = `${window.location.origin}/invite/${invitation.token}`
+                const isCopied = copiedToken === invitation.token
+                return (
+                  <div key={invitation.id} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{invitation.email}</div>
+                      <div className="text-xs text-gray-500">
+                        Role: {invitation.role} • Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
+                      </div>
+                      <div className="text-xs text-gray-400 font-mono truncate mt-1">{link}</div>
+                    </div>
+                    <button
+                      onClick={() => copyInvitationLink(invitation.token)}
+                      className="ml-3 flex-shrink-0 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+                      title="Copy invitation link"
+                    >
+                      {isCopied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Users List */}
         <div>
@@ -282,7 +355,7 @@ export default function UserManagement({ className }: UserManagementProps) {
                   <div className="flex items-center space-x-3">
                     {getRoleIcon(user.role)}
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{user.displayName}</div>
+                      <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
                       <div className="text-sm text-gray-500">{user.email}</div>
                     </div>
                   </div>

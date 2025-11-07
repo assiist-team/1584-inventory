@@ -126,7 +126,7 @@ export const createUniqueConstraintError = (): PostgrestError => ({
 export const createMockUser = (overrides?: Partial<any>) => ({
   id: 'test-user-id',
   email: 'test@example.com',
-  displayName: 'Test User',
+  fullName: 'Test User',
   role: null,
   createdAt: new Date().toISOString(),
   lastLogin: new Date().toISOString(),

@@ -10,17 +10,23 @@ import BudgetProgress from '@/components/ui/BudgetProgress'
 
 export default function Projects() {
   const { user } = useAuth()
-  const { currentAccountId } = useAccount()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Record<string, Transaction[]>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
 
   useEffect(() => {
+    if (accountLoading) {
+      setIsLoading(true)
+      return
+    }
     if (currentAccountId) {
       loadProjectsData()
+    } else {
+      setIsLoading(false)
     }
-  }, [currentAccountId])
+  }, [currentAccountId, accountLoading])
 
   const handleCreateProject = async (projectData: any) => {
     if (!user?.email) {

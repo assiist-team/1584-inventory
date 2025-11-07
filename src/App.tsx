@@ -17,38 +17,46 @@ function App() {
       <AccountProvider>
         <BusinessProfileProvider>
           <ToastProvider>
-            <ProtectedRoute>
-              <Layout>
-                <Suspense fallback={<LoadingSpinner />}>
-                <Routes>
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/" element={<Projects />} />
-              <Route path="/projects" element={<Projects />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/item/:id" element={<ItemDetail />} />
-              <Route path="/project/:id" element={<ProjectDetail />} />
-              <Route path="/project/:id/invoice" element={<ProjectInvoice />} />
-              <Route path="/project/:id/item/:itemId" element={<ItemDetail />} />
-              <Route path="/project/:id/item/add" element={<AddItem />} />
-              <Route path="/project/:id/edit-item/:itemId" element={<EditItem />} />
-              <Route path="/project/:id/transaction/add" element={<AddTransaction />} />
-              <Route path="/project/:id/transaction/:transactionId/edit" element={<EditTransaction />} />
-              <Route path="/project/:id/transaction/:transactionId" element={<TransactionDetail />} />
+            <Suspense fallback={<LoadingSpinner />}>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/invite/:token" element={<InviteAccept />} />
+                
+                {/* Protected routes */}
+                <Route path="*" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Routes>
+                        <Route path="/" element={<Projects />} />
+                        <Route path="/projects" element={<Projects />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/item/:id" element={<ItemDetail />} />
+                        <Route path="/project/:id" element={<ProjectDetail />} />
+                        <Route path="/project/:id/invoice" element={<ProjectInvoice />} />
+                        <Route path="/project/:id/item/:itemId" element={<ItemDetail />} />
+                        <Route path="/project/:id/item/add" element={<AddItem />} />
+                        <Route path="/project/:id/edit-item/:itemId" element={<EditItem />} />
+                        <Route path="/project/:id/transaction/add" element={<AddTransaction />} />
+                        <Route path="/project/:id/transaction/:transactionId/edit" element={<EditTransaction />} />
+                        <Route path="/project/:id/transaction/:transactionId" element={<TransactionDetail />} />
 
-              {/* Business Inventory Routes */}
-              <Route path="/business-inventory" element={<BusinessInventory />} />
-              <Route path="/business-inventory/add" element={<AddBusinessInventoryItem />} />
-              <Route path="/business-inventory/:id" element={<BusinessInventoryItemDetail />} />
-              <Route path="/business-inventory/:id/edit" element={<EditBusinessInventoryItem />} />
-              <Route path="/business-inventory/transaction/add" element={<AddBusinessInventoryTransaction />} />
-              <Route path="/business-inventory/transaction/:transactionId" element={<TransactionDetail />} />
-              <Route path="/business-inventory/transaction/:projectId/:transactionId/edit" element={<EditBusinessInventoryTransaction />} />
-            </Routes>
+                        {/* Business Inventory Routes */}
+                        <Route path="/business-inventory" element={<BusinessInventory />} />
+                        <Route path="/business-inventory/add" element={<AddBusinessInventoryItem />} />
+                        <Route path="/business-inventory/:id" element={<BusinessInventoryItemDetail />} />
+                        <Route path="/business-inventory/:id/edit" element={<EditBusinessInventoryItem />} />
+                        <Route path="/business-inventory/transaction/add" element={<AddBusinessInventoryTransaction />} />
+                        <Route path="/business-inventory/transaction/:transactionId" element={<TransactionDetail />} />
+                        <Route path="/business-inventory/transaction/:projectId/:transactionId/edit" element={<EditBusinessInventoryTransaction />} />
+                      </Routes>
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+              </Routes>
             </Suspense>
-          </Layout>
-        </ProtectedRoute>
-      </ToastProvider>
-      </BusinessProfileProvider>
+          </ToastProvider>
+        </BusinessProfileProvider>
       </AccountProvider>
     </AuthProvider>
   )
@@ -56,6 +64,7 @@ function App() {
 
 // Lazy load pages for better performance
 const AuthCallback = lazy(() => import('./pages/AuthCallback'))
+const InviteAccept = lazy(() => import('./pages/InviteAccept'))
 const Projects = lazy(() => import('./pages/Projects'))
 const ItemDetail = lazy(() => import('./pages/ItemDetail'))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'))

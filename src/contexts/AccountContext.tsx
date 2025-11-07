@@ -20,7 +20,7 @@ interface AccountProviderProps {
 }
 
 export function AccountProvider({ children }: AccountProviderProps) {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null)
   const [accountMembership, setAccountMembership] = useState<AccountMembership | null>(null)
@@ -33,19 +33,8 @@ export function AccountProvider({ children }: AccountProviderProps) {
     let isMounted = true
     let loadingTimeout: NodeJS.Timeout | null = null
 
-    // Safety timeout to ensure loading is set to false even if account loading fails
-    loadingTimeout = setTimeout(() => {
-      if (isMounted) {
-        console.warn('⚠️ Account loading timeout - setting loading to false')
-        setLoading(false)
-      }
-    }, 10000) // 10 second timeout
-
     const loadAccount = async () => {
       if (!user) {
-        if (loadingTimeout) {
-          clearTimeout(loadingTimeout)
-        }
         setCurrentAccountId(null)
         setCurrentAccount(null)
         setAccountMembership(null)
@@ -55,9 +44,20 @@ export function AccountProvider({ children }: AccountProviderProps) {
         return
       }
 
-      try {
+      // Start loading only when user is available
+      if (isMounted) {
         setLoading(true)
+      }
 
+      // Safety timeout to ensure loading is set to false even if account loading fails
+      loadingTimeout = setTimeout(() => {
+        if (isMounted) {
+          console.warn('⚠️ Account loading timeout - setting loading to false')
+          setLoading(false)
+        }
+      }, 10000) // 10 second timeout
+
+      try {
         // Get user's account
         const account = await accountService.getUserAccount(user.id)
         
@@ -104,6 +104,11 @@ export function AccountProvider({ children }: AccountProviderProps) {
       }
     }
 
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+
     loadAccount()
 
     return () => {
@@ -112,7 +117,7 @@ export function AccountProvider({ children }: AccountProviderProps) {
         clearTimeout(loadingTimeout)
       }
     }
-  }, [user])
+  }, [user, authLoading])
 
   // Calculate derived values
   const userRole = accountMembership?.role || null
