@@ -35,8 +35,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     let isMounted = true
+    let authStateUnsubscribe: { data: { subscription: any } } | null = null
+    let loadingTimeout: NodeJS.Timeout | null = null
 
-      // Set up auth state listener
+    // Safety timeout to prevent infinite loading state
+    loadingTimeout = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('Auth initialization timed out. Forcing loading to false.')
+        setLoading(false)
+      }
+    }, 7000) // 7-second timeout
+
+    const initializeAuth = async () => {
+      // First, check for an existing session
+      const { data: { session } } = await supabase.auth.getSession()
+      if (isMounted && session) {
+        const authUser = session.user
+        setSupabaseUser(authUser)
+        try {
+          // Ensure user document exists and fetch app-specific data
+          await createOrUpdateUserDocument(authUser)
+          const { appUser } = await getCurrentUserWithData()
+          if (isMounted) {
+            setUser(appUser)
+          }
+        } catch (error) {
+          console.error('Error loading initial user session:', error)
+          if (isMounted) {
+            setUser(null)
+            setSupabaseUser(null)
+          }
+        }
+      }
+
+      // Then, set up the listener for future auth state changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return
 
@@ -45,42 +77,56 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         if (authUser) {
           try {
-          // On initial load or sign-in, create/update user doc and fetch app-specific user data
-          if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-            await createOrUpdateUserDocument(authUser)
-          }
+            // On sign-in, create/update user doc and fetch app-specific user data
+            if (event === 'SIGNED_IN') {
+              await createOrUpdateUserDocument(authUser)
+            }
             const { appUser } = await getCurrentUserWithData()
             if (isMounted) {
               setUser(appUser)
             }
           } catch (error) {
-          console.error('Error loading user data:', error)
+            console.error('Error handling auth state change:', error)
+            if (isMounted) {
+              setUser(null)
+            }
+          }
+        } else {
+          // User is signed out
           if (isMounted) {
             setUser(null)
           }
         }
-      } else {
-        // User is signed out
-        if (isMounted) {
-          setUser(null)
-        }
-      }
 
-      // Loading is false once the initial session is handled
-      if (isMounted) {
+        // Initial load is complete
+        if (isMounted) {
+          if (loadingTimeout) clearTimeout(loadingTimeout)
           setLoading(false)
         }
       })
 
+      authStateUnsubscribe = { data: { subscription } }
+
+      // If there was no initial session, the listener will set loading to false.
+      // If there was an initial session, we can set loading to false now.
+      if (isMounted) {
+        if (loadingTimeout) clearTimeout(loadingTimeout)
+        setLoading(false)
+      }
+    }
+
+    initializeAuth()
+
     return () => {
       isMounted = false
-      if (subscription) {
-        subscription.unsubscribe()
+      if (loadingTimeout) clearTimeout(loadingTimeout)
+      if (authStateUnsubscribe?.data?.subscription) {
+        authStateUnsubscribe.data.subscription.unsubscribe()
       }
     }
   }, [])
 
-  const signIn = async () => {
+  const signIn = useCallback(async () => {
     try {
       setLoading(true)
       await signInWithGoogle()
@@ -94,9 +140,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
       setLoading(true)
       await signOutUser()
@@ -106,7 +152,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const hasRole = useCallback((role: UserRole): boolean => {
     // Removed excessive logging - only log in development if needed for debugging
@@ -126,7 +172,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!supabaseUser,
     hasRole,
     isOwner
-  }), [supabaseUser, user, loading, hasRole, isOwner, signOut, signIn])
+  }), [supabaseUser, user, loading, hasRole, isOwner, signIn, signOut])
 
   return (
     <AuthContext.Provider value={value}>
