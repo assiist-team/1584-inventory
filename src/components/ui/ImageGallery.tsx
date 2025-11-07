@@ -162,13 +162,13 @@ export default function ImageGallery({ images, initialIndex = 0, onClose }: Imag
   // Touch handlers for pinch-to-zoom and pan
   const touchStartRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null)
 
-  const getTouchDistance = (touches: TouchList): number => {
+  const getTouchDistance = (touches: React.TouchList): number => {
     const touch1 = touches[0]
     const touch2 = touches[1]
     return Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
   }
 
-  const getTouchCenter = (touches: TouchList): { x: number; y: number } => {
+  const getTouchCenter = (touches: React.TouchList): { x: number; y: number } => {
     const touch1 = touches[0]
     const touch2 = touches[1]
     return {

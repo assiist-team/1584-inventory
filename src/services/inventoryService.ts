@@ -256,10 +256,10 @@ export const projectService = {
           const { eventType, new: newRecord, old: oldRecord } = payload
 
           if (eventType === 'INSERT') {
-            const newProject = _convertProjectFromDb(newRecord)
+            const newProject = projectService._convertProjectFromDb(newRecord)
             projects = [newProject, ...projects]
           } else if (eventType === 'UPDATE') {
-            const updatedProject = _convertProjectFromDb(newRecord)
+            const updatedProject = projectService._convertProjectFromDb(newRecord)
             projects = projects.map(p => p.id === updatedProject.id ? updatedProject : p)
           } else if (eventType === 'DELETE') {
             const oldId = oldRecord.id
@@ -281,6 +281,29 @@ export const projectService = {
     return () => {
       channel.unsubscribe()
     }
+  },
+
+  // Helper function to convert database project to Project type
+  _convertProjectFromDb(dbProject: any): Project {
+    const converted = convertTimestamps(dbProject)
+    return {
+      id: converted.id,
+      accountId: converted.account_id,
+      name: converted.name,
+      description: converted.description || '',
+      clientName: converted.client_name || '',
+      budget: converted.budget ? parseFloat(converted.budget) : undefined,
+      designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
+      budgetCategories: converted.budget_categories || undefined,
+      createdAt: converted.created_at,
+      updatedAt: converted.updated_at,
+      createdBy: converted.created_by,
+      settings: converted.settings || undefined,
+      metadata: converted.metadata || undefined,
+      itemCount: converted.item_count || 0,
+      transactionCount: converted.transaction_count || 0,
+      totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
+    } as Project
   }
 }
 
@@ -610,9 +633,9 @@ export const transactionService = {
           .eq('transaction_id', transactionId)
           .single()
 
-        const existingData = existing || {}
-        const amountVal = finalUpdates.amount !== undefined ? parseFloat(finalUpdates.amount) : parseFloat(existingData.amount || '0')
-        const subtotalVal = finalUpdates.subtotal !== undefined ? parseFloat(finalUpdates.subtotal) : parseFloat(existingData.subtotal || '0')
+        const existingData = existing as { amount?: string; subtotal?: string } | null
+        const amountVal = finalUpdates.amount !== undefined ? parseFloat(finalUpdates.amount) : parseFloat(existingData?.amount || '0')
+        const subtotalVal = finalUpdates.subtotal !== undefined ? parseFloat(finalUpdates.subtotal) : parseFloat(existingData?.subtotal || '0')
         if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
           const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
           finalUpdates.taxRatePct = Math.round(rate * 10000) / 10000
@@ -624,7 +647,7 @@ export const transactionService = {
           if (preset) {
             finalUpdates.taxRatePct = preset.rate
             // Remove subtotal when using presets
-            finalUpdates.subtotal = null
+            finalUpdates.subtotal = undefined
           } else {
             console.warn(`Tax preset with ID '${finalUpdates.taxRatePreset}' not found during update`)
           }
@@ -635,10 +658,8 @@ export const transactionService = {
     }
 
     // Convert camelCase updates to database format
-    const dbUpdates = _convertTransactionToDb({
-      ...finalUpdates,
-      updatedAt: new Date().toISOString()
-    })
+    const dbUpdates = _convertTransactionToDb(finalUpdates)
+    // Add updated_at timestamp for database
     dbUpdates.updated_at = new Date().toISOString()
 
     const { error } = await supabase
@@ -908,15 +929,15 @@ export const transactionService = {
     }
 
     if (updates) {
-      if (updates.transaction_date !== undefined) updateData.transaction_date = updates.transaction_date
-      if (updates.payment_method !== undefined) updateData.payment_method = updates.payment_method
+      if (updates.transactionDate !== undefined) updateData.transaction_date = updates.transactionDate
+      if (updates.paymentMethod !== undefined) updateData.payment_method = updates.paymentMethod
       if (updates.amount !== undefined) updateData.amount = updates.amount
       if (updates.notes !== undefined) updateData.notes = updates.notes
       // Add other fields as needed
     }
 
     // Set transaction_date to current time if completing
-    if (status === 'completed' && !updates?.transaction_date) {
+    if (status === 'completed' && !updates?.transactionDate) {
       updateData.transaction_date = toDateOnlyString(new Date())
     }
 
@@ -1134,6 +1155,7 @@ export const unifiedItemsService = {
     }
   },
 
+
   // Get business inventory items (project_id == null) (account-scoped)
   async getBusinessInventoryItems(
     accountId: string,
@@ -1177,7 +1199,7 @@ export const unifiedItemsService = {
   subscribeToBusinessInventory(
     accountId: string,
     callback: (items: Item[]) => void,
-    filters: any,
+    _filters: any,
     initialItems?: Item[]
   ) {
     let items = [...(initialItems || [])]
@@ -1247,10 +1269,12 @@ export const unifiedItemsService = {
     const dbItem = this._convertItemToDb({
       ...itemData,
       itemId,
-      qrKey: itemData.qrKey || qrKey,
-      dateCreated: itemData.dateCreated || toDateOnlyString(now),
-      lastUpdated: now.toISOString()
-    })
+      qrKey: itemData.qrKey || qrKey
+    } as Item)
+    
+    // Set dateCreated and lastUpdated separately since they're omitted from the type
+    dbItem.date_created = toDateOnlyString(now)
+    dbItem.last_updated = now.toISOString()
 
     // Set account_id and timestamps
     dbItem.account_id = accountId
@@ -1467,9 +1491,9 @@ export const unifiedItemsService = {
 
     // Update item status
     await this.updateItem(accountId, itemId, {
-      project_id: projectId,
-      inventory_status: 'allocated',
-      transaction_id: purchaseTransactionId,
+      projectId: projectId,
+      inventoryStatus: 'allocated',
+      transactionId: purchaseTransactionId,
       disposition: 'keep',
       space: space
     })
@@ -2406,9 +2430,9 @@ export const unifiedItemsService = {
         description: itemData.description || '',
         source: transactionSource, // Use transaction source for all items
         sku: itemData.sku || '',
-        purchase_price: itemData.purchase_price || null,
-        project_price: itemData.project_price || null,
-        market_value: itemData.market_value || null,
+        purchase_price: itemData.purchasePrice || null,
+        project_price: itemData.projectPrice || null,
+        market_value: itemData.marketValue || null,
         payment_method: 'Client Card', // Default payment method
         disposition: 'keep',
         notes: itemData.notes || null,

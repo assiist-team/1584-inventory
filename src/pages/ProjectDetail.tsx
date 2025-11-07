@@ -11,7 +11,7 @@ import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 import { useToast } from '@/components/ui/ToastContext'
 import { Button } from '@/components/ui/Button'
-import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT, COMPANY_CARD } from '@/constants/company'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
@@ -64,6 +64,29 @@ export default function ProjectDetail() {
     newSearchParams.set('tab', tabId)
     setSearchParams(newSearchParams)
   }
+
+  // Handle budget tab changes
+  const handleBudgetTabChange = (tabId: string) => {
+    setActiveBudgetTab(tabId)
+    const newSearchParams = new URLSearchParams(searchParams)
+    newSearchParams.set('budgetTab', tabId)
+    setSearchParams(newSearchParams)
+  }
+
+  // Calculate amounts owed - simple sum of transaction amounts by reimbursement type
+  const owedTo1584 = useMemo(() => {
+    return transactions
+      .filter(t => t.status !== 'canceled')
+      .filter(t => t.reimbursementType === CLIENT_OWES_COMPANY)
+      .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0)
+  }, [transactions])
+
+  const owedToClient = useMemo(() => {
+    return transactions
+      .filter(t => t.status !== 'canceled')
+      .filter(t => t.reimbursementType === COMPANY_OWES_CLIENT)
+      .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0)
+  }, [transactions])
 
   useEffect(() => {
     let transactionUnsubscribe: (() => void) | undefined
@@ -347,7 +370,7 @@ export default function ProjectDetail() {
                   <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Design Business</div>
                     <div className="text-xl font-bold text-gray-900">
-                      ${calculateOwedTo1584().toFixed(2)}
+                      ${owedTo1584.toFixed(2)}
                     </div>
                   </div>
 
@@ -355,7 +378,7 @@ export default function ProjectDetail() {
                   <div className="bg-gray-50 rounded-lg p-3">
                     <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
                     <div className="text-xl font-bold text-gray-900">
-                      ${calculateOwedToClient().toFixed(2)}
+                      ${owedToClient.toFixed(2)}
                     </div>
                   </div>
                 </div>

@@ -109,7 +109,8 @@ export default function BusinessInventoryItemDetail() {
         if (updatedItem) {
           setItem(updatedItem)
         }
-      }
+      },
+      {}
     )
 
     return unsubscribe

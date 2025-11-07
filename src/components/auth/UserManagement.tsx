@@ -3,7 +3,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useAccount } from '../../contexts/AccountContext'
 import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
-import { supabase } from '../../services/supabase'
 import { createUserInvitation, getPendingInvitations } from '../../services/supabase'
 import { accountService } from '../../services/accountService'
 import { User, UserRole } from '../../types'
@@ -84,17 +83,6 @@ export default function UserManagement({ className }: UserManagementProps) {
       setLoading(false)
     }
   }, [canManageUsers, currentAccountId, authLoading, accountLoading, loadUsers, loadPendingInvitations])
-
-  const updateUserRole = async (userId: string, newRole: UserRole) => {
-    try {
-      // In the simplified model, we can't change user roles
-      // Only system owners exist, and regular users don't have account-level roles
-      setError('User roles cannot be changed in the simplified account model')
-    } catch (err) {
-      console.error('Error updating user role:', err)
-      setError('Failed to update user role')
-    }
-  }
 
   const inviteUser = async () => {
     if (!inviteEmail.trim()) return
@@ -286,22 +274,25 @@ export default function UserManagement({ className }: UserManagementProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {users.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    {getRoleIcon(user.role)}
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
+              {users.map((user) => {
+                const userRole = user.role || UserRole.USER
+                return (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      {getRoleIcon(userRole)}
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
+                        <div className="text-sm text-gray-500">{user.email}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(userRole)}`}>
+                        {userRole}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
-                      {user.role}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

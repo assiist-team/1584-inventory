@@ -127,12 +127,12 @@ export default function ItemDetail() {
 
     console.log('Setting up real-time listener for item:', actualItemId)
 
-    const unsubscribe = unifiedItemsService.subscribeToItemsByProject(
+    const unsubscribe = unifiedItemsService.subscribeToProjectItems(
       currentAccountId,
       currentProjectId,
-      (items) => {
+      (items: Item[]) => {
         console.log('Real-time items update:', items.length, 'items')
-        const updatedItem = items.find(item => item.itemId === actualItemId)
+        const updatedItem = items.find((item: Item) => item.itemId === actualItemId)
         if (updatedItem) {
           console.log('Found updated item with', updatedItem.images?.length || 0, 'images')
           setItem(updatedItem)
