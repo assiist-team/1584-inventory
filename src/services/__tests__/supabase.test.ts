@@ -80,9 +80,9 @@ describe('Supabase Auth Functions', () => {
 
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...createMockSupabaseClient().from('users'),
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: mockUser, error: null })
       } as any)
 
       const userData = await getUserData('test-user-id')

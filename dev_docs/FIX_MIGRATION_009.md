@@ -268,7 +268,10 @@ AND policyname LIKE '%business logos%';
 
 After verifying everything works:
 
-1. **Migration 010** will drop the `account_members` table (no longer needed)
+1. **Migration 010** will:
+   - Drop RLS policies on `account_members` table
+   - Drop the `account_members` table (no longer needed)
+   - Drop the temporary `is_account_admin(uuid)` function (kept in migration 009 because `account_members` policies depended on it)
 2. **Code cleanup** - remove any remaining references to `account_members` or `AccountMembership` type
 
 ## Rollback Plan

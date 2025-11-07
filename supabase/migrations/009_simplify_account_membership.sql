@@ -360,6 +360,8 @@ USING (
   can_access_account(extract_account_id_from_path(name))
 );
 
--- Drop the temporary is_account_admin function (no longer needed)
-DROP FUNCTION IF EXISTS is_account_admin(uuid);
+-- Keep the temporary is_account_admin function for now because some
+-- existing policies on `account_members` still depend on it. 
+-- IMPORTANT: This function MUST be dropped in migration 010 after we drop
+-- the account_members table and its policies.
 
