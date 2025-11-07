@@ -147,13 +147,15 @@ export default function PropertyManagementSummary() {
                 <h2 className="text-lg font-semibold text-gray-900">Summary</h2>
               </div>
               <div className="px-4 py-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-medium text-gray-700">Total Items</span>
-                  <span className="text-base font-semibold text-gray-900">{items.length}</span>
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                  <span className="text-base font-medium text-gray-700">Total Market Value</span>
-                  <span className="text-base font-semibold text-gray-900">{usd.format(totalMarketValue)}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex items-center sm:flex-initial">
+                    <span className="text-base font-medium text-gray-700">Total Items:</span>
+                    <span className="ml-2 text-base font-semibold text-gray-900">{items.length}</span>
+                  </div>
+                  <div className="flex items-center sm:flex-1 sm:border-l sm:border-gray-100 sm:pl-4">
+                    <span className="text-base font-medium text-gray-700">Total Market Value:</span>
+                    <span className="ml-2 text-base font-semibold text-gray-900">{usd.format(totalMarketValue)}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -171,38 +173,39 @@ export default function PropertyManagementSummary() {
                   const marketValue = toNumber(item.marketValue)
                   
                   return (
-                    <div key={item.itemId} className="py-4 px-4">
+                    <div key={item.itemId} className="py-2 px-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="text-gray-900 font-medium">
+                          <div className="text-sm text-gray-900 font-medium">
                             {item.description || 'Item'}
                           </div>
-                          {item.source && (
-                            <div className="text-sm text-gray-500 mt-1">Source: {item.source}</div>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            {item.source && (
+                              <span className="text-xs text-gray-500">Source: {item.source}</span>
+                            )}
+                            {item.sku && (
+                              <>
+                                {item.source && <span className="text-xs text-gray-400">•</span>}
+                                <span className="text-xs text-gray-500">SKU: {item.sku}</span>
+                              </>
+                            )}
+                          </div>
                           {item.space && (
-                            <div className="text-sm text-gray-500 mt-1">Space: {item.space}</div>
-                          )}
-                          {item.sku && (
-                            <div className="text-sm text-gray-500 mt-1">SKU: {item.sku}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">Space: {item.space}</div>
                           )}
                         </div>
                         <div className="text-right ml-4">
-                          <div className="text-gray-700 font-medium">
+                          <div className="text-sm text-gray-700 font-medium">
                             {usd.format(marketValue)}
                           </div>
                           {marketValue === 0 && (
-                            <div className="text-xs text-gray-400 mt-1">No market value set</div>
+                            <div className="text-xs text-gray-400 mt-0.5">No market value set</div>
                           )}
                         </div>
                       </div>
                     </div>
                   )
                 })}
-              </div>
-              <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-100">
-                <span className="text-base font-semibold text-gray-900">Total Market Value</span>
-                <span className="text-base font-semibold text-gray-900">{usd.format(totalMarketValue)}</span>
               </div>
             </div>
           </section>

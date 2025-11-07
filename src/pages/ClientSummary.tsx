@@ -75,12 +75,23 @@ export default function ClientSummary() {
       return sum + projectPrice
     }, 0)
 
-    // Breakdown by budget categories (sum of transaction amounts by budgetCategory)
+    // Breakdown by budget categories (sum of item project prices by budgetCategory from their transactions)
     const categoryBreakdown: Record<string, number> = {}
+    // Create a map of transactionId -> budgetCategory for quick lookup
+    const transactionCategoryMap = new Map<string, string>()
     transactions.forEach(transaction => {
-      if (transaction.budgetCategory) {
-        const amount = toNumber(transaction.amount)
-        categoryBreakdown[transaction.budgetCategory] = (categoryBreakdown[transaction.budgetCategory] || 0) + amount
+      if (transaction.budgetCategory && transaction.transactionId) {
+        transactionCategoryMap.set(transaction.transactionId, transaction.budgetCategory)
+      }
+    })
+    // Sum item project prices by their transaction's budget category
+    items.forEach(item => {
+      if (item.transactionId) {
+        const budgetCategory = transactionCategoryMap.get(item.transactionId)
+        if (budgetCategory) {
+          const projectPrice = toNumber(item.projectPrice)
+          categoryBreakdown[budgetCategory] = (categoryBreakdown[budgetCategory] || 0) + projectPrice
+        }
       }
     })
 
@@ -189,55 +200,63 @@ export default function ClientSummary() {
         <div className="space-y-6">
           {/* Summary Fields */}
           <section>
-            <div className="rounded-lg border border-gray-100 overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Summary</h2>
-              </div>
-              <div className="px-4 py-4 space-y-4">
-                {/* Total Spent Overall */}
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-medium text-gray-700">Total Spent Overall</span>
-                  <span className="text-base font-semibold text-gray-900">{usd.format(summary.totalSpent)}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Total Spend Card */}
+              <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                  <h2 className="text-lg font-semibold text-gray-900">Project Overview</h2>
                 </div>
-
-                {/* Breakdown by Budget Categories */}
-                {Object.keys(summary.categoryBreakdown).length > 0 && (
-                  <div className="pt-3 border-t border-gray-100">
-                    <div className="text-sm font-medium text-gray-700 mb-2">Breakdown by Budget Category</div>
-                    <div className="space-y-2">
-                      {Object.entries(summary.categoryBreakdown)
-                        .sort(([a], [b]) => a.localeCompare(b))
-                        .map(([category, amount]) => (
-                          <div key={category} className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600">{category}</span>
-                            <span className="text-gray-900 font-medium">{usd.format(amount)}</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Value of Furnishings */}
-                <div className="pt-3 border-t border-gray-100">
+                <div className="px-4 py-4 space-y-4">
+                  {/* Total Spent Overall */}
                   <div className="flex items-center justify-between">
-                    <span className="text-base font-medium text-gray-700">Value of Furnishings in Your Home</span>
-                    <span className="text-base font-semibold text-gray-900">{usd.format(summary.totalMarketValue)}</span>
-                  </div>
-                </div>
-
-                {/* What They Spent */}
-                <div className="pt-3 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-base font-medium text-gray-700">What You Spent</span>
+                    <span className="text-base font-medium text-gray-700">Total Spent Overall</span>
                     <span className="text-base font-semibold text-gray-900">{usd.format(summary.totalSpent)}</span>
                   </div>
-                </div>
 
-                {/* What They Saved */}
-                <div className="pt-3 border-t border-gray-100">
+                  {/* Breakdown by Budget Categories */}
+                  {Object.keys(summary.categoryBreakdown).length > 0 && (
+                    <div className="pt-3 border-t border-gray-100">
+                      <div className="space-y-2">
+                        {Object.entries(summary.categoryBreakdown)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([category, amount]) => (
+                            <div key={category} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">{category}</span>
+                              <span className="text-gray-900 font-medium">{usd.format(amount)}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Savings Card */}
+              <div className="rounded-lg border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                  <h2 className="text-lg font-semibold text-gray-900">Furnishing Savings</h2>
+                </div>
+                <div className="px-4 py-4 space-y-4">
+                  {/* Market Value */}
                   <div className="flex items-center justify-between">
-                    <span className="text-base font-medium text-primary-600">What You Saved</span>
-                    <span className="text-base font-semibold text-primary-600">{usd.format(summary.totalSaved)}</span>
+                    <span className="text-base font-medium text-gray-700">Market Value</span>
+                    <span className="text-base font-semibold text-gray-900">{usd.format(summary.totalMarketValue)}</span>
+                  </div>
+
+                  {/* What They Spent */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-medium text-gray-700">What You Spent</span>
+                      <span className="text-base font-semibold text-gray-900">{usd.format(summary.totalSpent)}</span>
+                    </div>
+                  </div>
+
+                  {/* What They Saved */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-base font-medium text-green-600">What You Saved</span>
+                      <span className="text-base font-semibold text-green-600">{usd.format(summary.totalSaved)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -247,7 +266,7 @@ export default function ClientSummary() {
           {/* Items List */}
           <section>
             <div className="flex items-baseline justify-between mb-3">
-              <h2 className="text-lg font-semibold text-gray-900">Items</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Furnishings</h2>
             </div>
 
             <div className="rounded-lg border border-gray-100 overflow-hidden">
@@ -257,34 +276,37 @@ export default function ClientSummary() {
                   const receiptLink = getReceiptLink(item)
                   
                   return (
-                    <div key={item.itemId} className="py-4 px-4">
+                    <div key={item.itemId} className="py-2 px-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="text-gray-900 font-medium">
+                          <div className="text-sm text-gray-900 font-medium">
                             {item.description || 'Item'}
                           </div>
-                          {item.source && (
-                            <div className="text-sm text-gray-500 mt-1">Source: {item.source}</div>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            {item.source && (
+                              <span className="text-xs text-gray-500">Source: {item.source}</span>
+                            )}
+                            {receiptLink && (
+                              <>
+                                {item.source && <span className="text-xs text-gray-400">•</span>}
+                                <Link
+                                  to={receiptLink}
+                                  className="text-xs text-primary-600 hover:text-primary-700 underline print:hidden"
+                                >
+                                  View Receipt
+                                </Link>
+                                <span className="text-xs text-primary-600 print:inline hidden">
+                                  Receipt available
+                                </span>
+                              </>
+                            )}
+                          </div>
                           {item.space && (
-                            <div className="text-sm text-gray-500 mt-1">Space: {item.space}</div>
-                          )}
-                          {receiptLink && (
-                            <div className="mt-2">
-                              <Link
-                                to={receiptLink}
-                                className="text-sm text-primary-600 hover:text-primary-700 underline print:hidden"
-                              >
-                                View Receipt
-                              </Link>
-                              <span className="text-sm text-primary-600 print:inline hidden">
-                                Receipt available
-                              </span>
-                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">Space: {item.space}</div>
                           )}
                         </div>
                         <div className="text-right ml-4">
-                          <div className="text-gray-700 font-medium">
+                          <div className="text-sm text-gray-700 font-medium">
                             {usd.format(projectPrice)}
                           </div>
                         </div>
@@ -293,9 +315,9 @@ export default function ClientSummary() {
                   )
                 })}
               </div>
-              <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-100">
-                <span className="text-base font-semibold text-gray-900">Total Project Price</span>
-                <span className="text-base font-semibold text-gray-900">{usd.format(summary.totalSpent)}</span>
+              <div className="flex items-center justify-between px-4 py-2 bg-white border-t border-gray-100">
+                <span className="text-sm font-semibold text-gray-900">Furnishings Total</span>
+                <span className="text-sm font-semibold text-gray-900">{usd.format(summary.totalSpent)}</span>
               </div>
             </div>
           </section>
