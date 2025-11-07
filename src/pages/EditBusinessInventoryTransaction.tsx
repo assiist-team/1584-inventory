@@ -22,7 +22,7 @@ export default function EditBusinessInventoryTransaction() {
     projectId: '',
     transactionDate: '',
     source: '',
-    transactionType: 'Reimbursement',
+    transactionType: 'Purchase',
     paymentMethod: 'Pending',
     amount: '',
     budgetCategory: 'Furnishings',
@@ -109,7 +109,7 @@ export default function EditBusinessInventoryTransaction() {
             projectId: transactionData.projectId || '',
             transactionDate: toDateOnlyString(transactionData.transactionDate) || '',
             source: resolvedSource,
-            transactionType: transactionData.transactionType || 'Reimbursement',
+            transactionType: transactionData.transactionType || 'Purchase',
             paymentMethod: transactionData.paymentMethod || 'Pending',
             amount: transactionData.amount,
             budgetCategory: transactionData.budgetCategory || 'Furnishings',
@@ -479,6 +479,47 @@ export default function EditBusinessInventoryTransaction() {
             </div>
             {formErrors.budgetCategory && (
               <p className="mt-1 text-sm text-red-600">{formErrors.budgetCategory}</p>
+            )}
+          </div>
+
+          {/* Transaction Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Type
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_purchase"
+                  name="transactionType"
+                  value="Purchase"
+                  checked={formData.transactionType === 'Purchase'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
+                  Purchase
+                </label>
+              </div>
+              {/* 'Reimbursement' option removed */}
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="type_return"
+                  name="transactionType"
+                  value="Return"
+                  checked={formData.transactionType === 'Return'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
+                  Return
+                </label>
+              </div>
+            </div>
+            {formErrors.transactionType && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.transactionType}</p>
             )}
           </div>
 
