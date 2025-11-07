@@ -3,7 +3,8 @@ import { ensureAuthenticatedForDatabase } from './databaseService'
 import { TransactionImage } from '@/types'
 import {
   ImageUploadError,
-  getUserFriendlyErrorMessage
+  getUserFriendlyErrorMessage,
+  convertImageFormat
 } from '@/utils/imageUtils'
 
 export interface UploadProgress {
@@ -120,11 +121,7 @@ export class ImageUploadService {
       throw new Error('Storage service is not available. Please check your connection and try again.')
     }
 
-    let processedFile = file
-    if (this.shouldCompressForMobile(file)) {
-      console.log('Compressing file for mobile upload...')
-      processedFile = await this.compressForMobile(file)
-    }
+    const processedFile = await this._prepareImageForUpload(file)
 
     if (!this.validateImageFile(processedFile)) {
       throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP, HEIC/HEIF) under 10MB.')
@@ -182,6 +179,42 @@ export class ImageUploadService {
   }
 
   /**
+   * Pre-processes an image file for upload (compression, conversion)
+   */
+  private static async _prepareImageForUpload(file: File): Promise<File> {
+    let processedFile = file
+
+    // Compress images on mobile devices to save bandwidth
+    if (this.shouldCompressForMobile(processedFile)) {
+      console.log('Compressing file for mobile upload...')
+      processedFile = await this.compressForMobile(processedFile)
+    }
+
+    // If the file is HEIC/HEIF, attempt to convert it to JPEG for wider compatibility
+    const lowerName = processedFile.name.toLowerCase()
+    const isHeic =
+      (processedFile.type && (processedFile.type.toLowerCase().includes('heic') || processedFile.type.toLowerCase().includes('heif'))) ||
+      /\.(heic|heif)$/i.test(lowerName)
+
+    if (isHeic) {
+      try {
+        console.log('Converting HEIC/HEIF to JPEG before upload...')
+        processedFile = await convertImageFormat(processedFile, 'jpeg', 0.9)
+      } catch (err) {
+        console.warn('HEIC conversion failed:', err)
+        // Throw a user-friendly error if conversion fails
+        throw new ImageUploadError(
+          'Upload failed: Could not convert HEIC/HEIF image. Please convert it to JPEG or PNG and try again.',
+          undefined,
+          err
+        )
+      }
+    }
+    
+    return processedFile
+  }
+
+  /**
    * Internal upload method
    */
   private static async uploadImageInternal(
@@ -203,11 +236,7 @@ export class ImageUploadService {
       throw new Error('Storage service is not available. Please check your connection and try again.')
     }
 
-    let processedFile = file
-    if (this.shouldCompressForMobile(file)) {
-      console.log('Compressing file for mobile upload...')
-      processedFile = await this.compressForMobile(file)
-    }
+    const processedFile = await this._prepareImageForUpload(file)
 
     if (!this.validateImageFile(processedFile)) {
       throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP, HEIC/HEIF) under 10MB.')

@@ -1,4 +1,5 @@
 import { TransactionImage } from '@/types'
+import heic2any from 'heic2any'
 
 export interface ImageValidationResult {
   isValid: boolean
@@ -212,6 +213,39 @@ export function convertImageFormat(
   targetFormat: 'jpeg' | 'png' | 'webp',
   quality: number = 0.9
 ): Promise<File> {
+  const lowerName = file.name.toLowerCase()
+  const isHeic =
+    (file.type && (file.type.toLowerCase().includes('heic') || file.type.toLowerCase().includes('heif'))) ||
+    /\.(heic|heif)$/i.test(lowerName)
+
+  // Use heic2any for HEIC/HEIF files as browsers lack native support
+  if (isHeic) {
+    return new Promise((resolve, reject) => {
+      heic2any({
+        blob: file,
+        toType: `image/${targetFormat}`,
+        quality: quality
+      })
+        .then((conversionResult: Blob | Blob[]) => {
+          if (!conversionResult) {
+            return reject(new Error('HEIC conversion returned a null result.'))
+          }
+          const blob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult
+          const newName = file.name.replace(/\.[^.]+$/, `.${targetFormat}`)
+          const convertedFile = new File([blob], newName, {
+            type: `image/${targetFormat}`,
+            lastModified: Date.now()
+          })
+          resolve(convertedFile)
+        })
+        .catch((err: any) => {
+          console.error('HEIC conversion with heic2any failed:', err)
+          reject(new Error('Failed to convert HEIC image using the library.'))
+        })
+    })
+  }
+
+  // Use the canvas method for standard image formats
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
@@ -234,7 +268,7 @@ export function convertImageFormat(
             })
             resolve(convertedFile)
           } else {
-            reject(new Error('Failed to convert image format'))
+            reject(new Error('Failed to create blob from canvas.'))
           }
         },
         `image/${targetFormat}`,
@@ -242,7 +276,7 @@ export function convertImageFormat(
       )
     }
 
-    img.onerror = () => reject(new Error('Failed to load image for format conversion'))
+    img.onerror = () => reject(new Error('Failed to load image into canvas for conversion.'))
     img.src = URL.createObjectURL(file)
   })
 }
