@@ -22,8 +22,6 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<Item[]>(propItems || [])
   const [loading, setLoading] = useState(false)
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
@@ -35,11 +33,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
     setItems(propItems || [])
   }, [propItems])
 
-  const loadMoreItems = () => {
-    if (!loading && hasMore) {
-      setPage(prevPage => prevPage + 1)
-    }
-  }
+ 
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
@@ -662,17 +656,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                 </li>
               ))}
             </ul>
-            {hasMore && (
-              <div className="text-center p-4">
-                <button
-                  onClick={loadMoreItems}
-                  disabled={loading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {loading ? 'Loading...' : 'Load More'}
-                </button>
-              </div>
-            )}
+            
           </div>
         )
       )}

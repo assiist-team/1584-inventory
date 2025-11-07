@@ -17,7 +17,7 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const { currentAccountId } = useAccount()
+  const { currentAccountId, loading: accountLoading } = useAccount()
   const [searchParams, setSearchParams] = useSearchParams()
   const budgetTabParam = searchParams.get('budgetTab')
   const [project, setProject] = useState<Project | null>(null)
@@ -122,7 +122,12 @@ export default function ProjectDetail() {
         navigate('/projects')
         return
       }
-      if (!currentAccountId) return
+      
+      // Wait for account to finish loading before proceeding
+      if (accountLoading || !currentAccountId) {
+        setIsLoading(true)
+        return
+      }
 
       setIsLoading(true)
       try {
@@ -159,7 +164,7 @@ export default function ProjectDetail() {
       if (transactionUnsubscribe) transactionUnsubscribe()
       if (itemsUnsubscribe) itemsUnsubscribe()
     }
-  }, [id, currentAccountId, navigate])
+  }, [id, currentAccountId, accountLoading, navigate])
 
   // Retry function for failed loads
   const retryLoadProject = () => {

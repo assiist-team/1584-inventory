@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
-import { createOrUpdateUserDocument, checkInvitationByToken } from '../services/supabase'
+import { checkInvitationByToken } from '../services/supabase'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
@@ -9,11 +9,15 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        // Supabase automatically handles OAuth callback when detectSessionInUrl is true
+        // Just wait a moment for it to process, then check the session
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
           console.error('Auth callback error:', error)
-          navigate('/login')
+          navigate('/')
           return
         }
 
@@ -38,19 +42,16 @@ export default function AuthCallback() {
             localStorage.removeItem('pendingInvitationToken')
           }
 
-          // Create or update user document after successful OAuth redirect
-          await createOrUpdateUserDocument(session.user)
-          
           // Clear any stored invitation data
           localStorage.removeItem('pendingInvitationData')
           
           navigate('/')
         } else {
-          navigate('/login')
+          navigate('/')
         }
       } catch (error) {
         console.error('Error handling auth callback:', error)
-        navigate('/login')
+        navigate('/')
       }
     }
 
