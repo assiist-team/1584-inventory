@@ -656,20 +656,7 @@ export default function EditTransaction() {
                   Purchase
                 </label>
               </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="type_to_inventory"
-                  name="transactionType"
-                  value="To Inventory"
-                  checked={formData.transactionType === 'To Inventory'}
-                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="type_to_inventory" className="ml-2 block text-sm text-gray-900">
-                  To Inventory
-                </label>
-              </div>
+              {/* 'To Inventory' option removed */}
               <div className="flex items-center">
                 <input
                   type="radio"
