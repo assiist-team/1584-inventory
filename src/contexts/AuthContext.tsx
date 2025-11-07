@@ -34,147 +34,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let isInitialLoad = true
-    let authStateUnsubscribe: { data: { subscription: any } } | null = null
-    let loadingTimeout: NodeJS.Timeout | null = null
     let isMounted = true
-
-    // Safety timeout
-    loadingTimeout = setTimeout(() => {
-      if (isMounted && isInitialLoad) {
-        console.warn('⚠️ Auth initialization timeout - setting loading to false')
-        setLoading(false)
-        isInitialLoad = false
-      }
-    }, 5000)
-
-    // Initialize Supabase and auth persistence
-    const initializeAuth = async () => {
-      try {
-        // Initialize Supabase
-        await initializeSupabase()
-        console.log('🔥 Supabase initialized')
-
-        // Set auth persistence
-        await initializeAuthPersistence()
-        console.log('🔐 Auth persistence initialized')
-      } catch (error) {
-        console.error('❌ Failed to initialize Supabase/auth persistence:', error)
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-
-      // Wait for auth state to be restored
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      // Check if user is already authenticated
-      const { data: { session } } = await supabase.auth.getSession()
-      const currentUser = session?.user || null
-      
-      console.log('🔍 Current Supabase user from localStorage:', {
-        exists: !!currentUser,
-        email: currentUser?.email || 'none',
-        uid: currentUser?.id || 'none',
-        source: 'localStorage persistence'
-      })
-
-      // Set initial state if user exists
-      if (currentUser) {
-        setSupabaseUser(currentUser)
-        try {
-          await createOrUpdateUserDocument(currentUser)
-          const { appUser } = await getCurrentUserWithData()
-          if (isMounted) {
-            setUser(appUser)
-            if (appUser?.email) {
-              console.log('✅ User restored from localStorage persistence:', appUser.email)
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error loading user from localStorage:', error)
-          if (isMounted) {
-            setUser(null)
-            setSupabaseUser(null)
-          }
-        }
-      }
 
       // Set up auth state listener
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (!isMounted) return
 
         const authUser = session?.user || null
-
-        console.log('🔄 AuthContext: Auth state changed:', {
-          event,
-          hasUser: !!authUser,
-          email: authUser?.email || 'none',
-          uid: authUser?.id || 'none',
-          isInitialLoad,
-          source: isInitialLoad ? 'initial load' : 'auth change'
-        })
-
-        // Skip duplicate initial calls
-        if (isInitialLoad && authUser && currentUser && authUser.id === currentUser.id) {
-          console.log('⏭️ Skipping duplicate initial auth state from localStorage')
-          if (loadingTimeout) {
-            clearTimeout(loadingTimeout)
-            loadingTimeout = null
-          }
-          setLoading(false)
-          isInitialLoad = false
-          return
-        }
-
         setSupabaseUser(authUser)
 
         if (authUser) {
           try {
+          // On initial load or sign-in, create/update user doc and fetch app-specific user data
+          if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
             await createOrUpdateUserDocument(authUser)
+          }
             const { appUser } = await getCurrentUserWithData()
             if (isMounted) {
               setUser(appUser)
-              if (appUser?.email) {
-                console.log('✅ Auth state change - user authenticated:', appUser.email)
-              }
             }
           } catch (error) {
-            console.error('❌ Error loading authenticated user:', error)
-            if (isMounted) {
-              setUser(null)
-            }
-          }
-        } else {
-          console.log('🚪 User signed out or auth cleared')
+          console.error('Error loading user data:', error)
           if (isMounted) {
             setUser(null)
           }
         }
+      } else {
+        // User is signed out
+        if (isMounted) {
+          setUser(null)
+        }
+      }
 
-        // Mark loading as complete after initial processing
-        if (isInitialLoad) {
-          if (loadingTimeout) {
-            clearTimeout(loadingTimeout)
-            loadingTimeout = null
-          }
+      // Loading is false once the initial session is handled
+      if (isMounted) {
           setLoading(false)
-          isInitialLoad = false
         }
       })
 
-      authStateUnsubscribe = { data: { subscription } }
-    }
-
-    initializeAuth()
-
     return () => {
       isMounted = false
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout)
-      }
-      if (authStateUnsubscribe?.data?.subscription) {
-        authStateUnsubscribe.data.subscription.unsubscribe()
+      if (subscription) {
+        subscription.unsubscribe()
       }
     }
   }, [])
