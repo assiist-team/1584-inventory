@@ -127,7 +127,7 @@ export class ImageUploadService {
     }
 
     if (!this.validateImageFile(processedFile)) {
-      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP) under 10MB.')
+      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP, HEIC/HEIF) under 10MB.')
     }
 
     const timestamp = Date.now()
@@ -210,7 +210,7 @@ export class ImageUploadService {
     }
 
     if (!this.validateImageFile(processedFile)) {
-      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP) under 10MB.')
+      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP, HEIC/HEIF) under 10MB.')
     }
 
     const timestamp = Date.now()
@@ -443,19 +443,33 @@ export class ImageUploadService {
    * Validate image file
    */
   static validateImageFile(file: File): boolean {
-    // Check file type
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      return false
+    // Check file type (allow common web image types plus HEIC/HEIF)
+    const allowedTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/heic',
+      'image/heif'
+    ]
+
+    // If the browser provides a MIME type, prefer that check
+    if (file.type && allowedTypes.includes(file.type.toLowerCase())) {
+      // Check file size (10MB limit)
+      const maxSize = 10 * 1024 * 1024 // 10MB
+      return file.size <= maxSize
     }
+
+    // Fallback: check file extension if MIME type is missing or unrecognized
+    const lowerName = file.name.toLowerCase()
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif']
+    const hasAllowedExtension = allowedExtensions.some(ext => lowerName.endsWith(ext))
+    if (!hasAllowedExtension) return false
 
     // Check file size (10MB limit)
     const maxSize = 10 * 1024 * 1024 // 10MB
-    if (file.size > maxSize) {
-      return false
-    }
-
-    return true
+    return file.size <= maxSize
   }
 
   /**

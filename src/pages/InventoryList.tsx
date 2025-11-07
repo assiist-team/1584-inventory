@@ -21,6 +21,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
@@ -31,14 +33,20 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   // Fetch real inventory data from Supabase
   useEffect(() => {
     const fetchItems = async () => {
-      if (!currentAccountId) return
+      if (!currentAccountId || !hasMore) return
       try {
         setLoading(true)
         setError(null)
-        console.log('Fetching items for project:', projectId)
-        const realItems = await unifiedItemsService.getItemsByProject(currentAccountId, projectId)
-        console.log('Fetched items:', realItems.length, realItems)
-        setItems(realItems)
+        console.log('Fetching items for project:', projectId, 'page:', page)
+        const newItems = await unifiedItemsService.getItemsByProject(
+          currentAccountId,
+          projectId,
+          {},
+          { page, limit: 50 }
+        )
+        console.log('Fetched items:', newItems.length, newItems)
+        setItems(prevItems => (page === 1 ? newItems : [...prevItems, ...newItems]))
+        setHasMore(newItems.length === 50)
       } catch (error) {
         console.error('Failed to fetch items:', error)
         setError('Failed to load inventory items. Please try again.')
@@ -66,7 +74,13 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         unsubscribe()
       }
     }
-  }, [projectId, currentAccountId, accountLoading])
+  }, [projectId, currentAccountId, accountLoading, page, hasMore])
+
+  const loadMoreItems = () => {
+    if (!loading && hasMore) {
+      setPage(prevPage => prevPage + 1)
+    }
+  }
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
@@ -689,6 +703,17 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                 </li>
               ))}
             </ul>
+            {hasMore && (
+              <div className="text-center p-4">
+                <button
+                  onClick={loadMoreItems}
+                  disabled={loading}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {loading ? 'Loading...' : 'Load More'}
+                </button>
+              </div>
+            )}
           </div>
         )
       )}

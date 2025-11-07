@@ -422,6 +422,25 @@ export const transactionService = {
     return (data || []).map(tx => _convertTransactionFromDb(tx))
   },
 
+  // Get transactions for multiple projects (account-scoped)
+  async getTransactionsForProjects(accountId: string, projectIds: string[]): Promise<Transaction[]> {
+    if (projectIds.length === 0) {
+      return []
+    }
+    await ensureAuthenticatedForDatabase()
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .in('project_id', projectIds)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return (data || []).map(tx => _convertTransactionFromDb(tx))
+  },
+
   // Get single transaction (account-scoped)
   async getTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Transaction | null> {
     await ensureAuthenticatedForDatabase()

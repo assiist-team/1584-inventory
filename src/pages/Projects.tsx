@@ -59,18 +59,21 @@ export default function Projects() {
       const projectsData = await projectService.getProjects(currentAccountId)
       setProjects(projectsData)
 
-      // Load transactions for each project
-      const transactionsData: Record<string, Transaction[]> = {}
-      for (const project of projectsData) {
-        try {
-          const projectTransactions = await transactionService.getTransactions(currentAccountId, project.id)
-          transactionsData[project.id] = projectTransactions
-        } catch (error) {
-          console.error(`Error loading transactions for project ${project.id}:`, error)
-          transactionsData[project.id] = []
+      if (projectsData.length > 0) {
+        const projectIds = projectsData.map(p => p.id)
+        const allTransactions = await transactionService.getTransactionsForProjects(currentAccountId, projectIds)
+
+        const transactionsByProject: Record<string, Transaction[]> = {}
+        for (const transaction of allTransactions) {
+          if (!transactionsByProject[transaction.projectId]) {
+            transactionsByProject[transaction.projectId] = []
+          }
+          transactionsByProject[transaction.projectId].push(transaction)
         }
+        setTransactions(transactionsByProject)
+      } else {
+        setTransactions({})
       }
-      setTransactions(transactionsData)
     } catch (error) {
       console.error('Error loading projects:', error)
       setProjects([])
