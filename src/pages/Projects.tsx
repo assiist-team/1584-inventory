@@ -17,14 +17,77 @@ export default function Projects() {
   const [showCreateForm, setShowCreateForm] = useState(false)
 
   useEffect(() => {
-    if (accountLoading) {
-      setIsLoading(true)
-      return
+    let unsubscribe: (() => void) | undefined
+
+    const setupSubscription = (initialProjects: Project[]) => {
+      if (!currentAccountId) return
+      unsubscribe = projectService.subscribeToProjects(
+        currentAccountId,
+        (updatedProjects) => {
+          setProjects(updatedProjects)
+          // Also refetch transactions when projects change
+          loadTransactionsForProjects(updatedProjects)
+        },
+        initialProjects
+      )
     }
-    if (currentAccountId) {
-      loadProjectsData()
-    } else {
-      setIsLoading(false)
+
+    const loadTransactionsForProjects = async (projectsToLoad: Project[]) => {
+      if (!currentAccountId || projectsToLoad.length === 0) {
+        setTransactions({})
+        return
+      }
+
+      try {
+        const projectIds = projectsToLoad.map(p => p.id)
+        const allTransactions = await transactionService.getTransactionsForProjects(currentAccountId, projectIds)
+        const transactionsByProject: Record<string, Transaction[]> = {}
+        allTransactions.forEach(t => {
+          if (!transactionsByProject[t.projectId]) {
+            transactionsByProject[t.projectId] = []
+          }
+          transactionsByProject[t.projectId].push(t)
+        })
+        setTransactions(transactionsByProject)
+      } catch (error) {
+        console.error('Error loading transactions for projects:', error)
+        setTransactions({})
+      }
+    }
+
+    const loadInitialData = async () => {
+      if (accountLoading) {
+        setIsLoading(true)
+        return
+      }
+
+      if (currentAccountId) {
+        setIsLoading(true)
+        try {
+          const projectsData = await projectService.getProjects(currentAccountId)
+          setProjects(projectsData)
+          await loadTransactionsForProjects(projectsData)
+          setupSubscription(projectsData)
+        } catch (error) {
+          console.error('Error loading initial projects data:', error)
+          setProjects([])
+          setTransactions({})
+        } finally {
+          setIsLoading(false)
+        }
+      } else {
+        setIsLoading(false)
+        setProjects([])
+        setTransactions({})
+      }
+    }
+
+    loadInitialData()
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe()
+      }
     }
   }, [currentAccountId, accountLoading])
 
@@ -41,44 +104,11 @@ export default function Projects() {
         ...projectData,
         createdBy: user.id
       })
-
-      // Reload projects and transactions
-      await loadProjectsData()
+      // The subscription will handle the update
       setShowCreateForm(false)
     } catch (error) {
       console.error('Error creating project:', error)
       throw error // Let the form handle the error
-    }
-  }
-
-  const loadProjectsData = async () => {
-    if (!currentAccountId) return
-    
-    setIsLoading(true)
-    try {
-      const projectsData = await projectService.getProjects(currentAccountId)
-      setProjects(projectsData)
-
-      if (projectsData.length > 0) {
-        const projectIds = projectsData.map(p => p.id)
-        const allTransactions = await transactionService.getTransactionsForProjects(currentAccountId, projectIds)
-
-        const transactionsByProject: Record<string, Transaction[]> = {}
-        for (const transaction of allTransactions) {
-          if (!transactionsByProject[transaction.projectId]) {
-            transactionsByProject[transaction.projectId] = []
-          }
-          transactionsByProject[transaction.projectId].push(transaction)
-        }
-        setTransactions(transactionsByProject)
-      } else {
-        setTransactions({})
-      }
-    } catch (error) {
-      console.error('Error loading projects:', error)
-      setProjects([])
-    } finally {
-      setIsLoading(false)
     }
   }
 

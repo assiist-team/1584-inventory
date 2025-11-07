@@ -234,7 +234,13 @@ export const projectService = {
   },
 
   // Subscribe to projects with real-time updates
-  subscribeToProjects(accountId: string, callback: (projects: Project[]) => void) {
+  subscribeToProjects(
+    accountId: string,
+    callback: (projects: Project[]) => void,
+    initialProjects?: Project[]
+  ) {
+    let projects = [...(initialProjects || [])]
+
     const channel = supabase
       .channel(`projects:${accountId}`)
       .on(
@@ -245,95 +251,32 @@ export const projectService = {
           table: 'projects',
           filter: `account_id=eq.${accountId}`
         },
-        async () => {
-          // Refetch projects on any change
-          try {
-            const { data, error } = await supabase
-              .from('projects')
-              .select('*')
-              .eq('account_id', accountId)
-              .order('updated_at', { ascending: false })
-            
-            if (error) {
-              console.error('Error fetching projects in subscription:', error)
-              return
-            }
-            
-            if (data) {
-              const projects = (data || []).map(project => {
-                const converted = convertTimestamps(project)
-                return {
-                  id: converted.id,
-                  accountId: converted.account_id,
-                  name: converted.name,
-                  description: converted.description || '',
-                  clientName: converted.client_name || '',
-                  budget: converted.budget ? parseFloat(converted.budget) : undefined,
-                  designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
-                  budgetCategories: converted.budget_categories || undefined,
-                  createdAt: converted.created_at,
-                  updatedAt: converted.updated_at,
-                  createdBy: converted.created_by,
-                  settings: converted.settings || undefined,
-                  metadata: converted.metadata || undefined,
-                  itemCount: converted.item_count || 0,
-                  transactionCount: converted.transaction_count || 0,
-                  totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
-                } as Project
-              })
-              callback(projects)
-            }
-          } catch (error) {
-            console.error('Error in projects subscription callback:', error)
+        (payload) => {
+          console.log('Projects change received!', payload)
+          const { eventType, new: newRecord, old: oldRecord } = payload
+
+          if (eventType === 'INSERT') {
+            const newProject = _convertProjectFromDb(newRecord)
+            projects = [newProject, ...projects]
+          } else if (eventType === 'UPDATE') {
+            const updatedProject = _convertProjectFromDb(newRecord)
+            projects = projects.map(p => p.id === updatedProject.id ? updatedProject : p)
+          } else if (eventType === 'DELETE') {
+            const oldId = oldRecord.id
+            projects = projects.filter(p => p.id !== oldId)
           }
+          
+          callback(projects.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()))
         }
       )
-      .subscribe()
-
-    // Initial fetch
-    const fetchProjects = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('account_id', accountId)
-          .order('updated_at', { ascending: false })
-        
-        if (error) {
-          console.error('Error fetching initial projects:', error)
-          return
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to projects channel')
         }
-        
-        if (data) {
-          const projects = (data || []).map(project => {
-            const converted = convertTimestamps(project)
-            return {
-              id: converted.id,
-              accountId: converted.account_id,
-              name: converted.name,
-              description: converted.description || '',
-              clientName: converted.client_name || '',
-              budget: converted.budget ? parseFloat(converted.budget) : undefined,
-              designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
-              budgetCategories: converted.budget_categories || undefined,
-              createdAt: converted.created_at,
-              updatedAt: converted.updated_at,
-              createdBy: converted.created_by,
-              settings: converted.settings || undefined,
-              metadata: converted.metadata || undefined,
-              itemCount: converted.item_count || 0,
-              transactionCount: converted.transaction_count || 0,
-              totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
-            } as Project
-          })
-          callback(projects)
+        if (err) {
+          console.error('Error subscribing to projects channel:', err)
         }
-      } catch (error) {
-        console.error('Error in initial projects fetch:', error)
-      }
-    }
-    
-    fetchProjects()
+      })
 
     return () => {
       channel.unsubscribe()
@@ -350,7 +293,7 @@ function _convertTransactionFromDb(dbTransaction: any): Transaction {
   return {
     transactionId: converted.transaction_id,
     projectId: converted.project_id || undefined,
-    projectName: converted.project_name || undefined,
+    projectName: converted.project_name || undefined, // May be populated by enrichment function
     transactionDate: converted.transaction_date,
     source: converted.source || '',
     transactionType: converted.transaction_type || '',
@@ -372,6 +315,49 @@ function _convertTransactionFromDb(dbTransaction: any): Transaction {
     taxRatePct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
     subtotal: converted.subtotal || undefined
   } as Transaction
+}
+
+/**
+ * Enriches transactions with project names by looking them up from project_id
+ * This ensures projectName is always available for display without storing it in the database
+ */
+async function _enrichTransactionsWithProjectNames(
+  accountId: string,
+  transactions: Transaction[]
+): Promise<Transaction[]> {
+  // Extract unique project IDs (excluding null/undefined)
+  const projectIds = [...new Set(transactions
+    .map(tx => tx.projectId)
+    .filter((id): id is string => !!id)
+  )]
+
+  if (projectIds.length === 0) {
+    // No projects to look up, return as-is
+    return transactions
+  }
+
+  // Batch fetch all projects
+  const projectMap = new Map<string, string>()
+  try {
+    const projects = await projectService.getProjects(accountId)
+    projects.forEach(project => {
+      projectMap.set(project.id, project.name)
+    })
+  } catch (error) {
+    console.warn('Failed to fetch projects for transaction enrichment:', error)
+    // Continue without enrichment rather than failing
+  }
+
+  // Enrich transactions with project names
+  return transactions.map(tx => {
+    if (tx.projectId && !tx.projectName) {
+      const projectName = projectMap.get(tx.projectId)
+      if (projectName) {
+        return { ...tx, projectName }
+      }
+    }
+    return tx
+  })
 }
 
 function _convertTransactionToDb(transaction: Partial<Transaction>): any {
@@ -418,7 +404,8 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => _convertTransactionFromDb(tx))
+    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+    return await _enrichTransactionsWithProjectNames(accountId, transactions)
   },
 
   // Get transactions for multiple projects (account-scoped)
@@ -437,7 +424,8 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => _convertTransactionFromDb(tx))
+    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+    return await _enrichTransactionsWithProjectNames(accountId, transactions)
   },
 
   // Get single transaction (account-scoped)
@@ -460,7 +448,9 @@ export const transactionService = {
 
     if (!data) return null
 
-    return _convertTransactionFromDb(data)
+    const transaction = _convertTransactionFromDb(data)
+    const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+    return enriched[0] || null
   },
 
   // Get transaction by ID across all projects (for business inventory) - account-scoped
@@ -480,9 +470,10 @@ export const transactionService = {
 
     const converted = convertTimestamps(data)
     const transaction = _convertTransactionFromDb(data)
+    const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
 
     return {
-      transaction,
+      transaction: enriched[0] || transaction,
       projectId: converted.project_id || null
     }
   },
@@ -688,7 +679,14 @@ export const transactionService = {
   },
 
   // Subscribe to transactions with real-time updates
-  subscribeToTransactions(accountId: string, projectId: string, callback: (transactions: Transaction[]) => void) {
+  subscribeToTransactions(
+    accountId: string,
+    projectId: string,
+    callback: (transactions: Transaction[]) => void,
+    initialTransactions?: Transaction[]
+  ) {
+    let transactions = [...(initialTransactions || [])]
+
     const channel = supabase
       .channel(`transactions:${accountId}:${projectId}`)
       .on(
@@ -699,57 +697,86 @@ export const transactionService = {
           table: 'transactions',
           filter: `account_id=eq.${accountId} AND project_id=eq.${projectId}`
         },
-        async () => {
-          // Refetch transactions on any change
-          try {
-            const { data, error } = await supabase
-              .from('transactions')
-              .select('*')
-              .eq('account_id', accountId)
-              .eq('project_id', projectId)
-              .order('created_at', { ascending: false })
-            
-            if (error) {
-              console.error('Error fetching transactions in subscription:', error)
-              return
-            }
-            
-            if (data) {
-              const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
-              callback(transactions)
-            }
-          } catch (error) {
-            console.error('Error in transactions subscription callback:', error)
+        async (payload) => {
+          console.log('Transactions change received!', payload)
+
+          const { eventType, new: newRecord, old: oldRecord } = payload
+
+          if (eventType === 'INSERT') {
+            const newTransaction = _convertTransactionFromDb(newRecord)
+            const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [newTransaction])
+            transactions = [enrichedTransaction, ...transactions]
+          } else if (eventType === 'UPDATE') {
+            const updatedTransaction = _convertTransactionFromDb(newRecord)
+            const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [updatedTransaction])
+            transactions = transactions.map(t => t.transactionId === enrichedTransaction.transactionId ? enrichedTransaction : t)
+          } else if (eventType === 'DELETE') {
+            const oldId = oldRecord.transaction_id
+            transactions = transactions.filter(t => t.transactionId !== oldId)
           }
+          
+          callback(transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to transactions channel')
+        }
+        if (err) {
+          console.error('Error subscribing to transactions channel:', err)
+        }
+      })
 
-    // Initial fetch
-    const fetchTransactions = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('account_id', accountId)
-          .eq('project_id', projectId)
-          .order('created_at', { ascending: false })
-        
-        if (error) {
-          console.error('Error fetching initial transactions:', error)
-          return
-        }
-        
-        if (data) {
-          const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
-          callback(transactions)
-        }
-      } catch (error) {
-        console.error('Error in initial transactions fetch:', error)
-      }
+    return () => {
+      channel.unsubscribe()
     }
-    
-    fetchTransactions()
+  },
+
+  subscribeToAllTransactions(
+    accountId: string,
+    callback: (transactions: Transaction[]) => void,
+    initialTransactions?: Transaction[]
+  ) {
+    let transactions = [...(initialTransactions || [])]
+
+    const channel = supabase
+      .channel(`transactions:${accountId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+          filter: `account_id=eq.${accountId}`
+        },
+        async (payload) => {
+          console.log('All transactions change received!', payload)
+          const { eventType, new: newRecord, old: oldRecord } = payload
+
+          if (eventType === 'INSERT') {
+            const newTransaction = _convertTransactionFromDb(newRecord)
+            const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [newTransaction])
+            transactions = [enrichedTransaction, ...transactions]
+          } else if (eventType === 'UPDATE') {
+            const updatedTransaction = _convertTransactionFromDb(newRecord)
+            const [enrichedTransaction] = await _enrichTransactionsWithProjectNames(accountId, [updatedTransaction])
+            transactions = transactions.map(t => t.transactionId === enrichedTransaction.transactionId ? enrichedTransaction : t)
+          } else if (eventType === 'DELETE') {
+            const oldId = oldRecord.transaction_id
+            transactions = transactions.filter(t => t.transactionId !== oldId)
+          }
+          
+          callback(transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to all transactions channel')
+        }
+        if (err) {
+          console.error('Error subscribing to all transactions channel:', err)
+        }
+      })
 
     return () => {
       channel.unsubscribe()
@@ -794,33 +821,9 @@ export const transactionService = {
             }
             
             if (data) {
-              const converted = convertTimestamps(data)
-              const transaction: Transaction = {
-                transaction_id: converted.transaction_id,
-                project_id: converted.project_id || undefined,
-                project_name: converted.project_name || undefined,
-                transaction_date: converted.transaction_date,
-                source: converted.source || '',
-                transaction_type: converted.transaction_type || '',
-                payment_method: converted.payment_method || '',
-                amount: converted.amount || '0.00',
-                budget_category: converted.budget_category || undefined,
-                notes: converted.notes || undefined,
-                transaction_images: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
-                receipt_images: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
-                other_images: Array.isArray(converted.other_images) ? converted.other_images : [],
-                receipt_emailed: converted.receipt_emailed || false,
-                created_at: converted.created_at,
-                created_by: converted.created_by || '',
-                status: converted.status || 'completed',
-                reimbursement_type: converted.reimbursement_type || undefined,
-                trigger_event: converted.trigger_event || undefined,
-                item_ids: Array.isArray(converted.item_ids) ? converted.item_ids : [],
-                tax_rate_preset: converted.tax_rate_preset || undefined,
-                tax_rate_pct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-                subtotal: converted.subtotal || undefined
-              }
-              callback(transaction)
+              const transaction = _convertTransactionFromDb(data)
+              const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+              callback(enriched[0] || null)
             } else {
               callback(null)
             }
@@ -851,7 +854,9 @@ export const transactionService = {
         }
         
         if (data) {
-          callback(_convertTransactionFromDb(data))
+          const transaction = _convertTransactionFromDb(data)
+          const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+          callback(enriched[0] || null)
         } else {
           callback(null)
         }
@@ -881,7 +886,8 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => _convertTransactionFromDb(tx))
+    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+    return await _enrichTransactionsWithProjectNames(accountId, transactions)
   },
 
   // Update transaction status (for completing/cancelling pending transactions) (account-scoped)
@@ -934,7 +940,8 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => _convertTransactionFromDb(tx))
+    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+    return await _enrichTransactionsWithProjectNames(accountId, transactions)
   },
 
   // Get business inventory transactions (project_id == null) (account-scoped)
@@ -950,7 +957,8 @@ export const transactionService = {
 
     if (error) throw error
 
-    return (data || []).map(tx => _convertTransactionFromDb(tx))
+    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+    return await _enrichTransactionsWithProjectNames(accountId, transactions)
   }
 }
 
@@ -1233,12 +1241,14 @@ export const unifiedItemsService = {
     return (data || []).map(item => this._convertItemFromDb(item))
   },
 
-  // Subscribe to business inventory items with real-time updates
   subscribeToBusinessInventory(
     accountId: string,
     callback: (items: Item[]) => void,
-    filters?: { status?: string; searchQuery?: string }
+    filters: any,
+    initialItems?: Item[]
   ) {
+    let items = [...(initialItems || [])]
+
     const channel = supabase
       .channel(`business-inventory:${accountId}`)
       .on(
@@ -1249,85 +1259,42 @@ export const unifiedItemsService = {
           table: 'items',
           filter: `account_id=eq.${accountId}`
         },
-        async () => {
-          // Refetch business inventory items on any change
-          try {
-            let query = supabase
-              .from('items')
-              .select('*')
-              .eq('account_id', accountId)
-              .is('project_id', null)
+        (payload) => {
+          console.log('Business inventory change received!', payload)
+          const { eventType, new: newRecord, old: oldRecord } = payload
 
-            // Apply filters
-            if (filters?.status) {
-              query = query.eq('inventory_status', filters.status)
+          const isBusinessInventoryItem = (item: any) => !item.project_id
+
+          if (eventType === 'INSERT') {
+            if (isBusinessInventoryItem(newRecord)) {
+              const newItem = _convertItemFromDb(newRecord)
+              items = [newItem, ...items]
             }
-
-            // Apply search
-            if (filters?.searchQuery) {
-              query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
+          } else if (eventType === 'UPDATE') {
+            const updatedItem = _convertItemFromDb(newRecord)
+            if (isBusinessInventoryItem(updatedItem)) {
+              // It's a business inventory item, update it
+              items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
+            } else {
+              // It's no longer a business inventory item, remove it
+              items = items.filter(i => i.itemId !== updatedItem.itemId)
             }
-
-            // Apply sorting
-            query = query.order('last_updated', { ascending: false })
-
-            const { data, error } = await query
-
-            if (error) {
-              console.error('Error fetching business inventory in subscription:', error)
-              return
-            }
-
-            if (data) {
-              const items = (data || []).map(item => this._convertItemFromDb(item))
-              callback(items)
-            }
-          } catch (error) {
-            console.error('Error in business inventory subscription callback:', error)
+          } else if (eventType === 'DELETE') {
+            const oldId = oldRecord.item_id
+            items = items.filter(i => i.itemId !== oldId)
           }
+          
+          callback(items.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()))
         }
       )
-      .subscribe()
-
-    // Initial fetch
-    const fetchBusinessInventory = async () => {
-      try {
-        let query = supabase
-          .from('items')
-          .select('*')
-          .eq('account_id', accountId)
-          .is('project_id', null)
-
-        // Apply filters
-        if (filters?.status) {
-          query = query.eq('inventory_status', filters.status)
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to business inventory channel')
         }
-
-        // Apply search
-        if (filters?.searchQuery) {
-          query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
+        if (err) {
+          console.error('Error subscribing to business inventory channel:', err)
         }
-
-        // Apply sorting
-        query = query.order('last_updated', { ascending: false })
-
-        const { data, error } = await query
-
-        if (error) {
-          console.error('Error fetching initial business inventory:', error)
-          return
-        }
-
-        if (data) {
-          const items = (data || []).map(item => this._convertItemFromDb(item))
-          callback(items)
-        }
-      } catch (error) {
-        console.error('Error in initial business inventory fetch:', error)
-      }
-    }
-
-    fetchBusinessInventory()
+      })
 
     return () => {
       channel.unsubscribe()

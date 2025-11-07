@@ -136,12 +136,8 @@ export default function AddItem() {
     }
   }, [formData.source])
 
-  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
-  useEffect(() => {
-    if (formData.purchasePrice && !formData.projectPrice && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, projectPrice: formData.purchasePrice }))
-    }
-  }, [formData.purchasePrice]) // Only depend on purchase_price, not project_price
+  // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
+  // purchasePrice should happen only when the user saves the item.
 
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -172,6 +168,8 @@ export default function AddItem() {
         projectId: projectId,
         qrKey: `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         bookmark: false,
+        // Default projectPrice to purchasePrice at save time when left blank
+        projectPrice: formData.projectPrice || formData.purchasePrice,
         transactionId: formData.selectedTransactionId || '', // Use selected transaction or empty string
         dateCreated: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),

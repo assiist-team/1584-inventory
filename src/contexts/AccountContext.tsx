@@ -31,25 +31,25 @@ export function AccountProvider({ children }: AccountProviderProps) {
 
   useEffect(() => {
     let isMounted = true
-    let loadingTimeout: NodeJS.Timeout | null = null
 
     const loadAccount = async () => {
+      // If no user, we are not loading and have no account.
       if (!user) {
-        setCurrentAccountId(null)
-        setCurrentAccount(null)
         if (isMounted) {
+          setCurrentAccountId(null)
+          setCurrentAccount(null)
           setLoading(false)
         }
         return
       }
 
-      // Start loading only when user is available
+      // If we have a user, we start the loading process.
       if (isMounted) {
         setLoading(true)
       }
 
       // Safety timeout to ensure loading is set to false even if account loading fails
-      loadingTimeout = setTimeout(() => {
+      const loadingTimeout = setTimeout(() => {
         if (isMounted) {
           console.warn('⚠️ Account loading timeout - setting loading to false')
           setLoading(false)
@@ -57,38 +57,35 @@ export function AccountProvider({ children }: AccountProviderProps) {
       }, 10000) // 10 second timeout
 
       try {
-        // First check if user already has accountId from user object
+        let finalAccount: Account | null = null
+
+        // 1. Try getting account from user object's accountId
         if (user.accountId) {
-          const account = await accountService.getAccount(user.accountId)
-          if (!isMounted) return
-          
-          if (account) {
-            setCurrentAccountId(account.id)
-            setCurrentAccount(account)
-            return
+          finalAccount = await accountService.getAccount(user.accountId)
+        }
+
+        // 2. If not found, try fetching from the users table (fallback)
+        if (!finalAccount) {
+          finalAccount = await accountService.getUserAccount(user.id)
+        }
+
+        // 3. If still not found and user is an owner, get the first account
+        if (!finalAccount && isOwner) {
+          const allAccounts = await accountService.getAllAccounts()
+          if (allAccounts.length > 0) {
+            finalAccount = allAccounts[0]
           }
         }
         
-        // Fallback: query database for account_id (for users created before migration)
-        const account = await accountService.getUserAccount(user.id)
-        
-        if (!isMounted) return
-
-        if (account) {
-          setCurrentAccountId(account.id)
-          setCurrentAccount(account)
-        } else {
-          // If no account found and user is owner, try to get first account
-          if (isOwner) {
-            const allAccounts = await accountService.getAllAccounts()
-            if (allAccounts.length > 0) {
-              setCurrentAccountId(allAccounts[0].id)
-              setCurrentAccount(allAccounts[0])
-              return
-            }
+        // Now, update the state based on what was found.
+        if (isMounted) {
+          if (finalAccount) {
+            setCurrentAccountId(finalAccount.id)
+            setCurrentAccount(finalAccount)
+          } else {
+            setCurrentAccountId(null)
+            setCurrentAccount(null)
           }
-          setCurrentAccountId(null)
-          setCurrentAccount(null)
         }
       } catch (error) {
         console.error('Error loading account:', error)
@@ -97,9 +94,7 @@ export function AccountProvider({ children }: AccountProviderProps) {
           setCurrentAccount(null)
         }
       } finally {
-        if (loadingTimeout) {
-          clearTimeout(loadingTimeout)
-        }
+        clearTimeout(loadingTimeout)
         if (isMounted) {
           setLoading(false)
         }
@@ -115,11 +110,8 @@ export function AccountProvider({ children }: AccountProviderProps) {
 
     return () => {
       isMounted = false
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout)
-      }
     }
-  }, [user, authLoading])
+  }, [user, authLoading, isOwner])
 
   const value: AccountContextType = {
     currentAccountId,

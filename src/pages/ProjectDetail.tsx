@@ -148,27 +148,69 @@ export default function ProjectDetail() {
   }
 
   useEffect(() => {
-    if (currentAccountId) {
-      loadProjectAndTransactions()
-    }
-  }, [id, currentAccountId, navigate])
+    let unsubscribe: (() => void) | undefined;
+
+    const setupSubscription = (initialTransactions: Transaction[]) => {
+      if (!id || !currentAccountId) return;
+      unsubscribe = transactionService.subscribeToTransactions(
+        currentAccountId,
+        id,
+        (updatedTransactions) => {
+          setTransactions(updatedTransactions);
+        },
+        initialTransactions
+      );
+    };
+
+    const loadData = async () => {
+      if (!id) {
+        console.warn('No project ID provided, redirecting to projects');
+        navigate('/projects');
+        return;
+      }
+      if (!currentAccountId) return;
+
+      setIsLoading(true);
+      try {
+        console.log('Loading project data for ID:', id);
+        const projectData = await projectService.getProject(currentAccountId, id);
+        if (projectData) {
+          console.log('Project loaded successfully:', projectData.name);
+          setProject(projectData);
+          const transactionsData = await transactionService.getTransactions(currentAccountId, id);
+          console.log('Transactions loaded:', transactionsData.length);
+          setTransactions(transactionsData);
+          setupSubscription(transactionsData);
+        } else {
+          console.warn('Project not found:', id);
+          navigate('/projects');
+        }
+      } catch (error) {
+        console.error('Error loading project:', error);
+        setError('Failed to load project. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [id, currentAccountId, navigate]);
 
   // Retry function for failed loads
   const retryLoadProject = () => {
     setError(null)
-    loadProjectAndTransactions()
-  }
-
-  // Subscribe to real-time transaction updates
-  useEffect(() => {
-    if (!id || !currentAccountId) return
-
-    const unsubscribe = transactionService.subscribeToTransactions(currentAccountId, id, (updatedTransactions) => {
-      setTransactions(updatedTransactions)
-    })
-
-    return unsubscribe
-  }, [id, currentAccountId])
+    // We need to reload the data, not just call the old function
+    if (id && currentAccountId) {
+      // Re-trigger the useEffect
+      navigate(0); 
+    }
+  };
 
   const handleEditProject = async (projectData: any) => {
     if (!project || !id || !currentAccountId) return

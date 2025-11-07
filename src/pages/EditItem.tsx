@@ -96,12 +96,8 @@ export default function EditItem() {
     }
   }, [formData.source])
 
-  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
-  useEffect(() => {
-    if (formData.purchasePrice && !formData.projectPrice && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, projectPrice: formData.purchasePrice }))
-    }
-  }, [formData.purchasePrice]) // Only depend on purchasePrice, not projectPrice
+  // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
+  // purchasePrice should happen only when the user saves the item.
 
 
   // Load item data
@@ -189,7 +185,8 @@ export default function EditItem() {
       source: formData.source,
       sku: formData.sku,
       purchasePrice: formData.purchasePrice,
-      projectPrice: formData.projectPrice,
+      // Default projectPrice to purchasePrice at save time when left blank
+      projectPrice: formData.projectPrice || formData.purchasePrice,
       marketValue: formData.marketValue,
       paymentMethod: formData.paymentMethod,
       space: formData.space,

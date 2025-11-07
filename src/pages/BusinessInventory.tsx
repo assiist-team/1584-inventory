@@ -132,83 +132,73 @@ export default function BusinessInventory() {
 
   // Unified useEffect for data loading and real-time subscriptions
   useEffect(() => {
-    if (!currentAccountId) {
-      setIsLoading(false)
-      return
-    }
+    let itemsUnsubscribe: (() => void) | null = null
+    let transactionsUnsubscribe: (() => void) | null = null
 
-    let isMounted = true
-    let unsubscribe: (() => void) | null = null
+    const loadInitialData = async () => {
+      if (!currentAccountId) {
+        setIsLoading(false)
+        return
+      }
 
-    const loadData = async () => {
+      setIsLoading(true)
       try {
-        setIsLoading(true)
-
-        // Parallelize data fetching
         const [inventoryData, businessInventoryTransactions, inventoryRelatedTransactions, projectsData] = await Promise.all([
           unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters),
           transactionService.getBusinessInventoryTransactions(currentAccountId),
           transactionService.getInventoryRelatedTransactions(currentAccountId),
           projectService.getProjects(currentAccountId)
         ])
-
-        if (!isMounted) return
-
-        // Process transactions
+        
         const allTransactions = [...businessInventoryTransactions, ...inventoryRelatedTransactions]
         const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
           index === self.findIndex(t => t.transactionId === transaction.transactionId)
         )
         uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-
+        
         setItems(inventoryData)
         setTransactions(uniqueTransactions)
         setProjects(projectsData)
+
+        // Setup subscriptions after initial data load
+        itemsUnsubscribe = unifiedItemsService.subscribeToBusinessInventory(
+          currentAccountId,
+          (updatedItems) => setItems(updatedItems),
+          filters,
+          inventoryData
+        )
+        
+        // We need a new subscription service for transactions
+        transactionsUnsubscribe = transactionService.subscribeToAllTransactions(
+          currentAccountId,
+          (updatedTransactions) => {
+            const allTrans = [...updatedTransactions];
+            const uniqueTrans = allTrans.filter((transaction, index, self) =>
+              index === self.findIndex(t => t.transactionId === transaction.transactionId)
+            );
+            uniqueTrans.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setTransactions(uniqueTrans);
+          },
+          uniqueTransactions
+        )
+
       } catch (error) {
         console.error('Error loading business inventory data:', error)
-        if (isMounted) {
-          setItems([])
-          setTransactions([])
-          setProjects([])
-        }
+        setItems([])
+        setTransactions([])
+        setProjects([])
       } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
+        setIsLoading(false)
       }
     }
 
-    loadData()
-
-    // Set up real-time subscription
-    unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
-      currentAccountId,
-      (updatedItems) => {
-        if (isMounted) {
-          setItems(updatedItems)
-        }
-      },
-      filters
-    )
+    loadInitialData()
 
     return () => {
-      isMounted = false
-      if (unsubscribe) {
-        unsubscribe()
-      }
+      if (itemsUnsubscribe) itemsUnsubscribe()
+      if (transactionsUnsubscribe) transactionsUnsubscribe()
     }
   }, [currentAccountId, filters])
-
-  // Subscribe to real-time updates for transactions when on transactions tab
-  useEffect(() => {
-    if (activeTab !== 'transactions') return
-
-    const loadTransactionsOnTabChange = async () => {
-      await loadBusinessTransactions()
-    }
-
-    loadTransactionsOnTabChange()
-  }, [activeTab, currentAccountId]) // Add currentAccountId dependency
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {

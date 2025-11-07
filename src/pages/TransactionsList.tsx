@@ -47,6 +47,20 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
   const [filterMode, setFilterMode] = useState<'all' | 'we-owe' | 'client-owes'>('all')
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined
+
+    const setupSubscription = (initialTransactions: Transaction[]) => {
+      if (!projectId || !currentAccountId) return
+      unsubscribe = transactionService.subscribeToTransactions(
+        currentAccountId,
+        projectId,
+        (updatedTransactions) => {
+          setTransactions(updatedTransactions)
+        },
+        initialTransactions
+      )
+    }
+
     const loadTransactions = async () => {
       if (!projectId || !currentAccountId) {
         setIsLoading(false)
@@ -56,6 +70,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
       try {
         const data = await transactionService.getTransactions(currentAccountId, projectId)
         setTransactions(data)
+        setupSubscription(data) // Setup subscription after initial data is loaded
       } catch (error) {
         console.error('Error loading transactions:', error)
         setTransactions([])
@@ -65,17 +80,12 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     }
 
     loadTransactions()
-  }, [projectId, currentAccountId])
 
-  // Subscribe to real-time updates
-  useEffect(() => {
-    if (!projectId || !currentAccountId) return
-
-    const unsubscribe = transactionService.subscribeToTransactions(currentAccountId, projectId, (updatedTransactions) => {
-      setTransactions(updatedTransactions)
-    })
-
-    return unsubscribe
+    return () => {
+      if (unsubscribe) {
+        unsubscribe()
+      }
+    }
   }, [projectId, currentAccountId])
 
   // Filter transactions based on search and filter mode

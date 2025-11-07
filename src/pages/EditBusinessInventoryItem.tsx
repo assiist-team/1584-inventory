@@ -61,12 +61,8 @@ export default function EditBusinessInventoryItem() {
     }
   }, [id, currentAccountId])
 
-  // Auto-fill projectPrice when purchasePrice is set and projectPrice is empty and hasn't been manually edited
-  useEffect(() => {
-    if (formData.purchasePrice && !formData.projectPrice && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, projectPrice: formData.purchasePrice }))
-    }
-  }, [formData.purchasePrice]) // Only depend on purchasePrice, not projectPrice
+  // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
+  // purchasePrice should happen only when the user saves the item.
 
   const loadItem = async () => {
     if (!id || !currentAccountId) return
@@ -131,7 +127,14 @@ export default function EditBusinessInventoryItem() {
     setIsSubmitting(true)
 
     try {
-      await unifiedItemsService.updateItem(currentAccountId, id, formData)
+      // Default projectPrice to purchasePrice only at save time when projectPrice
+      // was left blank by the user.
+      const payload = { ...formData }
+      if (!payload.projectPrice && payload.purchasePrice) {
+        payload.projectPrice = payload.purchasePrice
+      }
+
+      await unifiedItemsService.updateItem(currentAccountId, id, payload)
       navigate(`/business-inventory/${id}`)
     } catch (error) {
       console.error('Error updating item:', error)
