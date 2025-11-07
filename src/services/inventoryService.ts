@@ -379,7 +379,6 @@ function _convertTransactionToDb(transaction: Partial<Transaction>): any {
   
   if (transaction.transactionId !== undefined) dbTransaction.transaction_id = transaction.transactionId
   if (transaction.projectId !== undefined) dbTransaction.project_id = transaction.projectId ?? null
-  if (transaction.projectName !== undefined) dbTransaction.project_name = transaction.projectName
   if (transaction.transactionDate !== undefined) dbTransaction.transaction_date = transaction.transactionDate
   if (transaction.source !== undefined) dbTransaction.source = transaction.source
   if (transaction.transactionType !== undefined) dbTransaction.transaction_type = transaction.transactionType
@@ -1997,7 +1996,6 @@ export const unifiedItemsService = {
           account_id: accountId,
           transaction_id: transactionId,
           project_id: projectId,
-          project_name: null,
           transaction_date: toDateOnlyString(now),
           source: transactionType === 'Purchase' ? 'Inventory' : projectName,
           transaction_type: transactionType,
@@ -2265,7 +2263,6 @@ export const unifiedItemsService = {
       account_id: accountId,
       transaction_id: saleTransactionId,
       project_id: projectId,
-      project_name: null,
       transaction_date: toDateOnlyString(now),
       source: projectName,
       transaction_type: 'To Inventory',  // Project is moving item TO inventory
@@ -2768,7 +2765,6 @@ export const deallocationService = {
         account_id: accountId,
         transaction_id: canonicalTransactionId,
         project_id: projectId,
-        project_name: null,
         transaction_date: toDateOnlyString(now),
         source: projectName,  // Project name as source (project moving to inventory)
         transaction_type: 'To Inventory',  // Project is moving item TO inventory
