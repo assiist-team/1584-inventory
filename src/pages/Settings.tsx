@@ -141,8 +141,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* User Management Section - Only for owners */}
-        {isOwner() && (
+        {/* User Management Section - Owners and admins */}
+        {(isOwner() || isAdmin) && (
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <UserManagement />
           </div>
