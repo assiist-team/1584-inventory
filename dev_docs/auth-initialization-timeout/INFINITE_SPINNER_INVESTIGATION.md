@@ -1,150 +1,277 @@
 # Infinite Spinner Investigation
 
 ## Problem Summary
-Users experience infinite spinners when navigating to:
-1. **Inventory tab** (from Projects tab)
-2. **Projects tab** (after sign-in)
+Supabase session restoration is intermittently taking about seven seconds before `supabase.auth.getSession()` resolves. During that window the UI sits on the global spinner; when the safety timeout fires the app drops back to the login screen. We never observed this behaviour in the previous Firebase-based build under the same conditions, so we need to determine why Supabase takes so long and fix it.
 
-This happens **even after account is loaded**, indicating the issue is not just about `accountLoading` state.
+## Observed Symptoms
+- Initial page load (incognito) shows only the global spinner, then logs `[TIMEOUT]` after ~7 s and routes to login, even though reloading immediately afterwards succeeds.
+- While already authenticated in-app, navigation can show a blank screen with spinner, then suddenly jump to login after the timeout fires.
+- No other `[AuthContext]` logs appear on the failing run; just the timeout.
+- Realtime subscriptions occasionally log `Error subscribing to projects channel: mismatch between server and client bindings for postgres changes`.
+- When auth does succeed we see repeated `getCurrentUserWithData()` logs, projects load, and realtime subscription errors appear afterwards.
 
-## Symptoms
-- Infinite spinner on Inventory tab when navigating from Projects tab
-- Infinite spinner on Projects tab after sign-in
-- Issue resolves with page refresh
-- Console shows no obvious errors (after auth callback fixes)
+## Why This Didn’t Happen With Firebase
+- The Firebase-based app never showed the prolonged spinner/timeout behaviour under the same network conditions—the session appeared immediately and the UI never stalled for seven seconds.
+- Action item: inspect the Firebase implementation to understand exactly how it restored auth state so quickly.
 
-## What We've Tried
+## Goal
+Design the Supabase authentication flow so it is as resilient as the old Firebase-based version:
+- Sessions cached in local storage should render instantly without waiting on the network.
+- Slow or delayed Supabase responses should not boot the user to the login screen.
+- Loading indicators should degrade gracefully (e.g. show “still signing you in” instead of a blank spinner forever).
+- When Supabase truly fails (no session), surface a clear message and a retry, not an unexplained logout.
 
-### 1. Auth Callback Fix
-- ✅ Removed manual `exchangeCodeForSession` call (Supabase handles this automatically)
-- ✅ Simplified callback to wait briefly then check session
+Refer to `dev_docs/AUTH_SYSTEM_REFERENCE.md` for the current architecture and state machine.
 
-### 2. Loading State Fixes
-- ✅ InventoryList: Now checks `accountLoading` for spinner display
-- ✅ Projects: Combined `accountLoading` and `isLoadingData` states
-- ⚠️ **BUT**: Issue persists even after account is loaded
+## Known Technical Differences vs Firebase
+- The ~7 s experience is driven by our 7,000 ms safety timeout: `loading` only resolves via the auth listener, `getSession()` completion, or the safety timeout. If neither the listener nor `getSession()` completes promptly, the UI waits the full 7 seconds and then flags `timedOutWithoutAuth`.
+- React StrictMode in development double-mounts effects, causing us to re-run `getSession()` and rebuild listeners; the timeout can fire on the second invocation.
+- `timedOutWithoutAuth` now auto-clears once a session or user is present; `ProtectedRoute` gates access with `loading`, `userLoading`, `isAuthenticated`, `user`, and `timedOutWithoutAuth`.
 
-## Current Code State
+## Why the Spinner Lasts ~7 Seconds (Code-Only Explanation)
+- `AuthContext` sets `loading = true` on mount and resolves it only in `resolveLoading(source)`, which is called from:
+  - the auth listener (`onAuthStateChange`) when any event arrives,
+  - `getSession()` completion (with or without a session),
+  - the 7,000 ms safety timeout if neither path resolves first.
+- If `getSession()` returns quickly with no session, we call `resolveLoading('getSession_no_session')` and the spinner ends promptly. The observed ~7 s spinner happens when `getSession()` does not return quickly and the listener does not fire, so the safety timeout resolves `loading` at ~7 s.
+- After the safety timeout, if there is still no session and no app user, `timedOutWithoutAuth` is set; `ProtectedRoute` then renders `<Login />`, which explains the jump to login at ~7 s.
+- In development, `React.StrictMode` double-mounts the effect. This re-runs the initialization, re-subscribes the listener, and re-calls `getSession()`, restarting the 7 s window and increasing the likelihood of seeing the timeout path locally.
 
-### InventoryList.tsx
-- Shows spinner when `accountLoading` is true
-- Items come from props (ProjectDetail handles loading)
-- Has its own `loading` state (initialized to `false`, never set to `true`)
+## Diagnosis: Why Timeouts Happen (Production Included)
+- Your app only unblocks when the Supabase auth listener fires or when `supabase.auth.getSession()` resolves. If neither completes within 7,000 ms, the safety timeout forces resolution and sets `timedOutWithoutAuth` when unauthenticated.
+- The Supabase client is initialized with `detectSessionInUrl: true` and `autoRefreshToken: true`. On some runs, Supabase’s initial auth pipeline (URL/session detection, possible token exchange/refresh) does not yield a session or “no session” result within 7 seconds. In those runs, neither the listener nor `getSession()` completes before our safety timeout.
+- This behavior is observed in production as well; it is not limited to dev/incognito. StrictMode affects development behavior but is not the cause in production.
+- Evidence pattern: failing runs log only `[TIMEOUT]` without `[GET_SESSION] ... response` or `[LISTENER ...]` before the timeout, which implies our resolver was the safety timer rather than a completed Supabase operation.
 
-### Projects.tsx
-- Shows spinner when `accountLoading || isLoadingData`
-- Waits for account to load before fetching projects
-- useEffect depends on `[currentAccountId, accountLoading]`
+## Likely Root Causes (Code-anchored)
+- Stale or cross-environment session tokens due to a shared `storageKey`:
+  - We set `storageKey: 'supabase.auth.token'` (not project-scoped). If a user has used another environment/app reusing this key, Supabase may find an “existing” session that is invalid for the current project and attempt a refresh. If the refresh call is slow/blocked, `getSession()` can effectively stall until our 7s safety timeout fires.
+- Network/proxy/ad-block/service worker interference with Supabase auth endpoints:
+  - When a refresh is needed, the SDK calls `https://<project>.supabase.co/auth/v1/token?grant_type=refresh_token`. Corporate proxies, ad blockers, or an over-eager service worker can delay or block this request (or its CORS preflight). While that exchange is unresolved, our boot waits.
 
-### ProjectDetail.tsx
-- Has `isLoading` state for project data
-- Passes `items` prop to InventoryList
-- Subscribes to items via `unifiedItemsService.subscribeToProjectItems`
+## Latest Repro Results (2025-11-08)
 
-## Potential Root Causes
+### Scenario A: App functional, then blank spinner after navigation
+- Steps: New incognito → sign in → deallocate items successfully → navigate away and back.
+- Observed: UI turns into a blank screen with spinner and no text.
+- Console shows realtime subscription logs only:
+  - “Subscribed to projects channel”
+  - “Subscribed to business inventory channel”
+  - “Subscribed to all transactions channel”
+- Interpretation: App was authenticated (realtime subscriptions alive), but a view-level gate re-entered a loading state. Not directly an auth-init failure.
 
-### 1. Race Condition in Data Loading
-- ProjectDetail might be loading items while InventoryList is already rendered
-- If `propItems` is undefined/empty initially, InventoryList might show empty state incorrectly
-- Check: Does ProjectDetail pass `items` prop correctly on initial render?
+### Scenario B: Hard refresh → auth init timeout only
+- Steps: Refresh the stuck page.
+- Observed: Console shows only the 7s auth init timeout log from `AuthContext`:
+  - `[TIMEOUT] Initialization timed out after ~7002ms`
+  - Snapshot: `getSessionStarted: true`, `getSessionElapsedMs: ~7002`, `online: true`, `hasServiceWorker: false`, `localStorageTokenExists: true`, `supabaseUser: null`, `appUser: null`.
+- Interpretation (code-based):
+  - `supabase.auth.getSession()` started promptly but did not complete (session or no-session) within 7s.
+  - Network appears online, no active service worker, localStorage had an auth entry.
+  - This supports the “pending refresh/token path” or “network stall on auth endpoint” hypothesis. Because dev-only logs were used, we did not see `/auth/v1/*` timing in this production build; only the timeout snapshot was captured.
 
-### 2. Subscription Issues
-- Real-time subscriptions might be interfering with initial load
-- Check: Are subscriptions set up before or after initial data fetch?
-- Check: Do subscriptions trigger before data is ready?
+## Root Cause Identified (2025-11-08)
 
-### 3. useEffect Dependency Issues
-- Projects page useEffect might not be re-running when it should
-- Check: Are dependencies correct? Is `accountLoading` in the dependency array?
+### The Real Problem
+The 7s timeout was **not** caused by `getSession()` being slow. The auth listener fired `SIGNED_IN` quickly with a valid session, but `loading` was not resolved until **after** heavy work (`createOrUpdateUserDocument()` + `getCurrentUserWithData()`) completed. If those operations took >7s, the safety timeout fired even though auth was already established.
 
-### 4. AccountContext Loading State
-- AccountContext has 10-second timeout, but might be stuck before timeout
-- Check: Is `accountLoading` actually becoming `false`?
-- Check: Are there any errors in AccountContext that prevent loading from completing?
+### Evidence from Logs
+```
+[LISTENER 2] onAuthStateChange event {event: 'SIGNED_IN', hasSession: true, hasAccessToken: true, ...}
+[LISTENER 2] Handling SIGNED_IN event. Ensuring user document is up to date
+[TIMEOUT] Initialization timed out after 7002ms
+[LOADING RESOLVED] source=safety_timeout ... supabaseUser={"id":"..."} appUser=null
+```
 
-### 5. Component Re-render Issues
-- Components might be re-rendering in a way that resets loading states
-- Check: Are there unnecessary re-renders causing state resets?
+The listener fired `SIGNED_IN` immediately, but `resolveLoading()` was only called **after** `createOrUpdateUserDocument()` and `getCurrentUserWithData()` finished. These operations can take >7s, causing the timeout to fire despite successful auth.
 
-## Investigation Steps
+### The Fix (2025-11-08)
+- **Resolve `loading` IMMEDIATELY when auth is established** (before heavy work)
+- Do `createOrUpdateUserDocument()` and `getCurrentUserWithData()` **after** resolving loading
+- Use refs in timeout condition to avoid stale closures
+- Added timing logs around `createOrUpdateUserDocument()` to identify slow operations
 
-### Step 1: Add Debug Logging
-Add console logs to track:
-- When `accountLoading` changes
-- When `isLoading` states change
-- When `propItems` changes in InventoryList
-- When useEffect hooks run
-- When subscriptions are set up
+**Code changes:**
+- In `AuthContext` listener: call `resolveLoading()` immediately when `authUser` exists, then do heavy work
+- Timeout condition now uses refs (`supabaseUserLogRef`, `userLogRef`) instead of stale state
+- Added `createUserDocElapsedMs` timing log
 
-### Step 2: Check ProjectDetail Item Loading
-- Verify `items` state is being set correctly
-- Check if `items` prop is passed to InventoryList on initial render
-- Verify subscription is set up after initial data load
+**Result:** The UI unblocks as soon as auth is established. Heavy work (user doc creation/fetch) runs with `userLoading=true`, showing a spinner only for user data fetch, not blocking the entire app.
 
-### Step 3: Check Projects Page Loading Flow
-- Verify `accountLoading` actually becomes `false`
-- Check if `loadInitialData` is being called when account finishes loading
-- Verify projects are being fetched correctly
+## Fix Did Not Fully Resolve Issue (2025-11-08)
 
-### Step 4: Check for Stale Closures
-- Ensure useEffect dependencies are correct
-- Check if callbacks are capturing stale state values
+### New Repro: Blank Spinner After Navigation Away/Back
 
-### Step 5: Check Real-time Subscription Timing
-- Verify subscriptions don't interfere with initial load
-- Check if subscription callbacks are firing before data is ready
+**Steps:**
+1. New incognito window → sign in → navigate to business inventory
+2. Click on item → navigate away → watch video for ~2 minutes
+3. Come back to tab → page is blank with spinner
 
-## Next Actions
+**Console Logs:**
+```
+Subscribed to projects channel
+Subscribed to business inventory channel
+Subscribed to all transactions channel
+Subscribed to business inventory channel
+[LISTENER 2] onAuthStateChange event {event: 'SIGNED_IN', hasSession: true, hasAccessToken: true, expiresAt: 1762639023, ...}
+[LISTENER 2] Handling SIGNED_IN event. Ensuring user document is up to date
+```
 
-1. ✅ **Add comprehensive logging** to track state changes - DONE
-2. **Test with logging** - Navigate to tabs and check console logs
-3. **Check ProjectDetail** - verify items are loaded and passed correctly
-4. **Check Projects page** - verify account loading completion triggers data fetch
-5. **Check subscription timing** - ensure subscriptions don't interfere
-6. **Test navigation flow** - trace exact sequence of events when navigating
+**Critical Observations:**
+- Realtime subscriptions are **active** (projects, business inventory, transactions channels subscribed)
+- `SIGNED_IN` event fired **after returning to tab** (timestamp shows ~2 minutes after sign-in)
+- Listener started handling `SIGNED_IN` event
+- **Missing logs:**
+  - No `[LOADING RESOLVED]` log (should appear immediately after SIGNED_IN)
+  - No `createOrUpdateUserDocument completed` log
+  - No `Updated app user after auth state change` log
 
-## Debug Logging Added
+**Analysis:**
+1. **Auth is established** (SIGNED_IN event fired, subscriptions active)
+2. **Loading resolution may not have happened** - Missing `[LOADING RESOLVED]` log suggests `resolveLoading()` was not called, OR it was called but `hasResolvedAuthRef.current` was already `true` (preventing re-resolution)
+3. **Heavy work appears stuck** - No completion logs for `createOrUpdateUserDocument()` or `getCurrentUserWithData()`
+4. **Code flow analysis:**
+   - `resolveLoading()` checks `hasResolvedAuthRef.current` - if already `true`, it does nothing (prevents duplicate resolution)
+   - On tab return, if this is a **new effect mount** (StrictMode or remount), `hasResolvedAuthRef` should be reset
+   - But if this is the **same effect** (tab backgrounded, then foregrounded), `hasResolvedAuthRef` might already be `true` from initial load
+   - `userLoading` is set to `true` when SIGNED_IN fires, but if `getCurrentUserWithData()` hangs, it never gets set back to `false`
+   - ProtectedRoute shows spinner when `loading || userLoading` is true
 
-Added 🔍 emoji-prefixed console logs to track:
+**Most Likely Cause:**
+- `userLoading` is stuck `true` because `getCurrentUserWithData()` is hanging/stuck (no error, no completion)
+- ProtectedRoute is showing spinner based on `userLoading === true` indefinitely
+- This happens **after** tab return, suggesting tab backgrounding/suspension may affect Supabase client state or network requests
 
-### InventoryList.tsx
-- When `accountLoading` changes
-- When `propItems` changes
-- Current `isLoading` state
+**What This Means:**
+- The fix (resolve loading immediately) works for initial load, but:
+  - On tab return, `getCurrentUserWithData()` may hang due to stale Supabase client state or network issues
+  - `userLoading` never resolves, so ProtectedRoute shows spinner indefinitely
+  - Need to add timeout/retry logic for `getCurrentUserWithData()` or handle tab return scenarios
 
-### Projects.tsx
-- When useEffect triggers
-- When `loadInitialData` is called
-- Account loading state and account ID
-- When projects are loaded
+**Next Steps:**
+- Add explicit logging to confirm `resolveLoading()` is being called (even if `hasResolvedAuthRef` prevents action)
+- Add state snapshot logs showing `loading` and `userLoading` values when SIGNED_IN fires
+- Add timeout/error handling for `getCurrentUserWithData()` to prevent indefinite `userLoading`
+- Investigate if tab backgrounding/suspension affects Supabase client state (may need to reinitialize or refresh session)
+- Consider if ProtectedRoute should show a "Connecting..." message instead of blank spinner when `userLoading` is stuck
 
-### ProjectDetail.tsx
-- When useEffect triggers
-- When `loadData` is called
-- Account ID availability
-- When items are loaded
-- When InventoryList is rendered with items
+## Definitive Root Cause and Final Solution (2025-11-08)
 
-## Testing Instructions
+The investigation revealed two distinct failure modes with a single underlying theme: the Supabase client's state becomes unreliable after periods of inactivity (like a backgrounded tab) or during initial startup, leading to hung network requests.
 
-1. Open browser console
-2. Navigate to Projects tab - watch for 🔍 logs
-3. Click on a project - watch for 🔍 logs
-4. Switch to Inventory tab - watch for 🔍 logs
-5. Note the sequence of events and any stuck states
-6. Look for patterns where `accountLoading` stays `true` or items don't load
+### Failure Mode 1: Spinner on Tab Return
 
-## Files to Investigate
+-   **Symptom**: Returning to a backgrounded tab resulted in a permanent spinner.
+-   **Cause**: The `onAuthStateChange` listener would fire a `TOKEN_REFRESHED` event. The original code treated this the same as a `SIGNED_IN` event, triggering a `getCurrentUserWithData()` call. Because the client's connection was stale after being backgrounded, this call would hang indefinitely.
 
-- `src/pages/InventoryList.tsx` - Loading state logic
-- `src/pages/Projects.tsx` - Account loading and data fetching
-- `src/pages/ProjectDetail.tsx` - Item loading and prop passing
-- `src/contexts/AccountContext.tsx` - Account loading state management
-- `src/services/inventoryService.ts` - Subscription setup and data fetching
+### Failure Mode 2: Hang on Hard Refresh
 
-## Notes
+-   **Symptom**: A hard page refresh with a valid session would result in a blank, hung application.
+-   **Cause**: A race condition on initialization. The `onAuthStateChange` listener would fire a `SIGNED_IN` event *before* the database (PostgREST) portion of the Supabase client was ready. The code would immediately call `createOrUpdateUserDocument()`, whose first database query would hang forever.
 
-- User mentioned the issue happens "even after account is loaded" - this suggests the problem is in the data fetching/subscription logic, not account loading
-- Refresh fixes the issue - suggests it's a timing/race condition problem
-- Need to trace the exact sequence of events during navigation
+### The Final, Unified Solution
+
+A comprehensive refactor of `src/contexts/AuthContext.tsx` was implemented to solve both issues robustly:
+
+1.  **Proactive Session Refresh on Tab Visibility**: A `visibilitychange` event listener was added. When the user returns to the tab, it proactively calls `supabase.auth.refreshSession()`. This ensures the client's connection is live before any other logic runs, preventing hangs from stale connections.
+
+2.  **Refactored Initialization and Event Handling**:
+    *   **Single Source of Truth**: The `onAuthStateChange` listener is now the single source of truth for all user data loading. The `initializeAuth` function's role is reduced to simply starting the session check.
+    *   **Intelligent Event Handling**: The listener's logic was made more granular:
+        *   **`SIGNED_IN`**: It now differentiates between the **initial load** (session detection) and a **new user login**. The database-intensive `createOrUpdateUserDocument()` is **only** called for a new user login, completely avoiding the startup race condition. `getCurrentUserWithData()` is still called on initial load to fetch user details.
+        *   **`TOKEN_REFRESHED`**: This event is now handled gracefully. It updates the internal session state but does **not** trigger any UI-blocking data fetches.
+
+This new architecture is resilient to both tab backgrounding and initialization race conditions, ensuring a stable and predictable authentication experience.
+
+## What We Changed (Instrumentation Only) — and What Didn't Work
+- Added dev-only instrumentation (no behavior changes):
+  - `AuthContext`: boot preflight snapshot, enhanced listener logs, timeout snapshot with `getSessionElapsedMs`, environment hints.
+  - `ProtectedRoute`: logs gate reason when rendering `<Login />`.
+  - `supabase.ts`: dev-only client config echo; dev-only fetch timing wrapper for `/auth/v1/*`.
+- Result:
+  - In production, only the `[TIMEOUT]` snapshot is visible (as intended; other logs are dev-only). We confirmed that `getSession()` started and was still unresolved at ~7s, with `navigator.onLine === true`, `hasServiceWorker === false`, and `localStorageTokenExists === true`.
+  - We did not capture `/auth/v1/*` timing in this run because the fetch wrapper is dev-only.
+- Net effect:
+  - The instrumentation confirmed the core stall signature but, in production, did not provide endpoint timing. Functional behavior is unchanged (expected).
+
+## How to Confirm Without Code Changes
+- Inspect localStorage for cross-env contamination:
+  - In the browser console: `JSON.parse(localStorage.getItem('supabase.auth.token') || 'null')`
+  - Look for tokens that don’t match the current Supabase project usage history. Clear it and reload to see if the 7s behavior disappears for that browser profile.
+- Check Network panel during a failing load:
+  - Filter for `auth/v1` requests to `*.supabase.co`. If `token?grant_type=refresh_token` (or related) stays pending near 7s, that explains the stall.
+- Rule out PWA interference:
+  - In DevTools → Application → Service Workers: “Bypass for network” (Chrome) or unregister the SW temporarily; reload and check whether the stalls persist.
+- Cross-environment repro:
+  - Try the same account/browser on a different network (hotspot) to exclude corporate proxy issues. If stalls vanish, it’s likely a network or proxy policy.
+
+## Practical Mitigations (no immediate code changes required)
+- Clean environment state:
+  - Clear `localStorage['supabase.auth.token']` for affected users once (warn them they’ll need to sign in again). This eliminates stale/cross-env tokens as a cause.
+- Network allowances:
+  - Ensure `*.supabase.co` (especially `/auth/v1/*`) is not blocked/rewritten by proxies, ad blockers, or Cloudflare rules on the client side.
+- PWA testing:
+  - Temporarily bypass or unregister the service worker on affected devices to confirm it’s not impacting third-party requests.
+
+## Mitigations to Implement (code change later)
+- Use a project-scoped storage key (prevents cross-env token collisions).
+- Add bounded retry/backoff for `getSession()` before declaring timeout; treat “indeterminate” separately from “no session”.
+- Add progressive UI (“Connecting to Supabase…”, with retry) instead of immediate Login after the safety timeout.
+
+## Current Gaps
+- `supabase.auth.getSession()` can take ~7 seconds before resolving (root cause unknown; needs investigation).
+- `AuthContext` currently does a single `getSession()` attempt; we resolve via a 7s safety timeout but do not retry with backoff before setting `timedOutWithoutAuth`.
+- Spinner state shows but has no progressive messaging (“still connecting to Supabase…”, “this is taking longer than usual”) or explicit retry.
+- Timeout UX is improved, but still drops to `<Login />` if auth hasn’t established; consider a “Connecting…” screen with retry before redirect.
+- Instrumentation exists for timing, but there’s no retry loop or jittered backoff around `getSession()`.
+- No clear “session still loading vs session truly missing” distinction in UI text (only via `timedOutWithoutAuth` logic).
+
+## What’s Implemented (as of 2025-11-08)
+- High-fidelity instrumentation in `AuthContext`:
+  - Subscribe-first pattern (listener before `getSession()`), timing metrics for `init`, `getSession`, and user fetch.
+  - Structured logs gated to development with `[EFFECT MOUNT]`, `[SUBSCRIPTION]`, `[GET_SESSION]`, `[LISTENER N]`, `[TIMEOUT]`, `[LOADING RESOLVED]`.
+- Safety timeout: after ~7s we resolve loading and, if still unauthenticated, set `timedOutWithoutAuth` to inform routing.
+- `timedOutWithoutAuth` auto-clears when a session or app user appears.
+- `ProtectedRoute` checks: `loading || userLoading` → spinner; `timedOutWithoutAuth || !isAuthenticated || !user` → `<Login />`; otherwise render app.
+- StrictMode considerations: effect instance tracking and cleanup to mitigate double-mount side effects in development.
+
+## Desired Behavior (High Level)
+1. **Immediate Cached Session Lookup**  
+   - Read existing session (from Supabase cache/localStorage) synchronously before any async calls.
+   - Render UI in an “optimistic” state if a cached session exists.
+
+2. **Resilient Initialization**  
+   - Attempt `getSession()` with retries/backoff before declaring timeout.
+   - Keep the user on a “connecting” state rather than dumping to login immediately.
+   - Log each attempt (`[GET_SESSION RETRY #]`) so we can trace delays.
+
+3. **Timeout Handling**  
+   - Only set `timedOutWithoutAuth` after retries fail.
+   - Provide UI that explains the failure and offers a retry action.
+   - If a session arrives later, clear the timeout flag and proceed without forcing a reload.
+
+4. **Consistent State**  
+   - Ensure `userLoading` and `loading` reflect actual work in progress.
+   - Avoid leaving the app in a pure spinner state without messaging.
+   - ProtectedRoute should only show `<Login />` when we definitively have no session.
+
+## Next Steps
+1. Compare with Firebase branch to capture cached session/initialization patterns.
+2. Redesign `AuthContext` boot logic (documented in `AUTH_SYSTEM_REFERENCE.md`) around retries, cached sessions, and better timeout UX.
+3. Update UI states (spinner vs login) to give clear feedback during slow auth responses.
+4. Investigate and address Supabase realtime subscription error (`mismatch between server and client bindings`), which may add to perceived instability.
+5. Add explicit logging for each `getSession()` attempt, Supabase event, and retries to aid future debugging.
+
+## Action Items (Engineering)
+- Implement bounded retries with jitter for `getSession()` before setting `timedOutWithoutAuth` (cap total to ~7s).
+- Add a “Connecting to Supabase…” fallback view with “Retry” action; only drop to `<Login />` after retries fail.
+- Log each retry: `[GET_SESSION RETRY n]` with elapsed times and instance ID for correlation.
+- Validate Supabase client config and version; confirm `persistSession`, `autoRefreshToken`, `detectSessionInUrl` behave as expected on fresh loads.
+- Capture a failing run’s timeline: initial `[INIT START]`, `[GET_SESSION]` elapsed, any `[LISTENER]` events, and `[TIMEOUT]` details.
+- Investigate whether token refresh or URL detection contributes to the ~7s stall on first load.
+
+## Notes for Verification
+- In a failing incognito run, confirm whether the 7s delay is entirely within `getSession()` by checking the `[GET_SESSION]` elapsed log.
+- Confirm that once a session appears (even post-timeout), `timedOutWithoutAuth` clears and routes proceed as expected.
+- Validate StrictMode behavior: ensure only one live listener and that cleanup logs are present between effect mounts.
 

@@ -19,6 +19,14 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // If auth timed out without establishing authentication, show login
   if (timedOutWithoutAuth || !isAuthenticated || !user) {
+    if (import.meta.env.DEV) {
+      // Minimal gating telemetry (no PII)
+      console.log('[ProtectedRoute] Redirecting to <Login />', {
+        timedOutWithoutAuth,
+        isAuthenticated,
+        hasUser: !!user
+      })
+    }
     return <Login />
   }
 

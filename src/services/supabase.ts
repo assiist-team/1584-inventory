@@ -20,6 +20,53 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 })
 
+// Dev-only: surface effective auth config (no secrets)
+if (import.meta.env.DEV) {
+  console.log('[SupabaseClient] Auth config', {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'supabase.auth.token'
+  })
+}
+
+// Dev-only: fetch timing wrapper for auth endpoints to detect stalls
+if (import.meta.env.DEV && typeof window !== 'undefined' && !(window as any).__AUTH_FETCH_LOGGER_INSTALLED__) {
+  const originalFetch = window.fetch.bind(window)
+  ;(window as any).__AUTH_FETCH_LOGGER_INSTALLED__ = true
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const method = (init?.method || (input as Request)?.method || 'GET').toUpperCase()
+    let urlStr = ''
+    try {
+      urlStr = typeof input === 'string' ? input : (input as Request).url
+    } catch {
+      urlStr = ''
+    }
+    const start = Date.now()
+    try {
+      const response = await originalFetch(input as any, init)
+      const elapsedMs = Date.now() - start
+      // Only log Supabase auth endpoints
+      if (urlStr.includes('/auth/v1/')) {
+        let path = urlStr
+        try {
+          path = new URL(urlStr, window.location.origin).pathname + new URL(urlStr, window.location.origin).search
+        } catch {
+          // keep original
+        }
+        console.log('[AuthFetch]', { method, path, status: response.status, elapsedMs })
+      }
+      return response
+    } catch (error) {
+      const elapsedMs = Date.now() - start
+      if (urlStr.includes('/auth/v1/')) {
+        console.warn('[AuthFetch ERROR]', { method, url: urlStr, elapsedMs, error: (error as Error)?.message })
+      }
+      throw error
+    }
+  }
+}
+
 // Helper to check if Supabase is ready
 export const isSupabaseReady = (): boolean => {
   return supabase !== null && typeof supabase === 'object'

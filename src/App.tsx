@@ -12,52 +12,52 @@ function App() {
   // Users must explicitly sign in with Google for security
 
   return (
-    <AccountProvider>
-      <BusinessProfileProvider>
-        <ToastProvider>
-          <Suspense fallback={<LoadingSpinner />}>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="/invite/:token" element={<InviteAccept />} />
-              
-              {/* Protected routes */}
-              <Route path="*" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Routes>
-                      <Route path="/" element={<Projects />} />
-                      <Route path="/projects" element={<Projects />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/item/:id" element={<ItemDetail />} />
-                      <Route path="/project/:id" element={<ProjectDetail />} />
-                      <Route path="/project/:id/invoice" element={<ProjectInvoice />} />
-                      <Route path="/project/:id/property-management-summary" element={<PropertyManagementSummary />} />
-                      <Route path="/project/:id/client-summary" element={<ClientSummary />} />
-                      <Route path="/project/:id/item/:itemId" element={<ItemDetail />} />
-                      <Route path="/project/:id/item/add" element={<AddItem />} />
-                      <Route path="/project/:id/edit-item/:itemId" element={<EditItem />} />
-                      <Route path="/project/:id/transaction/add" element={<AddTransaction />} />
-                      <Route path="/project/:id/transaction/:transactionId/edit" element={<EditTransaction />} />
-                      <Route path="/project/:id/transaction/:transactionId" element={<TransactionDetail />} />
+      <AccountProvider>
+        <BusinessProfileProvider>
+          <ToastProvider>
+            <Suspense fallback={<LoadingSpinner />}>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/invite/:token" element={<InviteAccept />} />
+                
+                {/* Protected routes */}
+                <Route path="*" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Routes>
+                        <Route path="/" element={<Projects />} />
+                        <Route path="/projects" element={<Projects />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/item/:id" element={<ItemDetail />} />
+                        <Route path="/project/:id" element={<ProjectDetail />} />
+                        <Route path="/project/:id/invoice" element={<ProjectInvoice />} />
+                        <Route path="/project/:id/property-management-summary" element={<PropertyManagementSummary />} />
+                        <Route path="/project/:id/client-summary" element={<ClientSummary />} />
+                        <Route path="/project/:id/item/:itemId" element={<ItemDetail />} />
+                        <Route path="/project/:id/item/add" element={<AddItem />} />
+                        <Route path="/project/:id/edit-item/:itemId" element={<EditItem />} />
+                        <Route path="/project/:id/transaction/add" element={<AddTransaction />} />
+                        <Route path="/project/:id/transaction/:transactionId/edit" element={<EditTransaction />} />
+                        <Route path="/project/:id/transaction/:transactionId" element={<TransactionDetail />} />
 
-                      {/* Business Inventory Routes */}
-                      <Route path="/business-inventory" element={<BusinessInventory />} />
-                      <Route path="/business-inventory/add" element={<AddBusinessInventoryItem />} />
-                      <Route path="/business-inventory/:id" element={<BusinessInventoryItemDetail />} />
-                      <Route path="/business-inventory/:id/edit" element={<EditBusinessInventoryItem />} />
-                      <Route path="/business-inventory/transaction/add" element={<AddBusinessInventoryTransaction />} />
-                      <Route path="/business-inventory/transaction/:transactionId" element={<TransactionDetail />} />
-                      <Route path="/business-inventory/transaction/:projectId/:transactionId/edit" element={<EditBusinessInventoryTransaction />} />
-                    </Routes>
-                  </Layout>
-                </ProtectedRoute>
-              } />
-            </Routes>
-          </Suspense>
-        </ToastProvider>
-      </BusinessProfileProvider>
-    </AccountProvider>
+                        {/* Business Inventory Routes */}
+                        <Route path="/business-inventory" element={<BusinessInventory />} />
+                        <Route path="/business-inventory/add" element={<AddBusinessInventoryItem />} />
+                        <Route path="/business-inventory/:id" element={<BusinessInventoryItemDetail />} />
+                        <Route path="/business-inventory/:id/edit" element={<EditBusinessInventoryItem />} />
+                        <Route path="/business-inventory/transaction/add" element={<AddBusinessInventoryTransaction />} />
+                        <Route path="/business-inventory/transaction/:transactionId" element={<TransactionDetail />} />
+                        <Route path="/business-inventory/transaction/:projectId/:transactionId/edit" element={<EditBusinessInventoryTransaction />} />
+                      </Routes>
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+              </Routes>
+            </Suspense>
+          </ToastProvider>
+        </BusinessProfileProvider>
+      </AccountProvider>
   )
 }
 

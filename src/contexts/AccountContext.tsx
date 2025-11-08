@@ -41,11 +41,11 @@ export function AccountProvider({ children }: AccountProviderProps) {
         return
       }
 
-      if (!user) {
+          if (!user) {
         if (isMounted) {
-          setCurrentAccountId(null)
-          setCurrentAccount(null)
-          setLoading(false)
+            setCurrentAccountId(null)
+            setCurrentAccount(null)
+            setLoading(false)
         }
         return
       }

@@ -41,7 +41,8 @@ function describeAppUser(user: User | null) {
 // Helper to conditionally log debug/warn messages only in dev
 function debugLog(message: string, data?: any) {
   if (import.meta.env.DEV) {
-    console.debug(message, data)
+    // Use console.log so logs are visible by default in dev (Chrome hides console.debug unless Verbose is enabled)
+    console.log(message, data)
   }
 }
 
@@ -87,6 +88,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [user])
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        debugLog(`${authLogPrefix} [VISIBILITY] Tab is visible, refreshing session...`);
+        supabase.auth.refreshSession();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (timedOutWithoutAuth && (supabaseUser || user)) {
       setTimedOutWithoutAuth(false)
     }
@@ -106,6 +122,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
       debugLog(`${authLogPrefix} [EFFECT MOUNT] instanceId=${instanceId}, strictMode might cause double-invoke`)
     }
 
+    // Environment preflight (dev only) - helps diagnose stalls before subscription/getSession
+    if (import.meta.env.DEV) {
+      const online = typeof navigator !== 'undefined' ? navigator.onLine : undefined
+      const swController = typeof navigator !== 'undefined' ? navigator.serviceWorker?.controller : undefined
+      const hasServiceWorker = !!swController
+      const swUrl = hasServiceWorker ? (swController as ServiceWorker).scriptURL : null
+      const urlSource = typeof window !== 'undefined' ? (window.location.hash || window.location.search || '') : ''
+      const urlHasAuthParams = /access_token|refresh_token/i.test(urlSource)
+      let localStorageTokenExists = false
+      try {
+        localStorageTokenExists = typeof window !== 'undefined' && !!window.localStorage.getItem('supabase.auth.token')
+      } catch {
+        // ignore storage access errors
+      }
+      debugLog(`${authLogPrefix} [BOOT PREFLIGHT]`, {
+        instanceId,
+        online,
+        hasServiceWorker,
+        swUrl,
+        urlHasAuthParams,
+        localStorageTokenExists
+      })
+    }
+
     // Single place to resolve loading state
     const resolveLoading = (source: string) => {
       if (isMounted && !hasResolvedAuthRef.current) {
@@ -121,16 +161,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loadingTimeout = setTimeout(() => {
       if (isMounted && !hasResolvedAuthRef.current) {
         const elapsedMs = Date.now() - initStartTime
+        const nowTs = Date.now()
+        const getSessionElapsedMsSnapshot = getSessionStartTime ? nowTs - getSessionStartTime : null
+        const online = typeof navigator !== 'undefined' ? navigator.onLine : undefined
+        const swController = typeof navigator !== 'undefined' ? navigator.serviceWorker?.controller : undefined
+        const hasServiceWorker = !!swController
+        const swUrl = hasServiceWorker ? (swController as ServiceWorker).scriptURL : null
+        let localStorageTokenExists = false
+        try {
+          localStorageTokenExists = typeof window !== 'undefined' && !!window.localStorage.getItem('supabase.auth.token')
+        } catch {
+          // ignore
+        }
+        // Use refs to check actual current state (avoid stale closures)
+        const currentSupabaseUser = supabaseUserLogRef.current
+        const currentAppUser = userLogRef.current
         warnLog(`${authLogPrefix} [TIMEOUT] Initialization timed out after ${elapsedMs}ms. Forcing loading to false.`, {
           instanceId,
-          supabaseUser: describeSupabaseUser(supabaseUser),
-          appUser: describeAppUser(user),
-          hasResolvedAuthRef: hasResolvedAuthRef.current
+          supabaseUser: describeSupabaseUser(currentSupabaseUser),
+          appUser: describeAppUser(currentAppUser),
+          hasResolvedAuthRef: hasResolvedAuthRef.current,
+          getSessionStarted: !!getSessionStartTime,
+          getSessionElapsedMs: getSessionElapsedMsSnapshot,
+          online,
+          hasServiceWorker,
+          swUrl,
+          localStorageTokenExists
         })
         resolveLoading('safety_timeout')
         
         // If timeout fires and we still have no auth, flag it for redirect
-        if (!supabaseUser && !user) {
+        // Use refs to avoid stale closure
+        if (!currentSupabaseUser && !currentAppUser) {
           setTimedOutWithoutAuth(true)
         }
       }
@@ -148,65 +210,58 @@ export function AuthProvider({ children }: AuthProviderProps) {
         instanceId,
         event,
         hasSession: !!session,
-        supabaseUser: describeSupabaseUser(authUser),
         isInitialLoad: isInitialLoadRef.current,
-        timestamp: new Date().toISOString()
       })
       
       setSupabaseUser(authUser)
       supabaseUserLogRef.current = authUser
-      if (authUser) {
-        setTimedOutWithoutAuth(false)
-        setUserLoading(true)
+
+      // During initial load, this listener's ONLY job is to set the supabaseUser.
+      // The initializeAuth function will handle fetching the app user data AFTER getSession completes.
+      if (isInitialLoadRef.current) {
+        if (!authUser) {
+          // If there's no user, we can resolve loading early.
+          resolveLoading(`listener_${listenerId}_${event}_no_user`)
+        }
+        return
       }
 
+      // The logic below only runs for auth events AFTER the initial load.
       if (authUser) {
-        try {
-          // Only create/update user doc on SIGNED_IN event (not on initial load)
-          if (event === 'SIGNED_IN') {
-            debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Handling SIGNED_IN event. Ensuring user document is up to date`, {
+        setTimedOutWithoutAuth(false)
+        if (event === 'SIGNED_IN') {
+          setUserLoading(true)
+          try {
+            // This is a fresh, user-initiated SIGNED_IN event.
+            const createUserDocStartTime = Date.now()
+            debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Handling fresh SIGNED_IN event. Ensuring user document is up to date`, {
               supabaseUser: describeSupabaseUser(authUser)
             })
             await createOrUpdateUserDocument(authUser)
-          }
-          
-          // Fetch app-specific user data
-          const getCurrentStartTime = Date.now()
-          const { appUser } = await getCurrentUserWithData()
-          const getCurrentElapsedMs = Date.now() - getCurrentStartTime
-          if (isMounted) {
-            setUser(appUser)
-            userLogRef.current = appUser
-            debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Updated app user after auth state change`, {
-              event,
-              appUser: describeAppUser(appUser),
-              getCurrentElapsedMs
-            })
-          }
-        } catch (error) {
-          console.error(`${authLogPrefix} [LISTENER ${listenerId}] Error handling auth state change`, error)
-          if (isMounted) {
-            setUser(null)
-            userLogRef.current = null
-          }
-        } finally {
-          if (isMounted) {
-            setUserLoading(false)
+            const createUserDocElapsedMs = Date.now() - createUserDocStartTime
+            debugLog(`${authLogPrefix} [LISTENER ${listenerId}] createOrUpdateUserDocument completed in ${createUserDocElapsedMs}ms`)
+            
+            const { appUser } = await getCurrentUserWithData()
+            if (isMounted) {
+              setUser(appUser)
+              userLogRef.current = appUser
+              debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Updated app user after fresh sign-in`, { appUser: describeAppUser(appUser) })
+            }
+          } catch (error) {
+            console.error(`${authLogPrefix} [LISTENER ${listenerId}] Error handling a fresh SIGNED_IN event`, error)
+            if (isMounted) setUser(null)
+          } finally {
+            if (isMounted) setUserLoading(false)
           }
         }
       } else {
-        // User is signed out
+        // User is signed out post-initial load
         if (isMounted) {
           setUser(null)
           userLogRef.current = null
           setUserLoading(false)
-          debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Cleared app user after sign-out event`, { event })
         }
       }
-
-      // Resolve loading state (single place)
-      resolveLoading(`listener_${listenerId}_${event}`)
-      isInitialLoadRef.current = false
     })
 
     authStateUnsubscribe = { data: { subscription } }
@@ -225,66 +280,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.error(`${authLogPrefix} [GET_SESSION] Error retrieving initial session after ${getSessionElapsedMs}ms`, sessionError)
         }
         
-        debugLog(`${authLogPrefix} [GET_SESSION] Initial session response after ${getSessionElapsedMs}ms`, {
-          hasSession: !!session,
-          event: 'initial_getSession',
-          supabaseUser: describeSupabaseUser(session?.user ?? null),
-          instanceId
-        })
+        debugLog(`${authLogPrefix} [GET_SESSION] Initial session response after ${getSessionElapsedMs}ms`, { hasSession: !!session })
         
+        // After getSession completes, the client is initialized. Now we can fetch app data.
         if (isMounted && session) {
-          const authUser = session.user
-          setSupabaseUser(authUser)
-          supabaseUserLogRef.current = authUser
-          setTimedOutWithoutAuth(false)
           setUserLoading(true)
-          resolveLoading('getSession_with_session_detected')
-
           try {
-            // On initial load, just fetch existing user data (don't update user doc)
-            // User doc updates only happen on SIGNED_IN events
-            const getCurrentStartTime = Date.now()
             const { appUser } = await getCurrentUserWithData()
-            const getCurrentElapsedMs = Date.now() - getCurrentStartTime
             if (isMounted) {
               setUser(appUser)
               userLogRef.current = appUser
-              debugLog(`${authLogPrefix} [GET_SESSION] Loaded initial app user after ${getCurrentElapsedMs}ms`, {
-                supabaseUser: describeSupabaseUser(authUser),
-                appUser: describeAppUser(appUser),
-                instanceId
-              })
+              debugLog(`${authLogPrefix} [INIT] Loaded initial app user`, { appUser: describeAppUser(appUser) })
             }
           } catch (error) {
-            console.error(`${authLogPrefix} [GET_SESSION] Error loading initial user session`, error)
-            if (isMounted) {
-              setUser(null)
-              userLogRef.current = null
-              setSupabaseUser(null)
-              supabaseUserLogRef.current = null
-              setUserLoading(false)
-            }
-            // Still resolve loading even if user data fetch fails, to avoid getting stuck
-            resolveLoading('getSession_user_fetch_error')
-            isInitialLoadRef.current = false
-            return // exit early
+            console.error(`${authLogPrefix} [INIT] Error loading initial user data`, error)
+            if (isMounted) setUser(null)
           } finally {
-            if (isMounted) {
-              setUserLoading(false)
-            }
+            if (isMounted) setUserLoading(false)
           }
-
-          isInitialLoadRef.current = false
         }
         
-        // Resolve loading if no session (auth listener will handle it if there is a session)
-        if (!session) {
-          resolveLoading('getSession_no_session')
-          isInitialLoadRef.current = false
-        }
+        // Always resolve loading after the entire initial auth flow is complete.
+        resolveLoading('initialization_complete')
       } catch (error) {
         console.error(`${authLogPrefix} [INIT_ERROR] Error during auth initialization`, error)
         resolveLoading('init_error')
+      } finally {
         isInitialLoadRef.current = false
       }
     }

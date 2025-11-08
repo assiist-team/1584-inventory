@@ -15,37 +15,51 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 - `userLoading: boolean` - Indicates the user-document fetch is still running
 - `timedOutWithoutAuth: boolean` - Flag set when 7s timeout fires without auth and no session was detected
 
-**Initialization Flow**:
+**Initialization Flow (Post-Refactor)**:
 
-1. Effect mounts, generates unique `instanceId`
-2. Subscribes to `supabase.auth.onAuthStateChange` (listener created before `getSession()` to avoid missing fast SIGNED_IN events)
-3. Calls `supabase.auth.getSession()` to check existing session
-4. If session exists:
-   - Sets `supabaseUser` from session (this clears `timedOutWithoutAuth`)
-   - Sets `userLoading = true` while fetching `getCurrentUserWithData()`
-   - Sets `user` state and then `userLoading = false`
-5. Auth state change listener handles:
-   - `SIGNED_IN` events: Creates/updates user document via `createOrUpdateUserDocument()`, then fetches app user
-   - `SIGNED_OUT` events: Clears both `supabaseUser` and `user`
-   - All events: Calls `resolveLoading()` to mark initialization complete
+1.  **Mount**: The `AuthContext` effect mounts.
+2.  **Subscribe**: It immediately subscribes to `supabase.auth.onAuthStateChange`. This listener becomes the single source of truth for all auth state changes. A `isInitialLoadRef` flag is set to `true`.
+3.  **Trigger Session Check**: `supabase.auth.getSession()` is called. Its purpose is simply to trigger the Supabase client to check for a session. It does **not** fetch application data itself.
+4.  **Listener Handles Everything**:
+    *   If a session exists, the listener fires a `SIGNED_IN` event.
+    *   If no session exists, `getSession()` returns null and resolves loading.
+5.  **Loading Resolution**: The `loading` state is resolved by the first event from the listener (`SIGNED_IN` or `SIGNED_OUT`) or by `getSession()` returning no session.
+
+**Auth State Change Listener Logic**:
+
+The listener is the core of the auth system and behaves as follows:
+
+-   **`SIGNED_IN` Event**:
+    -   Resolves the main `loading` flag immediately.
+    -   Sets `userLoading = true`.
+    -   **Distinguishes between initial load and a new login**:
+        -   If it's the **initial load's** `SIGNED_IN` event (session detection), it proceeds directly to fetch the app user data with `getCurrentUserWithData()`. It **skips** `createOrUpdateUserDocument` to avoid the initialization race condition.
+        -   If it's a **new, user-initiated** `SIGNED_IN` event (after a redirect from the login page), it first calls `createOrUpdateUserDocument()` and then fetches the app user data.
+    -   Once the app user data is fetched, `user` state is set and `userLoading` is set to `false`.
+-   **`SIGNED_OUT` Event**: Clears both `supabaseUser` and `user`, and resolves the `loading` flag.
+-   **`TOKEN_REFRESHED` / Other Events**: These events update the internal `supabaseUser` state but do **not** trigger any application data fetching or `userLoading` state changes.
 
 **Loading Resolution**:
 - `resolveLoading(source)` is the single point that sets `loading = false`
-- Called from: listener events, `getSession()` when no session, or error handlers
+- **Called IMMEDIATELY when auth is established** (before `createOrUpdateUserDocument()` or `getCurrentUserWithData()`)
+- Also called from: `getSession()` when no session, or error handlers
 - Uses `hasResolvedAuthRef` to prevent multiple resolutions
-- Source parameter identifies resolution path (e.g., `listener_1_SIGNED_IN`, `getSession_no_session`)
+- Source parameter identifies resolution path (e.g., `listener_1_SIGNED_IN_auth_established`, `getSession_no_session`)
+- **Why**: Prevents the 7s safety timeout from firing while heavy work (user doc creation/fetch) runs. The UI unblocks immediately; `userLoading` shows spinner only for user data fetch.
 
 **Safety Timeout**:
 - 7-second timeout starts on effect mount
-- If timeout fires and `!supabaseUser && !user`, sets `timedOutWithoutAuth = true`
+- If timeout fires and `!supabaseUser && !user` (using refs to avoid stale closures), sets `timedOutWithoutAuth = true`
 - Once a session or user appears, `timedOutWithoutAuth` is cleared automatically
 - Timeout cleared when `resolveLoading()` is called
+- **Note**: With the fix (loading resolves immediately on auth), this timeout should rarely fire unless there's a genuine network/auth failure
 
 **Instrumentation** (dev only):
 - Instance ID tracking for effect mounts (detects StrictMode double-invoke)
 - Listener ID counter for subscriptions
-- Timing metrics: init start time, `getSession()` elapsed, `getCurrentUserWithData()` elapsed
+- Timing metrics: init start time, `getSession()` elapsed, `createOrUpdateUserDocument()` elapsed, `getCurrentUserWithData()` elapsed
 - Structured logs with tags: `[EFFECT MOUNT]`, `[SUBSCRIPTION]`, `[GET_SESSION]`, `[LISTENER N]`, `[TIMEOUT]`, `[LOADING RESOLVED]`
+- Boot preflight snapshot: online status, service worker presence, URL auth params, localStorage token presence
 
 ### ProtectedRoute (`src/components/auth/ProtectedRoute.tsx`)
 
@@ -71,7 +85,7 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 
 **User Document Management**:
 - `createOrUpdateUserDocument(supabaseUser)`: Creates or updates `users` table row
-  - On `SIGNED_IN` event only (not on initial load)
+  - On **new, user-initiated** `SIGNED_IN` events only (i.e., not on the initial session detection during page load).
   - Handles invitation acceptance if `pendingInvitationData` in localStorage
   - First user gets `role: 'owner'` and default account created
   - Subsequent users get role from invitation or default to `'user'`
@@ -89,24 +103,25 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 5. `loading = false`, `supabaseUser = null`, `user = null`
 
 ### Initial Load (Existing Session)
-1. Effect mounts → `loading = true`
-2. Listener subscribed
-3. `getSession()` called → returns session
-4. `supabaseUser` set from session
-5. `userLoading = true`, `getCurrentUserWithData()` called → fetches app user
-6. `user` set from database, `userLoading = false`
-7. Listener fires `INITIAL_SESSION` event → `resolveLoading()` called
-8. `loading = false`
+1.  Effect mounts → `loading = true`.
+2.  Listener is subscribed.
+3.  `getSession()` is called. This triggers the listener to fire a `SIGNED_IN` event almost immediately.
+4.  The listener receives the `SIGNED_IN` event.
+5.  **`resolveLoading(...)` is called immediately** → `loading = false`.
+6.  `userLoading = true`.
+7.  The listener identifies this as an **initial load** and calls `getCurrentUserWithData()` (skipping `createOrUpdateUserDocument`).
+8.  `user` is set from the database, and `userLoading = false`.
 
 ### Sign In Flow
-1. User calls `signIn()` → `signInWithGoogle()` redirects to OAuth
-2. OAuth callback → `/auth/callback` route
-3. `AuthCallback` polls `getSession()` until session available
-4. Session established → listener fires `SIGNED_IN` event
-5. `createOrUpdateUserDocument()` called → creates/updates user doc
-6. `getCurrentUserWithData()` called → fetches app user
-7. `resolveLoading('listener_N_SIGNED_IN')` called
-8. `loading = false`, `userLoading` settles after fetch, user authenticated
+1.  User calls `signIn()` → `signInWithGoogle()` redirects to OAuth.
+2.  OAuth callback → `/auth/callback` route.
+3.  `AuthCallback` handles the redirect and the user is now signed in.
+4.  The main `AuthContext` listener, now in a non-initial-load state, fires a `SIGNED_IN` event.
+5.  **`resolveLoading(...)` called immediately** → `loading = false`.
+6.  `userLoading = true`.
+7.  The listener identifies this as a **new sign-in** and calls `createOrUpdateUserDocument()`.
+8.  After that, it calls `getCurrentUserWithData()` to fetch the app user.
+9.  `user` is set, and `userLoading = false`.
 
 ### Sign Out Flow
 1. User calls `signOut()` → `signOutUser()` clears Supabase session
