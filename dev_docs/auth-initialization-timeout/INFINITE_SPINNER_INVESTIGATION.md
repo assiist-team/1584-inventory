@@ -155,33 +155,31 @@ Subscribed to business inventory channel
 - Investigate if tab backgrounding/suspension affects Supabase client state (may need to reinitialize or refresh session)
 - Consider if ProtectedRoute should show a "Connecting..." message instead of blank spinner when `userLoading` is stuck
 
-## Definitive Root Cause and Final Solution (2025-11-08)
+## The Final, True Root Cause and Solution (2025-11-08)
 
-The investigation revealed two distinct failure modes with a single underlying theme: the Supabase client's state becomes unreliable after periods of inactivity (like a backgrounded tab) or during initial startup, leading to hung network requests.
+After multiple failed attempts, the final root cause was identified as a fundamental React hooks issue, not a Supabase-specific one.
 
-### Failure Mode 1: Spinner on Tab Return
+### The Problem: Stale Closure
 
--   **Symptom**: Returning to a backgrounded tab resulted in a permanent spinner.
--   **Cause**: The `onAuthStateChange` listener would fire a `TOKEN_REFRESHED` event. The original code treated this the same as a `SIGNED_IN` event, triggering a `getCurrentUserWithData()` call. Because the client's connection was stale after being backgrounded, this call would hang indefinitely.
+The `onAuthStateChange` callback is created only once when the `AuthContext` component mounts. Due to the way JavaScript closures work, this callback captured the initial state of the `user` variable, which was `null`. It never had access to the updated `user` state after the user logged in.
 
-### Failure Mode 2: Hang on Hard Refresh
+This caused the final failure mode:
 
--   **Symptom**: A hard page refresh with a valid session would result in a blank, hung application.
--   **Cause**: A race condition on initialization. The `onAuthStateChange` listener would fire a `SIGNED_IN` event *before* the database (PostgREST) portion of the Supabase client was ready. The code would immediately call `createOrUpdateUserDocument()`, whose first database query would hang forever.
+1.  A user returns to the backgrounded tab.
+2.  The `visibilitychange` listener correctly triggers `supabase.auth.refreshSession()`.
+3.  The Supabase client emits a `TOKEN_REFRESHED` event, immediately followed by a redundant `SIGNED_IN` event.
+4.  The `onAuthStateChange` listener fires for the `SIGNED_IN` event.
+5.  The state-based check (`if (user && user.id === authUser.id)`) **failed** because the `user` in its closure was the initial `null` value. It incorrectly concluded this was a new user sign-in.
+6.  It then attempted to re-run the user data fetching logic, which hung because the underlying network connection was stale, resulting in the infinite spinner.
 
-### The Final, Unified Solution
+### The Definitive Solution
 
-A comprehensive refactor of `src/contexts/AuthContext.tsx` was implemented to solve both issues robustly:
+The solution was to fix the stale closure by using a React `ref` to maintain a mutable, up-to-date reference to the current application user.
 
-1.  **Proactive Session Refresh on Tab Visibility**: A `visibilitychange` event listener was added. When the user returns to the tab, it proactively calls `supabase.auth.refreshSession()`. This ensures the client's connection is live before any other logic runs, preventing hangs from stale connections.
+1.  **Use a Ref for Current State**: A `userLogRef` (already present for logging) was used to store the current `user` object. This ref is updated via a separate `useEffect` hook whenever the `user` state changes.
+2.  **Consult the Ref in the Listener**: The state-based check inside the `onAuthStateChange` listener was modified to read from `userLogRef.current` instead of the stale `user` state variable.
 
-2.  **Refactored Initialization and Event Handling**:
-    *   **Single Source of Truth**: The `onAuthStateChange` listener is now the single source of truth for all user data loading. The `initializeAuth` function's role is reduced to simply starting the session check.
-    *   **Intelligent Event Handling**: The listener's logic was made more granular:
-        *   **`SIGNED_IN`**: It now differentiates between the **initial load** (session detection) and a **new user login**. The database-intensive `createOrUpdateUserDocument()` is **only** called for a new user login, completely avoiding the startup race condition. `getCurrentUserWithData()` is still called on initial load to fetch user details.
-        *   **`TOKEN_REFRESHED`**: This event is now handled gracefully. It updates the internal session state but does **not** trigger any UI-blocking data fetches.
-
-This new architecture is resilient to both tab backgrounding and initialization race conditions, ensuring a stable and predictable authentication experience.
+This ensures the listener always has access to the most recent user data and can correctly determine if a `SIGNED_IN` event is redundant and should be ignored. This finally resolves all manifestations of the infinite spinner bug.
 
 ## What We Changed (Instrumentation Only) — and What Didn't Work
 - Added dev-only instrumentation (no behavior changes):

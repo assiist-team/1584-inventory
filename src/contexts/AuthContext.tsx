@@ -228,6 +228,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // The logic below only runs for auth events AFTER the initial load.
       if (authUser) {
+        const currentUser = userLogRef.current;
+        // If we already have a matching app user, we don't need to do anything.
+        // This prevents re-fetching data on events like TOKEN_REFRESHED or the spurious SIGNED_IN that follows.
+        if (currentUser && currentUser.id === authUser.id) {
+          debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Skipping data fetch for event '${event}' as user is already loaded.`);
+          return;
+        }
+
         setTimedOutWithoutAuth(false)
         if (event === 'SIGNED_IN') {
           setUserLoading(true)
