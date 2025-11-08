@@ -222,8 +222,12 @@ export const createOrUpdateUserDocument = async (supabaseUser: User): Promise<vo
               invitationId = invData.invitationId
               accountId = invData.accountId
               console.log(`Found token-based invitation: account ${accountId}, invitationId ${invitationId}`)
+              // Clear the invitation data after consuming it
+              localStorage.removeItem('pendingInvitationData')
             } catch (err) {
               console.error('Error parsing stored invitation data:', err)
+              // Clear invalid data
+              localStorage.removeItem('pendingInvitationData')
             }
           }
         }

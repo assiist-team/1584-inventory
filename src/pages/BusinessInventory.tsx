@@ -480,6 +480,38 @@ export default function BusinessInventory() {
     setSelectedItems(newSelected)
   }
 
+  // Guard against no account when not loading
+  if (!isLoading && !accountLoading && !currentAccountId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">Business Inventory</h1>
+        </div>
+        <div className="bg-white shadow rounded-lg border border-yellow-200 bg-yellow-50">
+          <div className="px-4 py-5 sm:p-6">
+            <div className="text-center py-12">
+              <Package className="mx-auto h-12 w-12 text-yellow-600" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                No Account Selected
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                Please select or create an account to manage inventory.
+              </p>
+              <div className="mt-6">
+                <Link
+                  to="/settings"
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                  Go to Settings
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-32">

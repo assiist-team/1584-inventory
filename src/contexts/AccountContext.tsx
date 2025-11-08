@@ -33,17 +33,23 @@ export function AccountProvider({ children }: AccountProviderProps) {
     let isMounted = true
 
     const loadAccount = async () => {
-      // If no user, we are not loading and have no account.
-      if (!user) {
+      // Back off if auth is still loading or user is not ready
+      if (authLoading || !user) {
         if (isMounted) {
-          setCurrentAccountId(null)
-          setCurrentAccount(null)
-          setLoading(false)
+          // If auth is loading, keep our loading state true
+          // If no user, clear account and set loading to false
+          if (!user) {
+            setCurrentAccountId(null)
+            setCurrentAccount(null)
+            setLoading(false)
+          } else {
+            setLoading(true)
+          }
         }
         return
       }
 
-      // If we have a user, we start the loading process.
+      // If we have a user and auth is ready, we start the loading process.
       if (isMounted) {
         setLoading(true)
       }
@@ -99,11 +105,6 @@ export function AccountProvider({ children }: AccountProviderProps) {
           setLoading(false)
         }
       }
-    }
-
-    if (authLoading) {
-      setLoading(true)
-      return
     }
 
     loadAccount()

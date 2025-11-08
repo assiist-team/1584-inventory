@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading, user, timedOutWithoutAuth } = useAuth()
 
   if (loading) {
     return (
@@ -17,7 +17,8 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     )
   }
 
-  if (!isAuthenticated) {
+  // If auth timed out without establishing authentication, show login
+  if (timedOutWithoutAuth || !isAuthenticated || !user) {
     return <Login />
   }
 
