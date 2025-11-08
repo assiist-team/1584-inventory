@@ -13,7 +13,7 @@ interface UserManagementProps {
 }
 
 export default function UserManagement({ className }: UserManagementProps) {
-  const { user: currentUser, isOwner, loading: authLoading } = useAuth()
+  const { user: currentUser, isOwner, loading: authLoading, userLoading } = useAuth()
   const { currentAccountId, isAdmin, loading: accountLoading } = useAccount()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -72,7 +72,7 @@ export default function UserManagement({ className }: UserManagementProps) {
   }, [currentAccountId])
 
   useEffect(() => {
-    if (authLoading || accountLoading) {
+    if (authLoading || userLoading || accountLoading) {
       setLoading(true)
       return
     }
@@ -82,7 +82,7 @@ export default function UserManagement({ className }: UserManagementProps) {
     } else {
       setLoading(false)
     }
-  }, [canManageUsers, currentAccountId, authLoading, accountLoading, loadUsers, loadPendingInvitations])
+  }, [canManageUsers, currentAccountId, authLoading, userLoading, accountLoading, loadUsers, loadPendingInvitations])
 
   const inviteUser = async () => {
     if (!inviteEmail.trim()) return

@@ -11,8 +11,9 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 **State**:
 - `supabaseUser: SupabaseUser | null` - Supabase auth user from session
 - `user: User | null` - Application user document from `users` table
-- `loading: boolean` - Initialization state
-- `timedOutWithoutAuth: boolean` - Flag set when 7s timeout fires without auth
+- `loading: boolean` - Indicates Supabase session detection is still running
+- `userLoading: boolean` - Indicates the user-document fetch is still running
+- `timedOutWithoutAuth: boolean` - Flag set when 7s timeout fires without auth and no session was detected
 
 **Initialization Flow**:
 
@@ -20,9 +21,9 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 2. Subscribes to `supabase.auth.onAuthStateChange` (listener created before `getSession()` to avoid missing fast SIGNED_IN events)
 3. Calls `supabase.auth.getSession()` to check existing session
 4. If session exists:
-   - Sets `supabaseUser` from session
-   - Calls `getCurrentUserWithData()` to fetch app user document
-   - Sets `user` state
+   - Sets `supabaseUser` from session (this clears `timedOutWithoutAuth`)
+   - Sets `userLoading = true` while fetching `getCurrentUserWithData()`
+   - Sets `user` state and then `userLoading = false`
 5. Auth state change listener handles:
    - `SIGNED_IN` events: Creates/updates user document via `createOrUpdateUserDocument()`, then fetches app user
    - `SIGNED_OUT` events: Clears both `supabaseUser` and `user`
@@ -37,6 +38,7 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 **Safety Timeout**:
 - 7-second timeout starts on effect mount
 - If timeout fires and `!supabaseUser && !user`, sets `timedOutWithoutAuth = true`
+- Once a session or user appears, `timedOutWithoutAuth` is cleared automatically
 - Timeout cleared when `resolveLoading()` is called
 
 **Instrumentation** (dev only):
@@ -48,7 +50,7 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 ### ProtectedRoute (`src/components/auth/ProtectedRoute.tsx`)
 
 **Protection Logic**:
-1. If `loading === true`: Show spinner
+1. If `loading === true || userLoading === true`: Show spinner
 2. If `timedOutWithoutAuth === true`: Show `<Login />`
 3. If `isAuthenticated === false`: Show `<Login />`
 4. If `user === null`: Show `<Login />`
@@ -57,6 +59,7 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 **Gating Requirements**:
 - Session must exist (`isAuthenticated`)
 - App user document must be loaded (`user`)
+- User document request must be finished (`!userLoading`)
 - Auth must not have timed out (`!timedOutWithoutAuth`)
 
 ### Supabase Client (`src/services/supabase.ts`)
@@ -90,8 +93,8 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 2. Listener subscribed
 3. `getSession()` called → returns session
 4. `supabaseUser` set from session
-5. `getCurrentUserWithData()` called → fetches app user
-6. `user` set from database
+5. `userLoading = true`, `getCurrentUserWithData()` called → fetches app user
+6. `user` set from database, `userLoading = false`
 7. Listener fires `INITIAL_SESSION` event → `resolveLoading()` called
 8. `loading = false`
 
@@ -103,7 +106,7 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 5. `createOrUpdateUserDocument()` called → creates/updates user doc
 6. `getCurrentUserWithData()` called → fetches app user
 7. `resolveLoading('listener_N_SIGNED_IN')` called
-8. `loading = false`, user authenticated
+8. `loading = false`, `userLoading` settles after fetch, user authenticated
 
 ### Sign Out Flow
 1. User calls `signOut()` → `signOutUser()` clears Supabase session
@@ -115,19 +118,7 @@ The auth system uses Supabase Auth for session management and a custom `users` t
 
 ## Route Protection
 
-All app routes (except `/auth/callback` and `/invite/:token`) are wrapped in `ProtectedRoute`:
-
-```tsx
-<Route path="*" element={
-  <ProtectedRoute>
-    <Layout>
-      <Routes>
-        {/* All app routes */}
-      </Routes>
-    </Layout>
-  </ProtectedRoute>
-} />
-```
+`AuthProvider` now wraps the entire React tree in `src/main.tsx`, ensuring a single instance survives navigation. All app routes (except `/auth/callback` and `/invite/:token`) are wrapped in `ProtectedRoute` inside `App.tsx`.
 
 ProtectedRoute checks:
 - `loading` state (shows spinner if true)

@@ -12,7 +12,7 @@ interface AccountManagementProps {
 }
 
 export default function AccountManagement({ className }: AccountManagementProps) {
-  const { user, isOwner, loading: authLoading } = useAuth()
+  const { user, isOwner, loading: authLoading, userLoading } = useAuth()
   const { showSuccess, showError } = useToast()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,7 +35,7 @@ export default function AccountManagement({ className }: AccountManagementProps)
   const [copiedTokens, setCopiedTokens] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (authLoading) {
+    if (authLoading || userLoading) {
       return // Wait for authentication to complete
     }
     if (isOwner()) {
@@ -44,7 +44,7 @@ export default function AccountManagement({ className }: AccountManagementProps)
       setLoading(false) // Not an owner, stop loading
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, isOwner])
+  }, [authLoading, userLoading, isOwner])
 
   useEffect(() => {
     if (isOwner() && accounts.length > 0) {

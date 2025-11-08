@@ -9,7 +9,7 @@ import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 
 export default function Projects() {
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { currentAccountId, loading: accountLoading } = useAccount()
   const [projects, setProjects] = useState<Project[]>([])
   const [transactions, setTransactions] = useState<Record<string, Transaction[]>>({})

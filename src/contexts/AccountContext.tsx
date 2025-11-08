@@ -18,7 +18,7 @@ interface AccountProviderProps {
 }
 
 export function AccountProvider({ children }: AccountProviderProps) {
-  const { user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading, userLoading } = useAuth()
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null)
   const [currentAccount, setCurrentAccount] = useState<Account | null>(null)
   const [loading, setLoading] = useState(true)
@@ -34,17 +34,18 @@ export function AccountProvider({ children }: AccountProviderProps) {
 
     const loadAccount = async () => {
       // Back off if auth is still loading or user is not ready
-      if (authLoading || !user) {
+      if (authLoading || userLoading) {
         if (isMounted) {
-          // If auth is loading, keep our loading state true
-          // If no user, clear account and set loading to false
-          if (!user) {
-            setCurrentAccountId(null)
-            setCurrentAccount(null)
-            setLoading(false)
-          } else {
-            setLoading(true)
-          }
+          setLoading(true)
+        }
+        return
+      }
+
+      if (!user) {
+        if (isMounted) {
+          setCurrentAccountId(null)
+          setCurrentAccount(null)
+          setLoading(false)
         }
         return
       }
@@ -112,7 +113,7 @@ export function AccountProvider({ children }: AccountProviderProps) {
     return () => {
       isMounted = false
     }
-  }, [user, authLoading, isOwner])
+  }, [user, authLoading, userLoading, isOwner])
 
   const value: AccountContextType = useMemo(() => ({
     currentAccountId,

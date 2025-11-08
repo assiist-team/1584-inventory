@@ -13,6 +13,7 @@ interface AuthContextType {
   supabaseUser: SupabaseUser | null
   user: User | null
   loading: boolean
+  userLoading: boolean
   timedOutWithoutAuth: boolean
   signIn: () => Promise<void>
   signOut: () => Promise<void>
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [userLoading, setUserLoading] = useState(false)
   const [timedOutWithoutAuth, setTimedOutWithoutAuth] = useState(false)
   
   // Ref to track if auth has been resolved (prevents timeout if already resolved)
@@ -73,6 +75,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const listenerIdRef = useRef(0)
   // Track when init started for timing metrics
   const initStartTimeRef = useRef(0)
+  const supabaseUserLogRef = useRef<SupabaseUser | null>(null)
+  const userLogRef = useRef<User | null>(null)
+
+  useEffect(() => {
+    supabaseUserLogRef.current = supabaseUser
+  }, [supabaseUser])
+
+  useEffect(() => {
+    userLogRef.current = user
+  }, [user])
+
+  useEffect(() => {
+    if (timedOutWithoutAuth && (supabaseUser || user)) {
+      setTimedOutWithoutAuth(false)
+    }
+  }, [supabaseUser, user, timedOutWithoutAuth])
 
   useEffect(() => {
     const instanceId = instanceIdRef.current
@@ -95,7 +113,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (loadingTimeout) clearTimeout(loadingTimeout)
         const elapsedMs = Date.now() - initStartTime
         setLoading(false)
-        debugLog(`${authLogPrefix} [LOADING RESOLVED] source=${source} elapsedMs=${elapsedMs} instanceId=${instanceId} supabaseUser=${describeSupabaseUser(supabaseUser)} appUser=${describeAppUser(user)}`)
+        debugLog(`${authLogPrefix} [LOADING RESOLVED] source=${source} elapsedMs=${elapsedMs} instanceId=${instanceId} supabaseUser=${describeSupabaseUser(supabaseUserLogRef.current)} appUser=${describeAppUser(userLogRef.current)}`)
       }
     }
 
@@ -136,6 +154,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       })
       
       setSupabaseUser(authUser)
+      supabaseUserLogRef.current = authUser
+      if (authUser) {
+        setTimedOutWithoutAuth(false)
+        setUserLoading(true)
+      }
 
       if (authUser) {
         try {
@@ -153,6 +176,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const getCurrentElapsedMs = Date.now() - getCurrentStartTime
           if (isMounted) {
             setUser(appUser)
+            userLogRef.current = appUser
             debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Updated app user after auth state change`, {
               event,
               appUser: describeAppUser(appUser),
@@ -163,12 +187,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
           console.error(`${authLogPrefix} [LISTENER ${listenerId}] Error handling auth state change`, error)
           if (isMounted) {
             setUser(null)
+            userLogRef.current = null
+          }
+        } finally {
+          if (isMounted) {
+            setUserLoading(false)
           }
         }
       } else {
         // User is signed out
         if (isMounted) {
           setUser(null)
+          userLogRef.current = null
+          setUserLoading(false)
           debugLog(`${authLogPrefix} [LISTENER ${listenerId}] Cleared app user after sign-out event`, { event })
         }
       }
@@ -204,7 +235,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (isMounted && session) {
           const authUser = session.user
           setSupabaseUser(authUser)
-          
+          supabaseUserLogRef.current = authUser
+          setTimedOutWithoutAuth(false)
+          setUserLoading(true)
+          resolveLoading('getSession_with_session_detected')
+
           try {
             // On initial load, just fetch existing user data (don't update user doc)
             // User doc updates only happen on SIGNED_IN events
@@ -213,6 +248,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const getCurrentElapsedMs = Date.now() - getCurrentStartTime
             if (isMounted) {
               setUser(appUser)
+              userLogRef.current = appUser
               debugLog(`${authLogPrefix} [GET_SESSION] Loaded initial app user after ${getCurrentElapsedMs}ms`, {
                 supabaseUser: describeSupabaseUser(authUser),
                 appUser: describeAppUser(appUser),
@@ -223,9 +259,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
             console.error(`${authLogPrefix} [GET_SESSION] Error loading initial user session`, error)
             if (isMounted) {
               setUser(null)
+              userLogRef.current = null
               setSupabaseUser(null)
+              supabaseUserLogRef.current = null
+              setUserLoading(false)
+            }
+            // Still resolve loading even if user data fetch fails, to avoid getting stuck
+            resolveLoading('getSession_user_fetch_error')
+            isInitialLoadRef.current = false
+            return // exit early
+          } finally {
+            if (isMounted) {
+              setUserLoading(false)
             }
           }
+
+          isInitialLoadRef.current = false
         }
         
         // Resolve loading if no session (auth listener will handle it if there is a session)
@@ -295,13 +344,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     supabaseUser,
     user,
     loading,
+    userLoading,
     timedOutWithoutAuth,
     signIn,
     signOut,
     isAuthenticated: !!supabaseUser,
     hasRole,
     isOwner
-  }), [supabaseUser, user, loading, timedOutWithoutAuth, hasRole, isOwner, signIn, signOut])
+  }), [supabaseUser, user, loading, userLoading, timedOutWithoutAuth, hasRole, isOwner, signIn, signOut])
 
   return (
     <AuthContext.Provider value={value}>
