@@ -290,7 +290,7 @@ export default function TransactionAudit({
             <div className="flex items-start">
               <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-yellow-800">
-                <strong>Tax data unavailable.</strong> Completeness calculation uses gross total. Tolerance checks are advisory.
+                <strong>Tax rate not set.</strong> Set tax rate or transaction subtotal for accurate calculations.
               </div>
             </div>
           </div>
