@@ -71,7 +71,6 @@
 - Implement service changes outlined above.
 - Add regression tests for round-trip flows.
 - Validate on staging with real round-trip scenario before releasing.
-
 ### Implementation Details (binding to current code)
 - Function name alignment
   - Capture previous transaction on return in:
