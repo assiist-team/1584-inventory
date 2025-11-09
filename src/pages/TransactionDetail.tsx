@@ -13,6 +13,7 @@ import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { getTaxPresets } from '@/services/taxPresetsService'
 import { useAccount } from '@/contexts/AccountContext'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+import TransactionAudit from '@/components/ui/TransactionAudit'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -84,6 +85,24 @@ export default function TransactionDetail() {
     return getBackDestination(`/project/${projectId}?tab=transactions`)
   }, [getBackDestination, projectId])
 
+  // Refresh transaction items
+  const refreshTransactionItems = async () => {
+    if (!currentAccountId || !transactionId) return
+    
+    const actualProjectId = projectId || transaction?.projectId
+    if (!actualProjectId) return
+
+    try {
+      const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId, transactionId)
+      const itemIds = transactionItems.map(item => item.itemId)
+      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
+      const items = await Promise.all(itemsPromises)
+      const validItems = items.filter(item => item !== null) as Item[]
+      setTransactionItems(validItems)
+    } catch (error) {
+      console.error('Error refreshing transaction items:', error)
+    }
+  }
 
   useEffect(() => {
     const loadTransaction = async () => {
@@ -986,6 +1005,18 @@ export default function TransactionDetail() {
             </div>
           )}
         </div>
+
+        {/* Transaction Audit */}
+        {transaction && (projectId || transaction.projectId) && getCanonicalTransactionTitle(transaction) !== COMPANY_INVENTORY_SALE && getCanonicalTransactionTitle(transaction) !== COMPANY_INVENTORY_PURCHASE && (
+          <div className="px-6 py-6 border-t border-gray-200">
+            <TransactionAudit
+              transaction={transaction}
+              projectId={projectId || transaction.projectId || ''}
+              transactionItems={transactionItems}
+              onItemsUpdated={refreshTransactionItems}
+            />
+          </div>
+        )}
 
         {/* Metadata */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">

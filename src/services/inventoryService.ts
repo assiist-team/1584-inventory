@@ -3,7 +3,7 @@ import { convertTimestamps, ensureAuthenticatedForDatabase } from './databaseSer
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
-import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData } from '@/types'
+import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, TransactionCompleteness, CompletenessStatus } from '@/types'
 
 // Audit Logging Service for allocation/de-allocation events
 export const auditService = {
@@ -501,6 +501,130 @@ export const transactionService = {
       transaction: enriched[0] || transaction,
       projectId: converted.project_id || null
     }
+  },
+
+  // Calculate transaction completeness metrics
+  async getTransactionCompleteness(
+    accountId: string,
+    projectId: string,
+    transactionId: string
+  ): Promise<TransactionCompleteness> {
+    await ensureAuthenticatedForDatabase()
+
+    // Get transaction and associated items
+    const [transaction, items] = await Promise.all([
+      this.getTransaction(accountId, projectId, transactionId),
+      unifiedItemsService.getItemsForTransaction(accountId, projectId, transactionId)
+    ])
+
+    if (!transaction) {
+      throw new Error('Transaction not found')
+    }
+
+    // Calculate items net total (sum of purchase prices)
+    const itemsNetTotal = items.reduce((sum, item) => {
+      const purchasePrice = parseFloat(item.purchasePrice || '0')
+      return sum + (isNaN(purchasePrice) ? 0 : purchasePrice)
+    }, 0)
+
+    const itemsCount = items.length
+    const itemsMissingPriceCount = items.filter(item => {
+      const purchasePrice = item.purchasePrice
+      return !purchasePrice || purchasePrice.trim() === '' || parseFloat(purchasePrice) === 0
+    }).length
+
+    // Calculate transaction subtotal (pre-tax amount)
+    const transactionAmount = parseFloat(transaction.amount || '0')
+    let transactionSubtotal = 0
+    let inferredTax: number | undefined
+    let taxAmount: number | undefined
+    let missingTaxData = false
+
+    // If subtotal is stored, use it
+    if (transaction.subtotal) {
+      transactionSubtotal = parseFloat(transaction.subtotal)
+    } else if (transaction.taxRatePct !== undefined && transaction.taxRatePct !== null) {
+      // Infer subtotal from tax rate: subtotal = total / (1 + taxRate/100)
+      const taxRate = transaction.taxRatePct / 100
+      transactionSubtotal = transactionAmount / (1 + taxRate)
+      inferredTax = transactionAmount - transactionSubtotal
+      // Round to cents
+      transactionSubtotal = Math.round(transactionSubtotal * 100) / 100
+      inferredTax = Math.round(inferredTax * 100) / 100
+    } else {
+      // Fall back to gross total when tax data is missing
+      transactionSubtotal = transactionAmount
+      missingTaxData = true
+    }
+
+    // Calculate completeness ratio
+    // If no items, ratio is 0; if no subtotal but items exist, treat as incomplete (100% variance)
+    const completenessRatio = transactionSubtotal > 0 
+      ? itemsNetTotal / transactionSubtotal 
+      : (itemsCount > 0 ? 0 : 0) // 0 when no items, 0 when no subtotal (will show as incomplete)
+
+    // Calculate variance
+    const varianceDollars = itemsNetTotal - transactionSubtotal
+    const variancePercent = transactionSubtotal > 0 
+      ? (varianceDollars / transactionSubtotal) * 100 
+      : (itemsCount > 0 ? -100 : 0) // -100% when items exist but no subtotal, 0 when no items
+
+    // Determine completeness status based on tolerance bands
+    const completenessStatus = this._calculateCompletenessStatus(completenessRatio, variancePercent)
+
+    return {
+      itemsNetTotal: Math.round(itemsNetTotal * 100) / 100,
+      itemsCount,
+      itemsMissingPriceCount,
+      transactionSubtotal: Math.round(transactionSubtotal * 100) / 100,
+      completenessRatio,
+      completenessStatus,
+      missingTaxData,
+      inferredTax,
+      taxAmount,
+      varianceDollars: Math.round(varianceDollars * 100) / 100,
+      variancePercent: Math.round(variancePercent * 100) / 100
+    }
+  },
+
+  // Helper: Calculate completeness status from ratio and variance
+  _calculateCompletenessStatus(ratio: number, variancePercent: number): CompletenessStatus {
+    // Red (over) when totals exceed 120%
+    if (ratio > 1.2) {
+      return 'over'
+    }
+    // Red (incomplete) beyond 20% variance
+    if (Math.abs(variancePercent) > 20) {
+      return 'incomplete'
+    }
+    // Yellow (near) between 1% and 20% variance (complete is now ±1%)
+    if (Math.abs(variancePercent) > 1) {
+      return 'near'
+    }
+    // Green (complete) when variance is within ±1%
+    return 'complete'
+  },
+
+  // Find suggested items to add to transaction (unassociated items with same vendor)
+  async getSuggestedItemsForTransaction(
+    accountId: string,
+    transactionSource: string,
+    limit: number = 5
+  ): Promise<Item[]> {
+    await ensureAuthenticatedForDatabase()
+
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('source', transactionSource)
+      .is('transaction_id', null)
+      .order('date_created', { ascending: false })
+      .limit(limit)
+
+    if (error) throw error
+
+    return (data || []).map(item => unifiedItemsService._convertItemFromDb(item))
   },
 
   // Create new transaction (account-scoped)
@@ -2039,6 +2163,14 @@ export const unifiedItemsService = {
         } catch (e) {
           console.warn('Failed to set tax_rate_pct on added item:', itemId, e)
         }
+        // Ensure the item record is linked to the transaction so the UI sees the association
+        try {
+          await this.updateItem(accountId, itemId, {
+            transactionId: transactionId
+          })
+        } catch (linkErr) {
+          console.warn('Failed to link item to transaction after adding to existing transaction:', itemId, linkErr)
+        }
       } catch (error) {
         console.error('❌ Failed to update existing transaction:', transactionId, error)
         // Don't throw - allow the allocation to continue
@@ -2090,6 +2222,14 @@ export const unifiedItemsService = {
           await auditService.logTransactionStateChange(accountId, transactionId, 'created', null, transactionData)
         } catch (auditError) {
           console.warn('⚠️ Failed to log transaction creation:', auditError)
+        }
+        // Link the newly-created transaction to the item record as well
+        try {
+          await this.updateItem(accountId, itemId, {
+            transactionId: transactionId
+          })
+        } catch (linkErr) {
+          console.warn('Failed to link item to transaction after creating new transaction:', itemId, linkErr)
         }
       } catch (error) {
         console.error('❌ Failed to create new transaction:', transactionId, error)

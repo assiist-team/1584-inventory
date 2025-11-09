@@ -341,3 +341,20 @@ export interface BookmarkableItem {
   itemId: string;
   bookmark: boolean;
 }
+
+// Transaction Completeness Types
+export type CompletenessStatus = 'complete' | 'near' | 'incomplete' | 'over'
+
+export interface TransactionCompleteness {
+  itemsNetTotal: number
+  itemsCount: number
+  itemsMissingPriceCount: number
+  transactionSubtotal: number
+  completenessRatio: number
+  completenessStatus: CompletenessStatus
+  missingTaxData: boolean
+  inferredTax?: number
+  taxAmount?: number
+  varianceDollars: number
+  variancePercent: number
+}
