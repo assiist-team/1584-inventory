@@ -531,16 +531,20 @@ export default function BusinessInventoryItemDetail() {
                   </div>
                 )}
 
-                {item.transactionId && (
+                {item.previousProjectTransactionId && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Original Transaction</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <Link
-                        to={`/project/${item.projectId}/transaction/${item.transactionId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
-                        className="text-primary-600 hover:text-primary-800 font-medium"
-                      >
-                        {item.transactionId}
-                      </Link>
+                      {item.previousProjectId ? (
+                        <Link
+                          to={`/project/${item.previousProjectId}/transaction/${item.previousProjectTransactionId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                          className="text-primary-600 hover:text-primary-800 font-medium"
+                        >
+                          {item.previousProjectTransactionId}
+                        </Link>
+                      ) : (
+                        <span>{item.previousProjectTransactionId}</span>
+                      )}
                     </dd>
                   </div>
                 )}

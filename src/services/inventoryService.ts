@@ -1021,6 +1021,8 @@ export const unifiedItemsService = {
       accountId: converted.account_id,
       projectId: converted.project_id || undefined,
       transactionId: converted.transaction_id || undefined,
+      previousProjectTransactionId: converted.previous_project_transaction_id ?? null,
+      previousProjectId: converted.previous_project_id ?? null,
       name: converted.name || undefined,
       description: converted.description || '',
       sku: converted.sku || '',
@@ -1054,6 +1056,8 @@ export const unifiedItemsService = {
     if (item.accountId !== undefined) dbItem.account_id = item.accountId
     if (item.projectId !== undefined) dbItem.project_id = item.projectId ?? null
     if (item.transactionId !== undefined) dbItem.transaction_id = item.transactionId ?? null
+    if (item.previousProjectTransactionId !== undefined) dbItem.previous_project_transaction_id = item.previousProjectTransactionId ?? null
+    if (item.previousProjectId !== undefined) dbItem.previous_project_id = item.previousProjectId ?? null
     if (item.name !== undefined) dbItem.name = item.name
     if (item.description !== undefined) dbItem.description = item.description
     if (item.sku !== undefined) dbItem.sku = item.sku
@@ -1476,7 +1480,7 @@ export const unifiedItemsService = {
       if (currentProjectId === projectId) {
         // A.1: Remove item from Sale and move to Inventory (delete Sale if empty)
         console.log('📋 Scenario A.1: Item in Sale, allocating to same project → move to inventory')
-        return await this.handleSaleToInventoryMove(accountId, itemId, currentTransactionId, projectId, finalAmount, notes, space)
+        return await this.handleSaleToInventoryMove(accountId, item, currentTransactionId, projectId, finalAmount, notes, space)
       } else {
         // A.2: Allocate to different project - remove from Sale, add to Purchase (Project Y)
         console.log('📋 Scenario A.2: Item in Sale, allocating to different project')
@@ -1539,7 +1543,9 @@ export const unifiedItemsService = {
       inventoryStatus: 'allocated',
       transactionId: purchaseTransactionId,
       disposition: 'keep',
-      space: space
+      space: space,
+      previousProjectTransactionId: null,
+      previousProjectId: null
     })
 
     console.log('✅ A.1 completed: Sale → Purchase (same project)')
@@ -1560,48 +1566,130 @@ export const unifiedItemsService = {
     return purchaseTransactionId
   },
 
+  async _restoreItemAfterSaleRemoval(
+    accountId: string,
+    item: Item,
+    projectId: string,
+    finalAmount: string,
+    notes?: string,
+    space?: string
+  ): Promise<{
+    restoredTransactionId: string | null;
+    restorationStatus: 'restored' | 'missing_previous_link' | 'previous_project_mismatch' | 'transaction_missing';
+  }> {
+    let restoredTransactionId: string | null = null
+    let restorationStatus: 'restored' | 'missing_previous_link' | 'previous_project_mismatch' | 'transaction_missing' = 'missing_previous_link'
+
+    const previousTransactionId = item.previousProjectTransactionId
+    const previousProjectId = item.previousProjectId
+
+    const baseUpdate = {
+      projectId: projectId,
+      inventoryStatus: 'allocated' as const,
+      transactionId: null as string | null,
+      disposition: 'keep' as const,
+      notes: notes,
+      space: space ?? '',
+      previousProjectTransactionId: null as string | null,
+      previousProjectId: null as string | null
+    }
+
+    if (previousTransactionId && previousProjectId) {
+      if (previousProjectId === projectId) {
+        const { data: previousTransaction, error: previousTransactionError } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('transaction_id', previousTransactionId)
+          .single()
+
+        if (!previousTransactionError && previousTransaction) {
+          await this.addItemToTransaction(
+            accountId,
+            item.itemId,
+            previousTransactionId,
+            finalAmount,
+            'Purchase',
+            'Inventory allocation',
+            notes
+          )
+
+          await this.updateItem(accountId, item.itemId, {
+            ...baseUpdate,
+            transactionId: previousTransactionId
+          })
+
+          restoredTransactionId = previousTransactionId
+          restorationStatus = 'restored'
+        } else {
+          console.warn('⚠️ Stored previous project transaction not found; falling back to allocation without restoration', {
+            itemId: item.itemId,
+            previousTransactionId
+          })
+          restorationStatus = 'transaction_missing'
+
+          await this.updateItem(accountId, item.itemId, baseUpdate)
+        }
+      } else {
+        restorationStatus = 'previous_project_mismatch'
+        await this.updateItem(accountId, item.itemId, baseUpdate)
+      }
+    } else {
+      await this.updateItem(accountId, item.itemId, baseUpdate)
+    }
+
+    return { restoredTransactionId, restorationStatus }
+  },
+
   // Helper: Handle A.1 (authoritative) - Remove item from Sale and move to Inventory (same project)
   async handleSaleToInventoryMove(
     accountId: string,
-    itemId: string,
+    item: Item,
     currentTransactionId: string,
-    _projectId: string,
+    projectId: string,
     finalAmount: string,
-    _notes?: string,
+    notes?: string,
     space?: string
   ): Promise<string> {
     // Remove item from existing Sale transaction
-    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, item.itemId, currentTransactionId, finalAmount)
 
-    // Update item status to inventory
-    // Per A.1: allocate back to the same project without creating an INV_PURCHASE
-    // i.e. set the item's project and mark as allocated, but do not attach a
-    // purchase transaction.
-    await this.updateItem(accountId, itemId, {
-      projectId: _projectId,
-      inventoryStatus: 'allocated',
-      transactionId: null,
-      disposition: 'keep',
-      space: space ?? ''
+    const { restoredTransactionId, restorationStatus } = await this._restoreItemAfterSaleRemoval(
+      accountId,
+      item,
+      projectId,
+      finalAmount,
+      notes,
+      space
+    )
+
+    console.log('✅ A.1 completed: Sale → Inventory (same project)', {
+      restorationStatus,
+      restoredTransactionId
     })
-
-    console.log('✅ A.1 completed: Sale → Inventory (same project)')
 
     // Log successful move (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'allocation', itemId, _projectId, null, {
+      const auditDetails: Record<string, any> = {
         action: 'allocation_completed',
         scenario: 'A.1',
         from_transaction: currentTransactionId,
-        to_status: 'allocated',
-        amount: finalAmount
-      })
+        amount: finalAmount,
+        restoration_status: restorationStatus,
+        to_status: restoredTransactionId ? 'allocated_with_purchase' : 'allocated'
+      }
+
+      if (restoredTransactionId) {
+        auditDetails.restored_transaction_id = restoredTransactionId
+      }
+
+      await auditService.logAllocationEvent(accountId, 'allocation', item.itemId, projectId, restoredTransactionId ?? null, auditDetails)
     } catch (auditError) {
       console.warn('⚠️ Failed to log allocation completion (A.1):', auditError)
     }
 
-    // Return original sale transaction id (may have been deleted)
-    return currentTransactionId
+    // Return restored transaction id when available; fall back to the sale id (for compatibility)
+    return restoredTransactionId ?? currentTransactionId
   },
 
   // Helper: Handle A.2 - Remove item from Sale, add to Purchase (different project)
@@ -1628,7 +1716,9 @@ export const unifiedItemsService = {
       inventoryStatus: 'allocated',
       transactionId: purchaseTransactionId,
       disposition: 'keep',
-      space: space
+      space: space,
+      previousProjectTransactionId: null,
+      previousProjectId: null
     })
 
     console.log('✅ A.2 completed: Sale → Purchase (different project)')
@@ -1666,9 +1756,12 @@ export const unifiedItemsService = {
     await this.updateItem(accountId, itemId, {
       projectId: null,
       inventoryStatus: 'available',
+      transactionId: null,
       disposition: 'inventory',
       notes: _notes,
-      space: space ?? ''
+      space: space ?? '',
+      previousProjectTransactionId: currentTransactionId,
+      previousProjectId: _projectId
     })
 
     console.log('✅ B.1 completed: Purchase → Inventory (same project)')
@@ -1713,7 +1806,9 @@ export const unifiedItemsService = {
       inventoryStatus: 'available',
       transactionId: saleTransactionId,
       disposition: 'inventory',
-      space: space ?? ''
+      space: space ?? '',
+      previousProjectTransactionId: null,
+      previousProjectId: null
     })
 
     console.log('✅ B.2 completed: Purchase → Sale (different project)')
@@ -1754,7 +1849,9 @@ export const unifiedItemsService = {
       inventoryStatus: 'allocated',
       transactionId: purchaseTransactionId,
       disposition: 'keep',
-      space: space
+      space: space,
+      previousProjectTransactionId: null,
+      previousProjectId: null
     })
 
     console.log('✅ C completed: Inventory → Purchase (new allocation)')
@@ -2030,7 +2127,8 @@ export const unifiedItemsService = {
 
     // Process each item individually so we can apply A.1/A.2 rules per item.
     for (const itemData of itemsData) {
-      const itemId = itemData.item_id
+      const item = this._convertItemFromDb(itemData)
+      const itemId = item.itemId
       const finalAmount = allocationData.amount || itemData.project_price || itemData.market_value || '0.00'
       const currentTransactionId: string | null = itemData.transaction_id || null
 
@@ -2043,14 +2141,14 @@ export const unifiedItemsService = {
           // the same project (mark allocated) but do not create an INV_PURCHASE.
           console.log('📋 Batch A.1: Item in sale for target project — removing from sale and assigning to project', itemId)
           await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
-          await this.updateItem(accountId, itemId, {
-            projectId: projectId,
-            inventoryStatus: 'allocated',
-            transactionId: null,
-            disposition: 'keep',
-            notes: allocationData.notes,
-            space: allocationData.space || ''
-          })
+          await this._restoreItemAfterSaleRemoval(
+            accountId,
+            item,
+            projectId,
+            finalAmount,
+            allocationData.notes,
+            allocationData.space
+          )
           continue
         } else {
           // A.2: Remove from Sale then add to Purchase for target project
@@ -2062,7 +2160,9 @@ export const unifiedItemsService = {
             inventoryStatus: 'allocated',
             transactionId: canonicalTransactionId,
             disposition: 'keep',
-            space: allocationData.space || ''
+            space: allocationData.space || '',
+            previousProjectTransactionId: null,
+            previousProjectId: null
           })
           continue
         }
@@ -2077,7 +2177,9 @@ export const unifiedItemsService = {
           inventoryStatus: 'allocated',
           transactionId: canonicalTransactionId,
           disposition: 'keep',
-          space: allocationData.space || ''
+          space: allocationData.space || '',
+          previousProjectTransactionId: null,
+          previousProjectId: null
         })
         continue
       }
@@ -2090,7 +2192,9 @@ export const unifiedItemsService = {
         inventoryStatus: 'allocated',
         transactionId: canonicalTransactionId,
         disposition: 'keep',
-        space: allocationData.space || ''
+        space: allocationData.space || '',
+        previousProjectTransactionId: null,
+        previousProjectId: null
       })
     }
 
@@ -2145,19 +2249,19 @@ export const unifiedItemsService = {
       if (currentProjectId === projectId) {
         // Returning from same project - remove from Purchase, move to inventory
         console.log('📋 Return Scenario: Item in Purchase, returning from same project')
-        return await this.handleReturnFromPurchase(accountId, itemId, currentTransactionId, projectId, finalAmount, notes)
+        return await this.handleReturnFromPurchase(accountId, item, currentTransactionId, projectId, finalAmount, notes)
       }
     }
 
     // If item is not in any transaction or is in inventory, this is a new return
     console.log('📋 Return Scenario: Item not in transaction or new return')
-    return await this.handleNewReturn(accountId, itemId, projectId, finalAmount, notes)
+    return await this.handleNewReturn(accountId, item, projectId, finalAmount, notes)
   },
 
   // Helper: Handle return from Purchase transaction (same project)
   async handleReturnFromPurchase(
     accountId: string,
-    itemId: string,
+    item: Item,
     currentTransactionId: string,
     _projectId: string,
     finalAmount: string,
@@ -2168,22 +2272,24 @@ export const unifiedItemsService = {
     // an INV_PURCHASE for the same project. Simply remove the item from the
     // purchase (the helper will delete the purchase if empty), then update the
     // item to reflect that it's back in business inventory.
-    await this.removeItemFromTransaction(accountId, itemId, currentTransactionId, finalAmount)
+    await this.removeItemFromTransaction(accountId, item.itemId, currentTransactionId, finalAmount)
 
     // Update item status to inventory and clear transaction linkage for canonical state
-    await this.updateItem(accountId, itemId, {
+    await this.updateItem(accountId, item.itemId, {
       projectId: null,
       inventoryStatus: 'available',
       transactionId: null,
       disposition: 'inventory',
-      notes: notes
+      notes: notes,
+      previousProjectTransactionId: currentTransactionId,
+      previousProjectId: item.projectId ?? _projectId
     })
 
     console.log('✅ Return completed: Purchase → Inventory (same project)')
 
     // Log successful return (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', itemId, null, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'return', item.itemId, null, currentTransactionId, {
         action: 'return_completed',
         scenario: 'return_from_purchase',
         from_transaction: currentTransactionId,
@@ -2201,7 +2307,7 @@ export const unifiedItemsService = {
   // Helper: Handle new return (item was already in inventory or no transaction)
   async handleNewReturn(
     accountId: string,
-    itemId: string,
+    item: Item,
     projectId: string,
     finalAmount: string,
     notes?: string
@@ -2240,7 +2346,7 @@ export const unifiedItemsService = {
       // Transaction exists - merge the new item and recalculate amount
       console.log('📋 Existing INV_SALE transaction found, updating with new item')
       const existingItemIds = existingTransaction.item_ids || []
-      const updatedItemIds = [...new Set([...existingItemIds, itemId])] // Avoid duplicates
+      const updatedItemIds = [...new Set([...existingItemIds, item.itemId])] // Avoid duplicates
 
       // Get all items to recalculate amount
       const { data: itemsData, error: itemsError } = await supabase
@@ -2252,7 +2358,7 @@ export const unifiedItemsService = {
       if (itemsError) throw itemsError
 
       const totalAmount = (itemsData || [])
-        .map(item => item.project_price || item.market_value || '0.00')
+        .map(current => current.project_price || current.market_value || '0.00')
         .reduce((sum: number, price: string) => sum + parseFloat(price || '0'), 0)
         .toFixed(2)
 
@@ -2288,7 +2394,7 @@ export const unifiedItemsService = {
         status: 'pending' as const,
         reimbursement_type: COMPANY_OWES_CLIENT,  // We owe the client for this purchase
         trigger_event: 'Inventory sale' as const,
-        item_ids: [itemId],
+        item_ids: [item.itemId],
         created_by: currentUser.id,
         created_at: now.toISOString(),
         updated_at: now.toISOString()
@@ -2304,19 +2410,28 @@ export const unifiedItemsService = {
       if (insertError) throw insertError
     }
 
-    // Update item status to inventory
-    await this.updateItem(accountId, itemId, {
+    // Update item status to inventory while preserving original purchase metadata when available
+    const previousProjectTransactionId = item.transactionId?.startsWith('INV_PURCHASE_')
+      ? item.transactionId
+      : item.previousProjectTransactionId ?? null
+    const previousProjectId = item.transactionId?.startsWith('INV_PURCHASE_')
+      ? (item.projectId ?? projectId)
+      : item.previousProjectId ?? null
+
+    await this.updateItem(accountId, item.itemId, {
       projectId: null,
       inventoryStatus: 'available',
       transactionId: saleTransactionId,
-      disposition: 'inventory'
+      disposition: 'inventory',
+      previousProjectTransactionId,
+      previousProjectId
     })
 
     console.log('✅ New return completed: Inventory → Sale')
 
     // Log successful return (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', itemId, null, saleTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'return', item.itemId, null, saleTransactionId, {
         action: 'return_completed',
         scenario: 'new_return',
         from_status: 'inventory',
@@ -2566,6 +2681,31 @@ export const unifiedItemsService = {
 
 // Deallocation Service - Handles inventory designation automation
 export const deallocationService = {
+  async _resolvePreviousProjectLink(
+    accountId: string,
+    item: Item,
+    projectId: string
+  ): Promise<{
+    previousProjectTransactionId: string | null;
+    previousProjectId: string | null;
+  }> {
+    const currentTransactionId = item.transactionId
+    const currentProjectId = item.projectId ?? projectId
+    const isCanonicalSale = currentTransactionId ? currentTransactionId.startsWith('INV_SALE_') : false
+
+    if (currentTransactionId && !isCanonicalSale) {
+      return {
+        previousProjectTransactionId: currentTransactionId,
+        previousProjectId: currentProjectId
+      }
+    }
+
+    return {
+      previousProjectTransactionId: item.previousProjectTransactionId ?? null,
+      previousProjectId: item.previousProjectId ?? null
+    }
+  },
+
   // Main entry point for handling inventory designation - simplified unified approach
   async handleInventoryDesignation(
     accountId: string,
@@ -2589,6 +2729,11 @@ export const deallocationService = {
       }
       console.log('✅ Item found:', item.itemId, 'disposition:', item.disposition, 'projectId:', item.projectId)
 
+      const {
+        previousProjectTransactionId,
+        previousProjectId
+      } = await this._resolvePreviousProjectLink(accountId, item, projectId)
+
       // If the item is currently linked to an INV_PURCHASE for the same project,
       // this is a purchase-reversion: remove it from the purchase and return it
       // to inventory instead of creating an INV_SALE. This prevents creating
@@ -2607,6 +2752,8 @@ export const deallocationService = {
             projectId: null,
             inventoryStatus: 'available',
             transactionId: null,
+            previousProjectTransactionId,
+            previousProjectId,
             lastUpdated: new Date().toISOString()
           })
 
@@ -2645,7 +2792,11 @@ export const deallocationService = {
         accountId,
         item,
         projectId,
-        'Transaction for items purchased from project and moved to business inventory'
+        'Transaction for items purchased from project and moved to business inventory',
+        {
+          previousProjectTransactionId,
+          previousProjectId
+        }
       )
 
       console.log('📦 Moving item to business inventory...')
@@ -2655,6 +2806,8 @@ export const deallocationService = {
         inventoryStatus: 'available',
         transactionId: transactionId,
         space: '', // Clear space field when moving to business inventory
+        previousProjectTransactionId,
+        previousProjectId,
         lastUpdated: new Date().toISOString()
       })
 
@@ -2684,7 +2837,11 @@ export const deallocationService = {
     accountId: string,
     item: Item,
     projectId: string,
-    additionalNotes?: string
+    additionalNotes?: string,
+    previousLink?: {
+      previousProjectTransactionId: string | null;
+      previousProjectId: string | null;
+    }
   ): Promise<string | null> {
     await ensureAuthenticatedForDatabase()
 
@@ -2717,7 +2874,9 @@ export const deallocationService = {
         await unifiedItemsService.updateItem(accountId, item.itemId, {
           projectId: null,
           inventoryStatus: 'available',
-          transactionId: null
+          transactionId: null,
+          previousProjectTransactionId: previousLink?.previousProjectTransactionId ?? item.transactionId,
+          previousProjectId: previousLink?.previousProjectId ?? item.projectId ?? projectId
         })
 
         // Return null to indicate no INV_SALE was created

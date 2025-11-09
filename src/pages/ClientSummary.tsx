@@ -5,6 +5,7 @@ import type { Item, Project, Transaction } from '@/types'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
 import { useAccount } from '@/contexts/AccountContext'
 import { useBusinessProfile } from '@/contexts/BusinessProfileContext'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
@@ -127,11 +128,41 @@ export default function ClientSummary() {
     navigate(`/project/${projectId}?tab=inventory`)
   }
 
-  // Helper to get receipt link for an item
-  const getReceiptLink = (item: Item): string | null => {
-    if (item.transactionId && projectId) {
-      return `/project/${projectId}/transaction/${item.transactionId}`
+  // Helper to get receipt link for an item.
+  // Behavior:
+  // - If the item has a transactionId, prefer linking to that transaction page.
+  // - If that transaction is canonical/invoiceable (INV_* canonical id or invoiceable reimbursementType),
+  //   use the project invoice as the receipt link instead of the transaction page.
+  // - No fallback searching other transactions for this item — return null when no transactionId.
+  const getReceiptLink = (item: Item): { href: string; isInternal: boolean } | null => {
+    if (!projectId) return null
+
+    if (item.transactionId) {
+      const tx = transactions.find((t) => t.transactionId === item.transactionId)
+
+      if (!tx) {
+        return null
+      }
+
+      const isCanonicalById = tx.transactionId?.startsWith('INV_SALE_') || tx.transactionId?.startsWith('INV_PURCHASE_')
+
+      const isInvoiceableByType =
+        tx.reimbursementType === CLIENT_OWES_COMPANY || tx.reimbursementType === COMPANY_OWES_CLIENT
+
+      if (isCanonicalById || isInvoiceableByType) {
+        return { href: `/project/${projectId}/invoice`, isInternal: true }
+      }
+
+      const receiptImageUrl = tx.receiptImages?.[0]?.url
+
+      if (receiptImageUrl) {
+        return { href: receiptImageUrl, isInternal: false }
+      }
+
+      return null
     }
+
+    // No transactionId -> no receipt link (no fallback)
     return null
   }
 
@@ -289,12 +320,23 @@ export default function ClientSummary() {
                             {receiptLink && (
                               <>
                                 {item.source && <span className="text-xs text-gray-400">•</span>}
-                                <Link
-                                  to={receiptLink}
-                                  className="text-xs text-primary-600 hover:text-primary-700 underline print:hidden"
-                                >
-                                  View Receipt
-                                </Link>
+                                {receiptLink.isInternal ? (
+                                  <Link
+                                    to={receiptLink.href}
+                                    className="text-xs text-primary-600 hover:text-primary-700 underline print:hidden"
+                                  >
+                                    View Receipt
+                                  </Link>
+                                ) : (
+                                  <a
+                                    href={receiptLink.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary-600 hover:text-primary-700 underline print:hidden"
+                                  >
+                                    View Receipt
+                                  </a>
+                                )}
                                 <span className="text-xs text-primary-600 print:inline hidden">
                                   Receipt available
                                 </span>

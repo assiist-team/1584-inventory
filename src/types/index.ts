@@ -96,6 +96,8 @@ export interface Item {
   accountId?: string;
   projectId?: string | null;   // null = business inventory, string = allocated to project
   transactionId?: string | null;
+  previousProjectTransactionId?: string | null;
+  previousProjectId?: string | null;
   name?: string;
   description: string;
   source: string;
