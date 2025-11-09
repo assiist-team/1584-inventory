@@ -5,6 +5,7 @@ import { TransactionImagePreview } from '@/components/ui/ImagePreview'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { Transaction, Project, Item, TransactionItemFormData, TaxPreset } from '@/types'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
@@ -98,7 +99,32 @@ export default function TransactionDetail() {
       const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
       const items = await Promise.all(itemsPromises)
       const validItems = items.filter(item => item !== null) as Item[]
-      setTransactionItems(validItems)
+      
+      // Fetch edges that moved FROM this transaction to determine "moved out" items
+      const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+      const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+      
+      // Split items into "In this transaction" vs "Moved out"
+      const itemsInTransaction = validItems.filter(item => {
+        // Use latestTransactionId if available, fallback to transactionId for transitional period
+        const currentTransactionId = item.latestTransactionId ?? item.transactionId
+        const isInTransaction = currentTransactionId === transactionId
+        const hasMovedOut = movedOutItemIds.has(item.itemId)
+        // Item is "in" if it's currently in this transaction AND hasn't moved out
+        return isInTransaction && !hasMovedOut
+      })
+      
+      const itemsMovedOut = validItems.filter(item => {
+        const hasMovedOut = movedOutItemIds.has(item.itemId)
+        // Transitional fallback: also check previousProjectTransactionId
+        const transitionalMovedOut = !item.latestTransactionId && 
+          item.projectId == null && 
+          item.previousProjectTransactionId === transactionId
+        return hasMovedOut || transitionalMovedOut
+      })
+      
+      // Store both sets - we'll display them separately
+      setTransactionItems([...itemsInTransaction, ...itemsMovedOut])
     } catch (error) {
       console.error('Error refreshing transaction items:', error)
     }
@@ -131,24 +157,52 @@ export default function TransactionDetail() {
           // Get project data for the found project
           projectData = await projectService.getProject(currentAccountId, actualProjectId)
         } else {
-          // Fetch transaction, project data, and transaction items for regular project transactions
-          const [fetchedTransactionData, fetchedProjectData, transactionItems] = await Promise.all([
+          // Fetch transaction and project data for regular project transactions.
+          // We intentionally do NOT rely on `getItemsForTransaction` here because moved/deallocated
+          // items may have been cleared from the `transaction_id` column. Instead, read
+          // `itemIds` from the transaction row and load each item by `item_id` so moved items
+          // are still discoverable and can be shown in the "Moved out" section.
+          const [fetchedTransactionData, fetchedProjectData] = await Promise.all([
             transactionService.getTransaction(currentAccountId, actualProjectId, transactionId),
-            projectService.getProject(currentAccountId, actualProjectId),
-            unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId, transactionId)
+            projectService.getProject(currentAccountId, actualProjectId)
           ])
 
           transactionData = fetchedTransactionData
           projectData = fetchedProjectData
 
-          // Fetch the actual item details for regular project transactions
-          if (transactionItems.length > 0 && actualProjectId) {
-            const itemIds = transactionItems.map(item => item.itemId)
-            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(currentAccountId, itemId))
+          // Prefer item IDs stored on the transaction record
+          const itemIdsFromTransaction = Array.isArray(transactionData?.itemIds) ? transactionData.itemIds : []
+          if (itemIdsFromTransaction.length > 0 && actualProjectId) {
+            const itemsPromises = itemIdsFromTransaction.map((itemId: string) => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
-            console.log('TransactionDetail - fetched items:', validItems.length)
-            setTransactionItems(validItems)
+            console.log('TransactionDetail - fetched items (from transaction.itemIds):', validItems.length)
+
+            // Include items that were moved out of this transaction by consulting lineage edges.
+            try {
+              const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+              const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+
+              const itemsInTransaction = validItems.filter(item => {
+                const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                const isInTransaction = currentTransactionId === transactionId
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                return isInTransaction && !hasMovedOut
+              })
+
+              const itemsMovedOut = validItems.filter(item => {
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                const transitionalMovedOut = !item.latestTransactionId &&
+                  item.projectId == null &&
+                  item.previousProjectTransactionId === transactionId
+                return hasMovedOut || transitionalMovedOut
+              })
+
+              setTransactionItems([...itemsInTransaction, ...itemsMovedOut])
+            } catch (edgeErr) {
+              console.error('TransactionDetail - failed to fetch lineage edges:', edgeErr)
+              setTransactionItems(validItems)
+            }
           } else {
             setTransactionItems([])
           }
@@ -167,15 +221,39 @@ export default function TransactionDetail() {
 
         // Fetch transaction items for business inventory transactions
         if (!projectId && actualProjectId) {
-          // For business inventory transactions, fetch items after we have the project ID
-            const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId!, transactionId)
-          if (transactionItems.length > 0) {
-            const itemIds = transactionItems.map(item => item.itemId)
-            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(currentAccountId, itemId))
+          // For business inventory transactions, prefer item IDs stored on the transaction record
+          // so deallocated/moved items remain discoverable.
+          const transactionItemIds = Array.isArray(transactionData?.itemIds) ? transactionData.itemIds : []
+          if (transactionItemIds.length > 0) {
+            const itemsPromises = transactionItemIds.map((itemId: string) => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
             console.log('TransactionDetail - fetched items for business inventory transaction:', validItems.length)
-            setTransactionItems(validItems)
+
+            try {
+              const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+              const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+
+              const itemsInTransaction = validItems.filter(item => {
+                const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                const isInTransaction = currentTransactionId === transactionId
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                return isInTransaction && !hasMovedOut
+              })
+
+              const itemsMovedOut = validItems.filter(item => {
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                const transitionalMovedOut = !item.latestTransactionId &&
+                  item.projectId == null &&
+                  item.previousProjectTransactionId === transactionId
+                return hasMovedOut || transitionalMovedOut
+              })
+
+              setTransactionItems([...itemsInTransaction, ...itemsMovedOut])
+            } catch (edgeErr) {
+              console.error('TransactionDetail - failed to fetch lineage edges (business inventory):', edgeErr)
+              setTransactionItems(validItems)
+            }
           } else {
             setTransactionItems([])
           }
@@ -528,6 +606,107 @@ export default function TransactionDetail() {
     isPrimary: index === 0 // First image is primary
   })) || []
 
+  // Helper function to render item card
+  function renderItemCard(item: Item, itemLink: string, isMovedOut: boolean) {
+    return (
+      <Link
+        key={item.itemId}
+        to={itemLink}
+        className={`block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative ${isMovedOut ? 'opacity-60' : ''}`}
+      >
+        {/* Moved badge for moved out items */}
+        {isMovedOut && (
+          <div className="absolute top-1 right-1 z-10">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+              Moved
+            </span>
+          </div>
+        )}
+        
+        {/* Disposition badge in upper right corner (if not moved) */}
+        {!isMovedOut && item.disposition && (
+          <div className="absolute top-1 right-1 z-10">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+              item.disposition === 'keep'
+                ? 'bg-green-100 text-green-800'
+                : item.disposition === 'to return'
+                ? 'bg-red-100 text-red-700'
+                : item.disposition === 'return' // Backward compatibility
+                ? 'bg-red-100 text-red-700'
+                : item.disposition === 'returned'
+                ? 'bg-red-800 text-red-100'
+                : item.disposition === 'inventory'
+                ? 'bg-primary-100 text-primary-600'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
+            </span>
+          </div>
+        )}
+
+        {/* Image and Description row - side by side like inventory list */}
+        <div className="flex items-center gap-3 py-3">
+          <div className="flex-shrink-0">
+            {item.images && item.images.length > 0 ? (
+              // Show primary image thumbnail or first image if no primary
+              (() => {
+                const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
+                return (
+                  <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                    <img
+                      src={primaryImage.url}
+                      alt={primaryImage.alt || 'Item image'}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )
+              })()
+            ) : (
+              // Show placeholder when no images
+              <div className="w-16 h-16 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-400 bg-gray-100">
+                <Package className="h-6 w-6" />
+              </div>
+            )}
+          </div>
+
+          {/* Item description - matching inventory list styling */}
+          <div className="flex-1 min-w-0 flex items-center">
+            <div>
+              <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
+                {item.description}
+              </h3>
+              {/* Space field - if available */}
+              {item.space && (
+                <p className="text-sm text-gray-600 mt-1">
+                  {item.space}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+          {(item.projectPrice || item.purchasePrice) && (
+            <span className="font-medium text-gray-700">{formatCurrency(item.projectPrice || item.purchasePrice || '0')}</span>
+          )}
+          {item.source && (
+            <>
+              {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
+              <span className="font-medium text-gray-700">{item.source}</span>
+            </>
+          )}
+          {item.sku && (
+            <>
+              {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
+              <span className="font-medium text-gray-700">{item.sku}</span>
+            </>
+          )}
+        </div>
+      </Link>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -873,135 +1052,90 @@ export default function TransactionDetail() {
               <span className="ml-2 text-sm text-gray-600">Loading items...</span>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Existing Items Display */}
-              {transactionItems.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {transactionItems.map((item) => {
-                    // Check if item has been deallocated to inventory (projectId is null)
-                    const isDeallocated = item.projectId == null
-                    const itemLink = isDeallocated
-                      ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
-                      : buildContextUrl(`/project/${projectId}/item/${item.itemId}`, { from: 'transaction' })
-
-                    return (
-                      <Link
-                        key={item.itemId}
-                        to={itemLink}
-                        className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
-                      >
-                      {/* Disposition badge in upper right corner */}
-                      {item.disposition && (
-                        <div className="absolute top-1 right-1 z-10">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            item.disposition === 'keep'
-                              ? 'bg-green-100 text-green-800'
-                              : item.disposition === 'to return'
-                              ? 'bg-red-100 text-red-700'
-                              : item.disposition === 'return' // Backward compatibility
-                              ? 'bg-red-100 text-red-700'
-                              : item.disposition === 'returned'
-                              ? 'bg-red-800 text-red-100'
-                              : item.disposition === 'inventory'
-                              ? 'bg-primary-100 text-primary-600'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Image and Description row - side by side like inventory list */}
-                      <div className="flex items-center gap-3 py-3">
-                        <div className="flex-shrink-0">
-                          {item.images && item.images.length > 0 ? (
-                            // Show primary image thumbnail or first image if no primary
-                            (() => {
-                              const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
-                              return (
-                                <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
-                                  <img
-                                    src={primaryImage.url}
-                                    alt={primaryImage.alt || 'Item image'}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                              )
-                            })()
-                          ) : (
-                            // Show placeholder when no images
-                            <div className="w-16 h-16 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-400 bg-gray-100">
-                              <Package className="h-6 w-6" />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Item description - matching inventory list styling */}
-                        <div className="flex-1 min-w-0 flex items-center">
-                          <div>
-                            <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
-                              {item.description}
-                            </h3>
-                            {/* Space field - if available */}
-                            {item.space && (
-                              <p className="text-sm text-gray-600 mt-1">
-                                {item.space}
-                              </p>
-                            )}
-                          </div>
+            <div className="space-y-6">
+              {/* Items In This Transaction */}
+              {(() => {
+                // Split items into "In this transaction" vs "Moved out"
+                const itemsInTransaction = transactionItems.filter(item => {
+                  const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                  return currentTransactionId === transactionId
+                })
+                
+                const itemsMovedOut = transactionItems.filter(item => {
+                  const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                  const hasMovedOut = currentTransactionId !== transactionId
+                  // Transitional fallback
+                  const transitionalMovedOut = !item.latestTransactionId && 
+                    item.projectId == null && 
+                    item.previousProjectTransactionId === transactionId
+                  return hasMovedOut || transitionalMovedOut
+                })
+                
+                return (
+                  <>
+                    {/* Section A: In this transaction */}
+                    {itemsInTransaction.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">In this transaction</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {itemsInTransaction.map((item) => {
+                            const isDeallocated = item.projectId == null
+                            const itemLink = isDeallocated
+                              ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                              : buildContextUrl(`/project/${projectId}/item/${item.itemId}`, { from: 'transaction' })
+                            
+                            return renderItemCard(item, itemLink, false)
+                          })}
                         </div>
                       </div>
-
-                      {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                        {(item.projectPrice || item.purchasePrice) && (
-                          <span className="font-medium text-gray-700">{formatCurrency(item.projectPrice || item.purchasePrice || '0')}</span>
-                        )}
-                        {item.source && (
-                          <>
-                            {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
-                            <span className="font-medium text-gray-700">{item.source}</span>
-                          </>
-                        )}
-                        {item.sku && (
-                          <>
-                            {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
-                            <span className="font-medium text-gray-700">{item.sku}</span>
-                          </>
-                        )}
+                    )}
+                    
+                    {/* Section B: Moved out */}
+                    {itemsMovedOut.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Moved</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {itemsMovedOut.map((item) => {
+                            const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                            const isInInventory = currentTransactionId == null
+                            const itemLink = isInInventory
+                              ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                              : buildContextUrl(`/project/${item.projectId}/item/${item.itemId}`, { from: 'transaction' })
+                            
+                            return renderItemCard(item, itemLink, true)
+                          })}
+                        </div>
                       </div>
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
+                    )}
+                    
+                    {itemsInTransaction.length === 0 && itemsMovedOut.length === 0 && !isAddingItem && (
+                      <div className="text-center py-8">
+                        <Package className="mx-auto h-8 w-8 text-gray-400" />
+                        <h3 className="mt-2 text-sm font-medium text-gray-900">No items added</h3>
+                        <button
+                          onClick={() => setIsAddingItem(true)}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
+                          title="Add new item"
+                        >
+                          <Package className="h-3 w-3 mr-1" />
+                          Add Item
+                        </button>
+                      </div>
+                    )}
 
-              {/* In-line Item Addition */}
-              {isAddingItem && (
-                <TransactionItemForm
-                  onSave={handleSaveItem}
-                  onCancel={handleCancelAddItem}
-                  projectId={projectId}
-                  projectName={project ? project.name : ''}
-                  onImageFilesChange={handleImageFilesChange}
-                />
-              )}
+                    {isAddingItem && (
+                      <TransactionItemForm
+                        onSave={handleSaveItem}
+                        onCancel={handleCancelAddItem}
+                        projectId={projectId}
+                        projectName={project ? project.name : ''}
+                        onImageFilesChange={handleImageFilesChange}
+                      />
+                    )}
+                  </>
+                )
+              })()}
 
-              {/* Empty State - Only show when no items exist and not adding */}
-              {transactionItems.length === 0 && !isAddingItem && (
-                <div className="text-center py-8">
-                  <Package className="mx-auto h-8 w-8 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No items added</h3>
-                  <button
-                    onClick={() => setIsAddingItem(true)}
-                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
-                    title="Add new item"
-                  >
-                    <Package className="h-3 w-3 mr-1" />
-                    Add Item
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>

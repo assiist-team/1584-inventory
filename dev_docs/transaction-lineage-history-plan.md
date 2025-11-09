@@ -2,8 +2,20 @@
 
 ## Summary
 - Preserve immutable provenance for every item by introducing an append-only transaction lineage.
-- Clearly display items that are still part of a transaction vs. those that “moved out,” across project and business inventory contexts.
-- Do not model “progress” or “completion.” No canonical/non-canonical categories. No hover interactions.
+- Clearly display items that are still part of a transaction vs. those that "moved out," across project and business inventory contexts.
+- Do not model "progress" or "completion." No canonical/non-canonical categories. No hover interactions.
+
+## Implementation Status
+- ✅ Database migration created (012_add_item_lineage.sql)
+- ✅ Types added (ItemLineageEdge, Item lineage fields)
+- ✅ LineageService created with idempotency checks
+- ✅ Conversion helpers updated to map lineage fields
+- ✅ Allocation flows integrated (all scenarios A/B/C)
+- ✅ Deallocation/return flows integrated
+- ✅ TransactionDetail UI updated (In this transaction vs Moved out sections)
+- ⏳ Breadcrumb display (pending - can be added later)
+- ⏳ Realtime subscriptions (pending - can be added later)
+- ✅ Backfill script created (013_backfill_item_lineage.sql)
 
 ## Objectives
 - Keep an authoritative origin and latest association for each item.

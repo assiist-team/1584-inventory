@@ -239,6 +239,8 @@ This project is private and proprietary.
 
 For support and questions, please refer to the documentation in the `dev_docs/` directory or contact the development team.
 
+- **Item-lineage troubleshooting**: If you observe errors mentioning `item_lineage_edges`, `PGRST205`, `404`, or `406` during deallocation/lineage operations, follow the checklist in `dev_docs/troubleshooting/transaction-lineage-troubleshooting.md`.
+
 ---
 
 **Built with ❤️ for 1584 Design**

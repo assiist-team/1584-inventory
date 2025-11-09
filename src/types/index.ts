@@ -127,6 +127,10 @@ export interface Item {
   // Business Inventory fields (unified with Item)
   inventoryStatus?: 'available' | 'allocated' | 'sold';
   businessInventoryLocation?: string; // Warehouse location details
+
+  // Lineage tracking fields
+  originTransactionId?: string | null;  // Immutable: transaction id at creation/intake
+  latestTransactionId?: string | null;  // Denormalized: current transaction association; null = in inventory
 }
 
 // Note: ItemCategory and ItemStatus enums have been removed as they don't align
@@ -357,4 +361,16 @@ export interface TransactionCompleteness {
   taxAmount?: number
   varianceDollars: number
   variancePercent: number
+}
+
+// Item Lineage Edge - append-only record of item movement between transactions
+export interface ItemLineageEdge {
+  id: string;
+  accountId: string;
+  itemId: string;
+  fromTransactionId: string | null;  // null == from inventory
+  toTransactionId: string | null;     // null == to inventory
+  createdAt: string;  // ISO timestamp
+  createdBy?: string | null;  // UUID of user who created the edge
+  note?: string | null;  // Optional note about the move
 }
