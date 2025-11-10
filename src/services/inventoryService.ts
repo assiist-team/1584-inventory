@@ -1835,6 +1835,33 @@ export const unifiedItemsService = {
       console.warn('Failed to inherit tax_rate_pct when updating item:', e)
     }
 
+    // If transaction_id is being set and the item currently has a 'to return'
+    // disposition, and the target transaction is a Return, automatically mark
+    // the item as 'returned' so it reflects the transaction assignment.
+    try {
+      const willSetTransaction = updates.transactionId !== undefined && updates.transactionId !== null
+      if (willSetTransaction && existingItem?.disposition === 'to return') {
+        const txId = updates.transactionId as string
+        if (txId) {
+          const { data: txData } = await supabase
+            .from('transactions')
+            .select('transaction_type')
+            .eq('account_id', accountId)
+            .eq('transaction_id', txId)
+            .single()
+
+          if (txData && txData.transaction_type === 'Return') {
+            // Only set disposition if caller didn't explicitly provide one in updates
+            if (dbUpdates.disposition === undefined) {
+              dbUpdates.disposition = 'returned'
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to auto-update disposition when assigning return transaction:', e)
+    }
+
     const { error } = await supabase
       .from('items')
       .update(dbUpdates)
