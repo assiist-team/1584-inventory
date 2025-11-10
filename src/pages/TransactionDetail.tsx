@@ -68,6 +68,8 @@ export default function TransactionDetail() {
     loadPresets()
   }, [currentAccountId])
   const [transactionItems, setTransactionItems] = useState<Item[]>([])
+  // Cache resolved project IDs for transactions referenced by items when item.projectId is missing
+  const [resolvedProjectByTx, setResolvedProjectByTx] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
   const [showGallery, setShowGallery] = useState(false)
@@ -124,7 +126,10 @@ export default function TransactionDetail() {
       })
       
       // Store both sets - we'll display them separately
-      setTransactionItems([...itemsInTransaction, ...itemsMovedOut])
+      const combined = [...itemsInTransaction, ...itemsMovedOut]
+      setTransactionItems(combined)
+      // Resolve any missing project IDs referenced by moved items (fire-and-forget)
+      resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
     } catch (error) {
       console.error('Error refreshing transaction items:', error)
     }
@@ -198,7 +203,9 @@ export default function TransactionDetail() {
                 return hasMovedOut || transitionalMovedOut
               })
 
-              setTransactionItems([...itemsInTransaction, ...itemsMovedOut])
+              const combined = [...itemsInTransaction, ...itemsMovedOut]
+              setTransactionItems(combined)
+              resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
             } catch (edgeErr) {
               console.error('TransactionDetail - failed to fetch lineage edges:', edgeErr)
               setTransactionItems(validItems)
@@ -249,7 +256,9 @@ export default function TransactionDetail() {
                 return hasMovedOut || transitionalMovedOut
               })
 
-              setTransactionItems([...itemsInTransaction, ...itemsMovedOut])
+              const combined = [...itemsInTransaction, ...itemsMovedOut]
+              setTransactionItems(combined)
+              resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
             } catch (edgeErr) {
               console.error('TransactionDetail - failed to fetch lineage edges (business inventory):', edgeErr)
               setTransactionItems(validItems)
@@ -606,14 +615,56 @@ export default function TransactionDetail() {
     isPrimary: index === 0 // First image is primary
   })) || []
 
+  // Resolve missing project IDs for transactions referenced by items.
+  // This avoids interpolating `undefined` into project routes when an item
+  // has had its `projectId` cleared but still references a `latestTransactionId`.
+  async function resolveMissingProjectIds(items: Item[]) {
+    if (!currentAccountId) return
+
+    // Collect unique transaction IDs that need resolution and aren't already cached.
+    const txIdsToResolve = Array.from(new Set(
+      items
+        .map(i => i.latestTransactionId ?? i.transactionId)
+        .filter(Boolean) as string[]
+    )).filter(txId => !resolvedProjectByTx[txId])
+
+    if (txIdsToResolve.length === 0) return
+
+    try {
+      const results = await Promise.all(
+        txIdsToResolve.map(async (txId) => {
+          try {
+            const res = await transactionService.getTransactionById(currentAccountId, txId)
+            return { txId, projectId: res.projectId || null }
+          } catch (err) {
+            console.debug('TransactionDetail - failed to fetch transaction for project resolution', { txId, err })
+            return { txId, projectId: null }
+          }
+        })
+      )
+
+      const newMap = { ...resolvedProjectByTx }
+      results.forEach(r => {
+        if (r.projectId) {
+          newMap[r.txId] = r.projectId
+        }
+      })
+
+      // Only update state if we found any new mappings
+      if (Object.keys(newMap).length > Object.keys(resolvedProjectByTx).length) {
+        setResolvedProjectByTx(newMap)
+      }
+    } catch (err) {
+      console.debug('TransactionDetail - resolveMissingProjectIds unexpected error', err)
+    }
+  }
+
   // Helper function to render item card
-  function renderItemCard(item: Item, itemLink: string, isMovedOut: boolean) {
-    return (
-      <Link
-        key={item.itemId}
-        to={itemLink}
-        className={`block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative ${isMovedOut ? 'opacity-60' : ''}`}
-      >
+  function renderItemCard(item: Item, itemLink: string | null, isMovedOut: boolean) {
+    const cardClass = `block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative ${isMovedOut ? 'opacity-60' : ''}`
+
+    const cardInner = (
+      <>
         {/* Moved badge for moved out items */}
         {isMovedOut && (
           <div className="absolute top-1 right-1 z-10">
@@ -622,7 +673,7 @@ export default function TransactionDetail() {
             </span>
           </div>
         )}
-        
+
         {/* Disposition badge in upper right corner (if not moved) */}
         {!isMovedOut && item.disposition && (
           <div className="absolute top-1 right-1 z-10">
@@ -703,6 +754,27 @@ export default function TransactionDetail() {
             </>
           )}
         </div>
+      </>
+    )
+
+    // If we couldn't resolve a safe link, render as non-clickable card and log for debugging
+    if (!itemLink) {
+      console.debug('TransactionDetail - rendering moved item without link', {
+        itemId: item.itemId,
+        latestTransactionId: item.latestTransactionId ?? item.transactionId,
+        projectId: item.projectId,
+      })
+
+      return (
+        <div key={item.itemId} className={cardClass}>
+          {cardInner}
+        </div>
+      )
+    }
+
+    return (
+      <Link key={item.itemId} to={itemLink} className={cardClass}>
+        {cardInner}
       </Link>
     )
   }
@@ -1073,16 +1145,17 @@ export default function TransactionDetail() {
                 
                 return (
                   <>
-                    {/* Section A: In this transaction */}
+                    {/* Section A: In this project */}
                     {itemsInTransaction.length > 0 && (
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">In this transaction</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">In this project</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {itemsInTransaction.map((item) => {
                             const isDeallocated = item.projectId == null
+                            const originProjectId = projectId || transaction?.projectId || ''
                             const itemLink = isDeallocated
                               ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
-                              : buildContextUrl(`/project/${projectId}/item/${item.itemId}`, { from: 'transaction' })
+                              : buildContextUrl(`/project/${originProjectId}/item/${item.itemId}`, { from: 'transaction', project: originProjectId, transactionId: transactionId || '' })
                             
                             return renderItemCard(item, itemLink, false)
                           })}
@@ -1090,18 +1163,43 @@ export default function TransactionDetail() {
                       </div>
                     )}
                     
-                    {/* Section B: Moved out */}
+                    {/* Section B: Moved to inventory */}
                     {itemsMovedOut.length > 0 && (
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-3">Moved</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           {itemsMovedOut.map((item) => {
                             const currentTransactionId = item.latestTransactionId ?? item.transactionId
-                            const isInInventory = currentTransactionId == null
-                            const itemLink = isInInventory
-                              ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
-                              : buildContextUrl(`/project/${item.projectId}/item/${item.itemId}`, { from: 'transaction' })
-                            
+                            const isInInventory = !currentTransactionId
+
+                            // Default to no link (defensive) and build a deterministic link below
+                            let itemLink: string | null = null
+
+                            if (isInInventory) {
+                              itemLink = buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                            } else if (item.projectId) {
+                              // Item still carries a projectId - use it
+                              itemLink = buildContextUrl(`/project/${item.projectId}/item/${item.itemId}`, { from: 'transaction' })
+                            } else if (currentTransactionId?.startsWith('INV_SALE_') || currentTransactionId?.startsWith('INV_PURCHASE_')) {
+                              // Canonical inventory transaction - treat as company/business inventory for now
+                              itemLink = buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                            } else {
+                              // Try resolved cache (populated asynchronously). If present, use it; otherwise leave null.
+                              const resolvedProjectId = currentTransactionId ? resolvedProjectByTx[currentTransactionId] : undefined
+                              if (resolvedProjectId) {
+                                itemLink = buildContextUrl(`/project/${resolvedProjectId}/item/${item.itemId}`, { from: 'transaction', project: resolvedProjectId, transactionId: transactionId || '' })
+                              } else {
+                                // Log debug info - will render as non-link until resolution completes
+                                console.debug('TransactionDetail - unresolved moved item link', {
+                                  itemId: item.itemId,
+                                  currentTransactionId,
+                                  itemProjectId: item.projectId,
+                                  resolvedProjectId: resolvedProjectByTx[currentTransactionId || '']
+                                })
+                                itemLink = null
+                              }
+                            }
+
                             return renderItemCard(item, itemLink, true)
                           })}
                         </div>

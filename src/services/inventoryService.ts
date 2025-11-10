@@ -522,14 +522,35 @@ export const transactionService = {
       throw new Error('Transaction not found')
     }
 
+    // Include items that were moved out of this transaction by consulting lineage edges.
+    // The UI displays both "in transaction" and "moved out" items; completeness should
+    // count both sets when the item has this transaction in its lineage.
+    let combinedItems = items.slice()
+    try {
+      const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, accountId)
+      const movedOutItemIds = Array.from(new Set(edgesFromTransaction.map(edge => edge.itemId)))
+
+      // Fetch any moved item records that aren't already in the items list
+      const missingMovedItemIds = movedOutItemIds.filter(id => !combinedItems.some(it => it.itemId === id))
+      if (missingMovedItemIds.length > 0) {
+        const movedItemsPromises = missingMovedItemIds.map(id => unifiedItemsService.getItemById(accountId, id))
+        const movedItems = await Promise.all(movedItemsPromises)
+        const validMovedItems = movedItems.filter(mi => mi !== null) as Item[]
+        combinedItems = combinedItems.concat(validMovedItems)
+      }
+    } catch (edgeErr) {
+      // Non-fatal: if lineage lookup fails, fall back to items returned by getItemsForTransaction
+      console.debug('getTransactionCompleteness - failed to fetch lineage edges:', edgeErr)
+    }
+
     // Calculate items net total (sum of purchase prices)
-    const itemsNetTotal = items.reduce((sum, item) => {
+    const itemsNetTotal = combinedItems.reduce((sum, item) => {
       const purchasePrice = parseFloat(item.purchasePrice || '0')
       return sum + (isNaN(purchasePrice) ? 0 : purchasePrice)
     }, 0)
 
-    const itemsCount = items.length
-    const itemsMissingPriceCount = items.filter(item => {
+    const itemsCount = combinedItems.length
+    const itemsMissingPriceCount = combinedItems.filter(item => {
       const purchasePrice = item.purchasePrice
       return !purchasePrice || purchasePrice.trim() === '' || parseFloat(purchasePrice) === 0
     }).length
