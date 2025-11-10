@@ -230,6 +230,8 @@ export interface Transaction {
   taxRatePreset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
   taxRatePct?: number; // percentage, e.g., 8.25 (calculated from preset or subtotal)
   subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
+  needsReview?: boolean; // Denormalized flag from DB: true if transaction needs audit review
+  sumItemPurchasePrices?: string; // Denormalized numeric string stored as two-decimal string, e.g. '123.45'
 }
 
 export enum BudgetCategory {

@@ -1,6 +1,6 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect, useRef, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { COMPANY_NAME, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
@@ -75,6 +75,7 @@ export default function EditTransaction() {
 
   // Transaction items state
   const [items, setItems] = useState<TransactionItemFormData[]>([])
+  const initialItemsRef = useRef<TransactionItemFormData[] | null>(null)
 
   // Custom source state
   const [isCustomSource, setIsCustomSource] = useState(false)
@@ -184,7 +185,7 @@ export default function EditTransaction() {
                 return {
                   id: item.itemId,
                   description: item?.description || '',
-                  price: item?.purchasePrice?.toString() || '',
+                  purchasePrice: item?.purchasePrice?.toString() || '',
                   sku: item?.sku || '',
                   marketValue: item?.marketValue?.toString() || '',
                   notes: item?.notes || '',
@@ -199,6 +200,20 @@ export default function EditTransaction() {
               isTempId: item.itemId.startsWith('temp-')
             })))
             setItems(itemsWithDetails)
+            // Capture initial snapshot of loaded items to detect later edits.
+            try {
+              initialItemsRef.current = itemsWithDetails.map(i => ({
+                id: i.id,
+                description: i.description,
+                purchasePrice: i.purchasePrice,
+                sku: i.sku,
+                marketValue: i.marketValue,
+                notes: i.notes
+              } as TransactionItemFormData))
+            } catch (e) {
+              // Non-fatal
+              initialItemsRef.current = null
+            }
           } catch (itemError) {
             console.error('Error loading transaction items:', itemError)
           }
@@ -246,9 +261,17 @@ export default function EditTransaction() {
 
     if (!validateForm() || !projectId || !transactionId || !currentAccountId) return
 
-    setIsSubmitting(true)
-
+  setIsSubmitting(true)
+    let _needsReviewBatchStarted = false
     try {
+      if (currentAccountId && transactionId) {
+        try {
+          transactionService.beginNeedsReviewBatch(currentAccountId, transactionId)
+          _needsReviewBatchStarted = true
+        } catch (e) {
+          console.warn('Failed to begin needs review batch:', e)
+        }
+      }
       // First, handle item updates and creations
       if (items.length > 0) {
         // Debug: Log all items to understand the issue
@@ -287,16 +310,35 @@ export default function EditTransaction() {
 
         console.log(`Separated ${existingItems.length} existing items and ${newItems.length} new items`)
 
-        // Update existing items (classification is now robust, so no additional safety checks needed)
+        // Update existing items only if fields actually changed compared to the initial load.
+        const initialItemsMap = new Map<string, TransactionItemFormData>()
+        if (initialItemsRef.current) {
+          for (const it of initialItemsRef.current) initialItemsMap.set(it.id, it)
+        }
+
+        const itemsToUpdate: Array<{ id: string; updates: Partial<TransactionItemFormData> }> = []
         for (const item of existingItems) {
-          await unifiedItemsService.updateItem(currentAccountId, item.id, {
-            description: item.description,
-            purchasePrice: item.purchasePrice,
-            sku: item.sku,
-            marketValue: item.marketValue,
-            notes: item.notes,
-            transactionId: transactionId
-          })
+          const orig = initialItemsMap.get(item.id)
+          const updates: Partial<TransactionItemFormData> = {}
+          if (!orig || orig.description !== item.description) updates.description = item.description
+          // Normalize undefined/empty string comparisons for numeric fields stored as strings
+          if (!orig || String(orig.purchasePrice || '') !== String(item.purchasePrice || '')) updates.purchasePrice = item.purchasePrice
+          if (!orig || String(orig.marketValue || '') !== String(item.marketValue || '')) updates.marketValue = item.marketValue
+          if (!orig || (orig.sku || '') !== (item.sku || '')) updates.sku = item.sku
+          if (!orig || (orig.notes || '') !== (item.notes || '')) updates.notes = item.notes
+          // Ensure transaction linkage is present
+          updates.transactionId = transactionId
+
+          // If there are any meaningful updates (besides transactionId), add to update list
+          const meaningfulKeys = Object.keys(updates).filter(k => k !== 'transactionId')
+          if (meaningfulKeys.length > 0) {
+            itemsToUpdate.push({ id: item.id, updates })
+          }
+        }
+
+        console.log(`Preparing to update ${itemsToUpdate.length} of ${existingItems.length} existing items`)
+        for (const u of itemsToUpdate) {
+          await unifiedItemsService.updateItem(currentAccountId, u.id, u.updates)
         }
 
         // Create new items using the same batch infrastructure as new transactions
@@ -383,6 +425,13 @@ export default function EditTransaction() {
       // Set a general error message instead of targeting specific fields
       setErrors({ general: error instanceof Error ? error.message : 'Failed to update transaction. Please try again.' })
     } finally {
+      if (_needsReviewBatchStarted && currentAccountId && transactionId) {
+        try {
+          await transactionService.flushNeedsReviewBatch(currentAccountId, transactionId, { flushImmediately: true })
+        } catch (e) {
+          console.warn('Failed to flush needs review batch:', e)
+        }
+      }
       setIsSubmitting(false)
     }
   }

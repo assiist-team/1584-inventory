@@ -1,7 +1,7 @@
 import { Plus, Search, Filter } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useState, useEffect, useMemo } from 'react'
-import { Transaction } from '@/types'
+import { Transaction, TransactionCompleteness } from '@/types'
 import { transactionService } from '@/services/inventoryService'
 import type { Transaction as TransactionType } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
@@ -41,6 +41,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
   const projectId = propProjectId || routeProjectId
   const [transactions, setTransactions] = useState<Transaction[]>(propTransactions || [])
   const [isLoading, setIsLoading] = useState(!propTransactions)
+  const [completenessById, setCompletenessById] = useState<Record<string, TransactionCompleteness | null>>({})
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
@@ -98,6 +99,39 @@ export default function TransactionsList({ projectId: propProjectId, transaction
       }
     }
   }, [projectId, currentAccountId, propTransactions])
+
+  // Load completeness metrics for each transaction to show "Missing items" badge
+  useEffect(() => {
+    let mounted = true
+    const loadCompletenessForTransactions = async () => {
+      if (!projectId || !currentAccountId || transactions.length === 0) return
+      try {
+        // If the backend surfaces `needsReview` on the transaction, we can skip
+        // the per-transaction completeness fetch for the list view to improve perf.
+        const txsToFetch = transactions.filter(t => t.needsReview === undefined)
+        const promises = txsToFetch.map(t =>
+          transactionService.getTransactionCompleteness(currentAccountId, projectId, t.transactionId)
+            .catch(err => {
+              console.debug('Failed to load completeness for', t.transactionId, err)
+              return null
+            })
+        )
+        const results = await Promise.all(promises)
+        if (!mounted) return
+        const map: Record<string, TransactionCompleteness | null> = {}
+        // Populate map only for transactions we fetched
+        txsToFetch.forEach((t, idx) => {
+          map[t.transactionId] = results[idx]
+        })
+        setCompletenessById(map)
+      } catch (err) {
+        console.error('Error loading transaction completeness:', err)
+      }
+    }
+
+    loadCompletenessForTransactions()
+    return () => { mounted = false }
+  }, [transactions, projectId, currentAccountId])
 
   // Filter transactions based on search and filter mode
   const filteredTransactions = useMemo(() => {
@@ -284,41 +318,6 @@ export default function TransactionsList({ projectId: propProjectId, transaction
                           {getCanonicalTransactionTitle(transaction)}
                         </h3>
                       </div>
-                      <div className="flex items-center flex-wrap gap-2">
-                        {transaction.budgetCategory && (
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                            transaction.budgetCategory === 'Design Fee'
-                              ? 'bg-amber-100 text-amber-800'
-                              : transaction.budgetCategory === 'Furnishings'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : transaction.budgetCategory === 'Property Management'
-                              ? 'bg-orange-100 text-orange-800'
-                              : transaction.budgetCategory === 'Kitchen'
-                              ? 'bg-amber-200 text-amber-900'
-                              : transaction.budgetCategory === 'Install'
-                              ? 'bg-yellow-200 text-yellow-900'
-                              : transaction.budgetCategory === 'Storage & Receiving'
-                              ? 'bg-orange-200 text-orange-900'
-                              : transaction.budgetCategory === 'Fuel'
-                              ? 'bg-amber-300 text-amber-900'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {transaction.budgetCategory}
-                          </span>
-                        )}
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
-                          transaction.transactionType === 'Purchase'
-                            ? 'bg-green-100 text-green-800'
-                            : transaction.transactionType === 'Return'
-                            ? 'bg-red-100 text-red-800'
-                            : transaction.transactionType === 'To Inventory'
-                            ? 'bg-primary-100 text-primary-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {transaction.transactionType}
-                        </span>
-
-                      </div>
                     </div>
 
                     {/* Bottom row: Details */}
@@ -337,6 +336,52 @@ export default function TransactionsList({ projectId: propProjectId, transaction
                         <p className="text-sm text-gray-600 line-clamp-2">
                           {transaction.notes}
                         </p>
+                      )}
+                    </div>
+                    {/* Badges moved to bottom of preview container */}
+                    <div className="mt-3 flex items-center flex-wrap gap-2">
+                      {transaction.budgetCategory && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          transaction.budgetCategory === 'Design Fee'
+                            ? 'bg-amber-100 text-amber-800'
+                            : transaction.budgetCategory === 'Furnishings'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : transaction.budgetCategory === 'Property Management'
+                            ? 'bg-orange-100 text-orange-800'
+                            : transaction.budgetCategory === 'Kitchen'
+                            ? 'bg-amber-200 text-amber-900'
+                            : transaction.budgetCategory === 'Install'
+                            ? 'bg-yellow-200 text-yellow-900'
+                            : transaction.budgetCategory === 'Storage & Receiving'
+                            ? 'bg-orange-200 text-orange-900'
+                            : transaction.budgetCategory === 'Fuel'
+                            ? 'bg-amber-300 text-amber-900'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {transaction.budgetCategory}
+                        </span>
+                      )}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium no-icon ${
+                        transaction.transactionType === 'Purchase'
+                          ? 'bg-green-100 text-green-800'
+                          : transaction.transactionType === 'Return'
+                          ? 'bg-red-100 text-red-800'
+                          : transaction.transactionType === 'To Inventory'
+                          ? 'bg-primary-100 text-primary-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {transaction.transactionType}
+                      </span>
+                      {transaction.needsReview === true ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          Needs Review
+                        </span>
+                      ) : (
+                        completenessById[transaction.transactionId] && completenessById[transaction.transactionId]?.completenessStatus !== 'complete' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            Missing Items
+                          </span>
+                        )
                       )}
                     </div>
 

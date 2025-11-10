@@ -337,7 +337,11 @@ function _convertTransactionFromDb(dbTransaction: any): Transaction {
     itemIds: Array.isArray(converted.item_ids) ? converted.item_ids : [],
     taxRatePreset: converted.tax_rate_preset || undefined,
     taxRatePct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-    subtotal: converted.subtotal || undefined
+    subtotal: converted.subtotal || undefined,
+    // Map DB snake_case needs_review -> camelCase needsReview for the client
+    needsReview: converted.needs_review === true,
+    // Map persisted derived sum of item purchase prices (numeric stored as string/number in DB)
+    sumItemPurchasePrices: converted.sum_item_purchase_prices !== undefined ? String(converted.sum_item_purchase_prices) : '0.00'
   } as Transaction
 }
 
@@ -410,12 +414,78 @@ function _convertTransactionToDb(transaction: Partial<Transaction>): any {
   if (transaction.taxRatePreset !== undefined) dbTransaction.tax_rate_preset = transaction.taxRatePreset
   if (transaction.taxRatePct !== undefined) dbTransaction.tax_rate_pct = transaction.taxRatePct
   if (transaction.subtotal !== undefined) dbTransaction.subtotal = transaction.subtotal
+  if (transaction.needsReview !== undefined) dbTransaction.needs_review = transaction.needsReview
+  if (transaction.sumItemPurchasePrices !== undefined) dbTransaction.sum_item_purchase_prices = transaction.sumItemPurchasePrices
   
   return dbTransaction
 }
 
+/**
+ * Adjust the persisted sum_item_purchase_prices for a transaction.
+ * Note: This implementation reads the current value then writes the adjusted value.
+ * For strict atomicity prefer a DB-side RPC or function (left as an improvement).
+ */
+async function _adjustSumItemPurchasePrices(accountId: string, transactionId: string, delta: number | string): Promise<string> {
+  await ensureAuthenticatedForDatabase()
+
+  // Read current value
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('sum_item_purchase_prices')
+    .eq('account_id', accountId)
+    .eq('transaction_id', transactionId)
+    .single()
+
+  if (error) throw error
+
+  const currentRaw: any = (data && (data as any).sum_item_purchase_prices) || '0'
+  const current = parseFloat(String(currentRaw) || '0')
+  const deltaNum = parseFloat(String(delta) || '0')
+  const newSum = current + deltaNum
+  const newSumStr = newSum.toFixed(2)
+
+  const { error: updateError } = await supabase
+    .from('transactions')
+    .update({ sum_item_purchase_prices: newSumStr })
+    .eq('account_id', accountId)
+    .eq('transaction_id', transactionId)
+
+  if (updateError) throw updateError
+  return newSumStr
+}
+
 // Transaction Services
 export const transactionService = {
+  async adjustSumItemPurchasePrices(accountId: string, transactionId: string, delta: number | string): Promise<string> {
+    return await _adjustSumItemPurchasePrices(accountId, transactionId, delta)
+  },
+  async notifyTransactionChanged(accountId: string, transactionId: string, opts?: { deltaSum?: number | string; flushImmediately?: boolean }): Promise<void> {
+    // If a delta for the derived sum was provided, adjust the persisted sum first
+    if (opts && opts.deltaSum !== undefined) {
+      try {
+        await _adjustSumItemPurchasePrices(accountId, transactionId, opts.deltaSum)
+      } catch (e) {
+        console.warn('notifyTransactionChanged - failed to adjust sum_item_purchase_prices:', e)
+      }
+    }
+
+    // Enqueue recompute; if flushImmediately requested, set debounceMs = 0
+    const debounceMs = opts && opts.flushImmediately ? 0 : undefined
+    try {
+      // projectId unknown here; pass null so recompute reads transaction directly
+      if (debounceMs === 0) {
+        this._enqueueRecomputeNeedsReview(accountId, null, transactionId, 0).catch((e: any) => {
+          console.warn('Failed to recompute needs_review in notifyTransactionChanged (immediate):', e)
+        })
+      } else {
+        this._enqueueRecomputeNeedsReview(accountId, null, transactionId).catch((e: any) => {
+          console.warn('Failed to recompute needs_review in notifyTransactionChanged:', e)
+        })
+      }
+    } catch (e) {
+      console.warn('notifyTransactionChanged - enqueue failed:', e)
+    }
+  },
   // Get transactions for a project (account-scoped)
   async getTransactions(accountId: string, projectId: string): Promise<Transaction[]> {
     await ensureAuthenticatedForDatabase()
@@ -626,6 +696,186 @@ export const transactionService = {
     // Green (complete) when variance is within ±1%
     return 'complete'
   },
+  /**
+   * Recompute canonical completeness for a transaction and persist the boolean needs_review flag.
+   * This writes directly to the database to avoid recursive service calls.
+   */
+  async _recomputeNeedsReview(accountId: string, projectId: string | null | undefined, transactionId: string): Promise<void> {
+    try {
+      // Use canonical completeness computation
+      const completeness = await this.getTransactionCompleteness(accountId, projectId || '', transactionId)
+      const needs = completeness.completenessStatus !== 'complete'
+
+      // Persist the boolean directly to the transactions table to avoid calling updateTransaction
+      await ensureAuthenticatedForDatabase()
+      const dbUpdates: any = {
+        needs_review: needs,
+        updated_at: new Date().toISOString()
+      }
+      const { error } = await supabase
+        .from('transactions')
+        .update(dbUpdates)
+        .eq('account_id', accountId)
+        .eq('transaction_id', transactionId)
+
+      if (error) {
+        console.warn('Failed to persist needs_review for transaction', transactionId, error)
+      } else {
+        console.log(`Recomputed needs_review=${needs} for transaction ${transactionId}`)
+      }
+    } catch (err) {
+      console.warn('Failed to recompute needs_review for transaction', transactionId, err)
+    }
+  },
+  /**
+   * Debounced/coalesced enqueue for recomputing needs_review per-transaction.
+   * Coalesces rapid calls and deduplicates concurrent work to avoid N runs when many item updates occur.
+   */
+  _needsReviewTimers: {} as Record<string, any>,
+  _ongoingNeedsReviewPromises: {} as Record<string, Promise<void> | null>,
+  _enqueueCounts: {} as Record<string, number>,
+  // Dirty flag for trailing-edge single-flight behavior. If an enqueue arrives while a run
+  // is in-flight, we set dirty[key]=true and schedule a single trailing run after the
+  // in-flight run finishes.
+  _needsReviewDirty: {} as Record<string, boolean>,
+  // Per-transaction reentrant batch counters to allow top-level flows to group multiple
+  // low-level mutations into a single recompute.
+  _batchCounters: {} as Record<string, number>,
+
+  beginNeedsReviewBatch(accountId: string, transactionId: string): void {
+    const key = `${accountId}:${transactionId}`
+    this._batchCounters[key] = (this._batchCounters[key] || 0) + 1
+  },
+
+  _isBatchActive(accountId: string, transactionId: string): boolean {
+    const key = `${accountId}:${transactionId}`
+    return (this._batchCounters[key] || 0) > 0
+  },
+
+  async flushNeedsReviewBatch(accountId: string, transactionId: string, opts?: { flushImmediately?: boolean }): Promise<void> {
+    const key = `${accountId}:${transactionId}`
+    const remaining = (this._batchCounters[key] || 0) - 1
+    if (remaining <= 0) {
+      delete this._batchCounters[key]
+      try {
+        // Try to resolve projectId for the transaction so enqueue has correct context.
+        let projectId: string | null = null
+        try {
+          await ensureAuthenticatedForDatabase()
+          const { data } = await supabase
+            .from('transactions')
+            .select('project_id')
+            .eq('account_id', accountId)
+            .eq('transaction_id', transactionId)
+            .single()
+          projectId = data?.project_id ?? null
+        } catch (e) {
+          // best-effort - allow null projectId
+        }
+
+        if (opts?.flushImmediately) {
+          // Bypass debounce by using debounceMs = 0
+          this._enqueueRecomputeNeedsReview(accountId, projectId, transactionId, 0).catch((e: any) => {
+            console.warn('Failed to recompute needs_review in flushNeedsReviewBatch:', e)
+          })
+        } else {
+          this._enqueueRecomputeNeedsReview(accountId, projectId, transactionId).catch((e: any) => {
+            console.warn('Failed to recompute needs_review in flushNeedsReviewBatch:', e)
+          })
+        }
+      } catch (e) {
+        console.warn('Failed during flushNeedsReviewBatch:', e)
+      }
+    } else {
+      this._batchCounters[key] = remaining
+    }
+  },
+
+  _enqueueRecomputeNeedsReview(accountId: string, projectId: string | null | undefined, transactionId: string, debounceMs: number = 1000): Promise<void> {
+    const key = `${accountId}:${transactionId}`
+
+    // If a computation is already in-flight for this tx, mark dirty so we schedule
+    // a single trailing run when the in-flight run finishes, then return the in-flight promise.
+    if (this._ongoingNeedsReviewPromises[key]) {
+      try { this._needsReviewDirty[key] = true } catch (e) {}
+      return this._ongoingNeedsReviewPromises[key] as Promise<void>
+    }
+
+    // If a timer is already set, return a promise that will resolve when that timer's work completes.
+    if (this._needsReviewTimers[key]) {
+      // Create proxy promise that resolves when the existing ongoing promise finishes (if any).
+      const proxy = new Promise<void>((resolve, reject) => {
+        const checkInterval = setInterval(() => {
+          if (!this._needsReviewTimers[key] && !this._ongoingNeedsReviewPromises[key]) {
+            clearInterval(checkInterval)
+            resolve()
+          }
+        }, 50)
+      })
+      this._ongoingNeedsReviewPromises[key] = proxy
+      return proxy
+    }
+
+    // Instrumentation: count and log enqueue requests with timestamp and short stacktrace
+    try {
+      this._enqueueCounts[key] = (this._enqueueCounts[key] || 0) + 1
+      const count = this._enqueueCounts[key]
+      // Capture a small stack trace to find the caller (skip first two frames)
+      const stack = new Error().stack || ''
+      const shortStack = stack.split('\n').slice(2, 6).join(' | ')
+      console.debug(`[needs_review] enqueue requested for ${transactionId} count=${count} ts=${new Date().toISOString()} caller=${shortStack}`)
+    } catch (e) {
+      // non-fatal instrumentation failure
+    }
+
+    // No existing work scheduled: create a promise and timer, store both immediately
+    let resolveFn: (() => void) | null = null
+    let rejectFn: ((e: any) => void) | null = null
+    const p = new Promise<void>((resolve, reject) => {
+      resolveFn = resolve
+      rejectFn = reject
+    })
+    this._ongoingNeedsReviewPromises[key] = p
+
+    this._needsReviewTimers[key] = setTimeout(async () => {
+      try {
+        await this._recomputeNeedsReview(accountId, projectId, transactionId)
+        resolveFn && resolveFn()
+      } catch (e) {
+        rejectFn && rejectFn(e)
+      } finally {
+        // cleanup
+        if (this._needsReviewTimers[key]) {
+          clearTimeout(this._needsReviewTimers[key])
+        }
+        delete this._needsReviewTimers[key]
+        delete this._ongoingNeedsReviewPromises[key]
+        // reset counter after work finishes
+        try { delete this._enqueueCounts[key] } catch (e) {}
+        // If a caller requested a recompute while this run was in-flight, schedule
+        // a single trailing run (short delay) and clear the dirty flag.
+        try {
+          if (this._needsReviewDirty[key]) {
+            // clear flag now to avoid duplicate trailing schedules
+            delete this._needsReviewDirty[key]
+            setTimeout(() => {
+              try {
+                this._enqueueRecomputeNeedsReview(accountId, projectId, transactionId, 25).catch((e: any) => {
+                  console.warn('Failed trailing recompute needs_review:', e)
+                })
+              } catch (e) {
+                console.warn('Failed scheduling trailing recompute:', e)
+              }
+            }, 25)
+          }
+        } catch (e) {
+          // non-fatal
+        }
+      }
+    }, debounceMs)
+
+    return p
+  },
 
   // Find suggested items to add to transaction (unassociated items with same vendor)
   async getSuggestedItemsForTransaction(
@@ -737,6 +987,15 @@ export const transactionService = {
         )
         console.log('Created items:', createdItemIds)
       }
+      // Ensure the denormalized needs_review flag is computed and persisted
+      try {
+        // Fire-and-forget: schedule recompute but don't block the mutation flow
+        this._enqueueRecomputeNeedsReview(accountId, projectId, transactionId).catch((e: any) => {
+          console.warn('Failed to set needs_review after transaction creation:', e)
+        })
+      } catch (e) {
+        console.warn('Failed to set needs_review after transaction creation:', e)
+      }
 
       return transactionId
     } catch (error) {
@@ -831,6 +1090,13 @@ export const transactionService = {
       } catch (e) {
         console.warn('Failed to propagate tax_rate_pct to items:', e)
       }
+    }
+    // Recompute and persist needs_review unless caller explicitly provided it
+    if (finalUpdates.needsReview === undefined) {
+    // Schedule recompute asynchronously; do not await to keep updates fast
+    this._enqueueRecomputeNeedsReview(accountId, _projectId, transactionId).catch((e: any) => {
+      console.warn('Failed to recompute needs_review after transaction update:', e)
+    })
     }
   },
 
@@ -1505,6 +1771,25 @@ export const unifiedItemsService = {
       .insert(dbItem)
 
     if (error) throw error
+    // If this item was created attached to a transaction, adjust that transaction's derived sum and recompute
+    try {
+      if (dbItem.transaction_id) {
+        const txId = dbItem.transaction_id
+        if (!transactionService._isBatchActive(accountId, txId)) {
+          try {
+            const purchasePriceRaw = dbItem.purchase_price ?? dbItem.price ?? '0'
+            const delta = parseFloat(String(purchasePriceRaw) || '0')
+            transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+              console.warn('Failed to notifyTransactionChanged after creating item:', e)
+            })
+          } catch (e) {
+            console.warn('Failed computing delta for created item:', e)
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to notifyTransactionChanged after creating item (sync path):', e)
+    }
 
     return itemId
   },
@@ -1512,6 +1797,13 @@ export const unifiedItemsService = {
   // Update item (account-scoped)
   async updateItem(accountId: string, itemId: string, updates: Partial<Item>): Promise<void> {
     await ensureAuthenticatedForDatabase()
+    // Read existing item so we can recompute any affected transactions after the update
+    let existingItem: Item | null = null
+    try {
+      existingItem = await this.getItemById(accountId, itemId)
+    } catch (e) {
+      console.warn('Failed to fetch existing item before update:', e)
+    }
 
     // Convert camelCase updates to database format
     const dbUpdates = this._convertItemToDb({
@@ -1550,11 +1842,61 @@ export const unifiedItemsService = {
       .eq('item_id', itemId)
 
     if (error) throw error
+    // Adjust persisted derived sums and recompute needs_review for affected transactions (old and new)
+    try {
+      const prevTx = existingItem?.transactionId ?? null
+      const newTx = updates.transactionId !== undefined ? (updates.transactionId as string | null) : prevTx
+      const projectForTx = (updates.projectId !== undefined ? updates.projectId : existingItem?.projectId) ?? null
+      const affected = Array.from(new Set([prevTx, newTx]).values()).filter(Boolean) as string[]
+      const prevPrice = parseFloat(existingItem?.purchasePrice || '0')
+      const newPrice = updates.purchasePrice !== undefined ? parseFloat(String(updates.purchasePrice || '0')) : prevPrice
+
+      for (const txId of affected) {
+        try {
+          if (!transactionService._isBatchActive(accountId, txId)) {
+            // Same transaction updated: send delta (new - prev)
+            if (prevTx && newTx && prevTx === newTx && txId === prevTx) {
+              const delta = newPrice - prevPrice
+              if (delta !== 0) {
+                transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+                  console.warn('Failed to notifyTransactionChanged after updating item for tx', txId, e)
+                })
+              }
+            } else {
+              // Moved between transactions: subtract from old and add to new
+              if (txId === prevTx) {
+                const delta = -prevPrice
+                transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+                  console.warn('Failed to notifyTransactionChanged for old tx after moving item', txId, e)
+                })
+              }
+              if (txId === newTx) {
+                const delta = newPrice
+                transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+                  console.warn('Failed to notifyTransactionChanged for new tx after moving item', txId, e)
+                })
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to schedule notifyTransactionChanged after updating item for tx', txId, e)
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to schedule notifyTransactionChanged after updateItem:', e)
+    }
   },
 
   // Delete item (account-scoped)
   async deleteItem(accountId: string, itemId: string): Promise<void> {
     await ensureAuthenticatedForDatabase()
+    // Read existing item to determine associated transaction (if any) so we can recompute after deletion
+    let existingItem: Item | null = null
+    try {
+      existingItem = await this.getItemById(accountId, itemId)
+    } catch (e) {
+      console.warn('Failed to fetch item before deletion:', e)
+    }
 
     const { error } = await supabase
       .from('items')
@@ -1563,6 +1905,22 @@ export const unifiedItemsService = {
       .eq('item_id', itemId)
 
     if (error) throw error
+
+    // Adjust persisted sum and recompute for the transaction the item belonged to (if any)
+    try {
+      const txId = existingItem?.transactionId ?? null
+      if (txId) {
+        if (!transactionService._isBatchActive(accountId, txId)) {
+          const prevPrice = parseFloat(existingItem?.purchasePrice || '0')
+          const delta = -prevPrice
+          transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+            console.warn('Failed to notifyTransactionChanged after deleting item:', e)
+          })
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to notifyTransactionChanged after deleting item:', e)
+    }
   },
 
   // Get items for a transaction (by transaction_id) (account-scoped)
@@ -2962,6 +3320,32 @@ export const unifiedItemsService = {
         .insert(itemsToInsert)
 
       if (error) throw error
+    }
+    // Recompute and persist needs_review for the transaction we just mutated (fire-and-forget,
+    // but skip if a top-level batch is active for this transaction).
+    try {
+      if (!transactionService._isBatchActive(accountId, transactionId)) {
+        try {
+          const deltaSum = itemsToInsert.reduce((sum, it) => {
+            const p = parseFloat(String(it.purchase_price ?? it.price ?? '0') || '0')
+            return sum + (isNaN(p) ? 0 : p)
+          }, 0)
+          if (deltaSum !== 0) {
+            transactionService.notifyTransactionChanged(accountId, transactionId, { deltaSum }).catch((e: any) => {
+              console.warn('Failed to notifyTransactionChanged after creating transaction items:', e)
+            })
+          } else {
+            // No price delta to apply, still enqueue a recompute (no delta)
+            transactionService.notifyTransactionChanged(accountId, transactionId).catch((e: any) => {
+              console.warn('Failed to notifyTransactionChanged after creating transaction items (no delta):', e)
+            })
+          }
+        } catch (e) {
+          console.warn('Failed computing deltaSum for created transaction items:', e)
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to notifyTransactionChanged after creating transaction items (sync path):', e)
     }
 
     return createdItemIds
