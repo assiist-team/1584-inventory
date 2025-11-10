@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { Item, ItemImage } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
@@ -41,6 +42,42 @@ export default function InventoryList({ projectId, projectName, items: propItems
     console.log('🔍 InventoryList - propItems changed:', propItems?.length || 0)
     setItems(propItems || [])
   }, [propItems])
+
+  // Per-visible-item lineage subscriptions: when an item has a lineage edge, refetch that item and update/remove as needed
+  useEffect(() => {
+    if (!currentAccountId || items.length === 0) return
+
+    const unsubMap = new Map<string, () => void>()
+    try {
+      items.forEach(item => {
+        if (!item?.itemId) return
+        const unsub = lineageService.subscribeToItemLineageForItem(currentAccountId, item.itemId, async () => {
+          try {
+            const updated = await unifiedItemsService.getItemById(currentAccountId, item.itemId)
+            if (updated) {
+              // If updated item still belongs to this project, update it; otherwise remove it from the list
+              if (updated.projectId === projectId) {
+                setItems(prev => prev.map(i => i.itemId === updated.itemId ? updated : i))
+              } else {
+                setItems(prev => prev.filter(i => i.itemId !== updated.itemId))
+              }
+            }
+          } catch (err) {
+            console.debug('InventoryList - failed to refetch item on lineage event', err)
+          }
+        })
+        unsubMap.set(item.itemId, unsub)
+      })
+    } catch (err) {
+      console.debug('InventoryList - failed to setup per-item lineage subscriptions', err)
+    }
+
+    return () => {
+      unsubMap.forEach(u => {
+        try { u() } catch (e) { /* noop */ }
+      })
+    }
+  }, [items.map(i => i.itemId).join(','), currentAccountId, projectId])
 
  
 

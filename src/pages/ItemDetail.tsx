@@ -7,6 +7,7 @@ import { unifiedItemsService, projectService, integrationService } from '@/servi
 import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
 import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
+import { lineageService } from '@/services/lineageService'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useDuplication } from '@/hooks/useDuplication'
@@ -146,6 +147,26 @@ export default function ItemDetail() {
       unsubscribe()
     }
   }, [searchParams, actualItemId, id, currentAccountId])
+
+  // Subscribe to item-lineage edges for this item and refetch the item when an edge arrives
+  useEffect(() => {
+    if (!actualItemId || !currentAccountId) return
+
+    const unsubscribe = lineageService.subscribeToItemLineageForItem(currentAccountId, actualItemId, async () => {
+      try {
+        const updatedItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
+        if (updatedItem) {
+          setItem(updatedItem)
+        }
+      } catch (err) {
+        console.debug('ItemDetail - failed to refetch item on lineage event', err)
+      }
+    })
+
+    return () => {
+      try { unsubscribe() } catch (err) { /* noop */ }
+    }
+  }, [actualItemId, currentAccountId])
 
   // Close disposition menu when clicking outside
   useEffect(() => {

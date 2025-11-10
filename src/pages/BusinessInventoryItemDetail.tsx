@@ -9,6 +9,7 @@ import { ImageUploadService } from '@/services/imageService'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useAccount } from '@/contexts/AccountContext'
 import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
+import { lineageService } from '@/services/lineageService'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
@@ -115,6 +116,24 @@ export default function BusinessInventoryItemDetail() {
     )
 
     return unsubscribe
+  }, [id, currentAccountId])
+
+  // Subscribe to lineage edges for this specific business-inventory item and refetch on new edges
+  useEffect(() => {
+    if (!id || !currentAccountId) return
+
+    const unsubscribe = lineageService.subscribeToItemLineageForItem(currentAccountId, id, async () => {
+      try {
+        const updated = await unifiedItemsService.getItemById(currentAccountId, id)
+        if (updated) setItem(updated)
+      } catch (err) {
+        console.debug('BusinessInventoryItemDetail - failed to refetch item on lineage event', err)
+      }
+    })
+
+    return () => {
+      try { unsubscribe() } catch (e) { /* noop */ }
+    }
   }, [id, currentAccountId])
 
   const loadItem = async () => {

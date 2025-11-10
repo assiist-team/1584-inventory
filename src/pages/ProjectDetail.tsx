@@ -4,6 +4,7 @@ import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'reac
 import { useState, useEffect } from 'react'
 import { Project, Transaction, Item } from '@/types'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
 import { useAccount } from '@/contexts/AccountContext'
 import InventoryList from './InventoryList'
 import TransactionsList from './TransactionsList'
@@ -168,6 +169,43 @@ export default function ProjectDetail() {
       if (itemsUnsubscribe) itemsUnsubscribe()
     }
   }, [id, currentAccountId, navigate])
+
+  // Subscribe to edges-from-transaction for each transaction so we can refresh items
+  useEffect(() => {
+    if (!currentAccountId || !id || transactions.length === 0) return
+
+    const unsubs: (() => void)[] = []
+    try {
+      transactions.forEach(tx => {
+        if (!tx.transactionId) return
+        const unsub = lineageService.subscribeToEdgesFromTransaction(currentAccountId, tx.transactionId, async () => {
+          try {
+            const updatedItems = await unifiedItemsService.getItemsByProject(currentAccountId, id)
+            setItems(updatedItems)
+          } catch (err) {
+            console.debug('ProjectDetail - failed to refresh items on lineage event', err)
+          }
+
+          // Also refresh transactions for the project to reflect any deletions/changes
+          try {
+            const updatedTransactions = await transactionService.getTransactions(currentAccountId, id)
+            setTransactions(updatedTransactions)
+          } catch (tErr) {
+            console.debug('ProjectDetail - failed to refresh transactions on lineage event', tErr)
+          }
+        })
+        unsubs.push(unsub)
+      })
+    } catch (err) {
+      console.debug('ProjectDetail - failed to subscribe to edges from transactions', err)
+    }
+
+    return () => {
+      unsubs.forEach(u => {
+        try { u() } catch (e) { /* noop */ }
+      })
+    }
+  }, [transactions.map(t => t.transactionId).join(','), currentAccountId, id])
 
   // Retry function for failed loads
   const retryLoadProject = () => {

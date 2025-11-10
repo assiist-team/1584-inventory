@@ -81,22 +81,34 @@ useEffect(() => {
 - Optional: Projects / TransactionsList
   - Subscribe only if these views need to reflect lineage-related indicators in realtime (e.g., “has moved items” badges).
 
+### Practical next steps (for implementers)
+These are short, actionable steps another developer can follow to finish the rollout.
+
+- Convert `ItemDetail` and `BusinessInventoryItemDetail`
+  - Replace polling or existing item subscriptions with `lineageService.subscribeToItemLineageForItem(currentAccountId, itemId, callback)`.
+  - In the callback: update `ItemLineageBreadcrumb` (which already supports subscription) and optionally refetch the item row if other metadata changes are expected.
+  - Always call `unsubscribe()` on unmount or when `itemId`/`accountId` changes.
+
+- Convert `BusinessInventory` and `InventoryList`
+  - Preferred: subscribe per visible item using `subscribeToItemLineageForItem` as components mount to scope traffic.
+  - Alternative: account-wide subscription helper (only if necessary) — beware volume and debounce UI updates.
+  - Ensure lists update when an edge with `to_transaction_id = null` (moved to inventory) arrives.
+
+- Convert `ProjectDetail`
+  - After loading transactions, call `subscribeToEdgesFromTransaction` for each relevant transaction.
+  - Keep per-transaction unsubscribe functions and clean them up on project changes/unmount.
+
+ 
+- Cleanup
+  - Replace older `useRealtimeSubscription` usages where they duplicate lineage-driven updates.
+  - Remove any temporary polling fallback code.
+
 ### Acceptance criteria
 - “In this transaction” vs “Moved” sections update without manual refresh when edges are inserted.
 - Item detail breadcrumb updates immediately when an item is moved.
 - Inventory and project lists reflect moves promptly (e.g., item appears in Business Inventory right after a `to = null` edge).
 - No duplicate events or memory leaks (all subscriptions cleaned up on unmount/param change).
-
-### Verification steps
-1. Confirm DB state:
-   - `item_lineage_edges` is in the `supabase_realtime` publication.
-   - RLS enabled and policies allow SELECT/INSERT for account members.
-2. Trigger a move (allocate/deallocate/return) and observe:
-   - TransactionDetail “Moved” section updates within a second.
-   - Item detail breadcrumb shows the new node.
-   - If moved to inventory, Business Inventory views reflect the change without reload.
-3. Navigate away and back to ensure subscriptions are cleaned up and re-established without duplication.
-
+ 
 ### Troubleshooting
 - PostgREST schema cache (PGRST205 / 404 on table): wait a minute or refresh schema in Supabase UI.
 - RLS errors: verify `can_access_account(account_id)` behavior and policy presence.

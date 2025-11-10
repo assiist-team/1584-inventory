@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { Item, Transaction, ItemImage, Project } from '@/types'
 import type { Transaction as TransactionType } from '@/types'
 import { unifiedItemsService, transactionService, projectService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
 import { COMPANY_INVENTORY, COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/company'
@@ -199,6 +200,48 @@ export default function BusinessInventory() {
       if (transactionsUnsubscribe) transactionsUnsubscribe()
     }
   }, [currentAccountId, filters])
+
+  // Per-visible-item lineage subscriptions: refetch single item on new edges to keep list in sync
+  useEffect(() => {
+    if (!currentAccountId || items.length === 0) return
+
+    const unsubMap = new Map<string, () => void>()
+    try {
+      items.forEach(item => {
+        if (!item?.itemId) return
+        const unsub = lineageService.subscribeToItemLineageForItem(currentAccountId, item.itemId, async () => {
+          try {
+            const updatedItem = await unifiedItemsService.getItemById(currentAccountId, item.itemId)
+            if (updatedItem) {
+              // If it is still a business inventory item, update it; otherwise remove it from the list
+              if (!updatedItem.projectId) {
+                setItems(prev => prev.map(i => i.itemId === updatedItem.itemId ? updatedItem : i))
+              } else {
+                setItems(prev => prev.filter(i => i.itemId !== updatedItem.itemId))
+              }
+              // Also refresh transactions to ensure deletions/creations are reflected
+              try {
+                await loadBusinessTransactions()
+              } catch (tErr) {
+                console.debug('BusinessInventory - failed to reload transactions after lineage event', tErr)
+              }
+            }
+          } catch (err) {
+            console.debug('BusinessInventory - failed to refetch item on lineage event', err)
+          }
+        })
+        unsubMap.set(item.itemId, unsub)
+      })
+    } catch (err) {
+      console.debug('BusinessInventory - failed to setup per-item lineage subscriptions', err)
+    }
+
+    return () => {
+      unsubMap.forEach(u => {
+        try { u() } catch (e) { /* noop */ }
+      })
+    }
+  }, [items.map(i => i.itemId).join(','), currentAccountId])
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
