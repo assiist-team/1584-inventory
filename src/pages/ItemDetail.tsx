@@ -6,6 +6,7 @@ import { formatDate } from '@/utils/dateUtils'
 import { unifiedItemsService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
+import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useDuplication } from '@/hooks/useDuplication'
@@ -702,6 +703,12 @@ export default function ItemDetail() {
                     </Link>
                   </dd>
                 </div>
+              {/* Lineage breadcrumb (compact) */}
+              {item.itemId && (
+                <div className="sm:col-span-3 mt-2">
+                  <ItemLineageBreadcrumb itemId={item.itemId} />
+                </div>
+              )}
               </dl>
 
               {/* Delete button in lower right corner */}

@@ -237,6 +237,112 @@ export const lineageService = {
   },
 
   /**
+   * Subscribe to lineage edge INSERTs for a specific item (or broader filters).
+   * Returns an unsubscribe function.
+   *
+   * @param accountId - Account ID to scope subscription
+   * @param itemId - Optional itemId to narrow subscription to a single item
+   * @param callback - Receives newly inserted edge (converted to app type)
+   */
+  subscribeToItemLineageForItem(
+    accountId: string,
+    itemId: string | undefined,
+    callback: (edge: ItemLineageEdge) => void
+  ): () => void {
+    const filterParts = [`account_id=eq.${accountId}`]
+    if (itemId) {
+      filterParts.push(`item_id=eq.${itemId}`)
+    }
+    const filter = filterParts.join(',')
+
+    const channelName = `item_lineage:${accountId}${itemId ? `:${itemId}` : ''}`
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'item_lineage_edges',
+          filter
+        },
+        (payload: any) => {
+          try {
+            const edge = this._convertEdgeFromDb(payload.new)
+            callback(edge)
+          } catch (err) {
+            console.debug('lineageService.subscribeToItemLineageForItem - callback error', err)
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to item_lineage_edges channel', channelName)
+        }
+        if (err) {
+          console.error('Error subscribing to item_lineage_edges channel', err)
+        }
+      })
+
+    return () => {
+      try {
+        channel.unsubscribe()
+      } catch (err) {
+        console.debug('Failed to unsubscribe from lineage channel', err)
+      }
+    }
+  },
+  /**
+   * Subscribe to lineage edge INSERTs where from_transaction_id == given transactionId.
+   * Useful for transaction-level views that need to know when items moved out.
+   * Returns an unsubscribe function.
+   */
+  subscribeToEdgesFromTransaction(
+    accountId: string,
+    fromTransactionId: string,
+    callback: (edge: ItemLineageEdge) => void
+  ): () => void {
+    const filter = `account_id=eq.${accountId},from_transaction_id=eq.${fromTransactionId}`
+
+    const channelName = `item_lineage:from_tx:${accountId}:${fromTransactionId}`
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'item_lineage_edges',
+          filter
+        },
+        (payload: any) => {
+          try {
+            const edge = this._convertEdgeFromDb(payload.new)
+            callback(edge)
+          } catch (err) {
+            console.debug('lineageService.subscribeToEdgesFromTransaction - callback error', err)
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to item_lineage_edges from_transaction channel', channelName)
+        }
+        if (err) {
+          console.error('Error subscribing to item_lineage_edges from_transaction channel', err)
+        }
+      })
+
+    return () => {
+      try {
+        channel.unsubscribe()
+      } catch (err) {
+        console.debug('Failed to unsubscribe from lineage from_tx channel', err)
+      }
+    }
+  },
+
+  /**
    * Helper to convert database edge (snake_case) to app format (camelCase).
    */
   _convertEdgeFromDb(dbEdge: any): ItemLineageEdge {

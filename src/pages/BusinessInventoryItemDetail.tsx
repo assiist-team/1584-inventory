@@ -8,6 +8,7 @@ import ImagePreview from '@/components/ui/ImagePreview'
 import { ImageUploadService } from '@/services/imageService'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useAccount } from '@/contexts/AccountContext'
+import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
@@ -528,6 +529,13 @@ export default function BusinessInventoryItemDetail() {
                         {item.transactionId}
                       </Link>
                     </dd>
+                  </div>
+                )}
+
+                {/* Lineage breadcrumb (compact) */}
+                {item.itemId && (
+                  <div className="sm:col-span-3 mt-2">
+                    <ItemLineageBreadcrumb itemId={item.itemId} />
                   </div>
                 )}
 

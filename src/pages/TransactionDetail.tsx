@@ -13,6 +13,7 @@ import TransactionItemForm from '@/components/TransactionItemForm'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { getTaxPresets } from '@/services/taxPresetsService'
 import { useAccount } from '@/contexts/AccountContext'
+import type { ItemLineageEdge } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import TransactionAudit from '@/components/ui/TransactionAudit'
 
@@ -315,6 +316,23 @@ export default function TransactionDetail() {
     //   unsubscribe()
     // }
   }, [projectId, transactionId, transaction])
+
+  // Subscribe to new lineage edges that moved items FROM this transaction and refresh items (strict realtime)
+  useEffect(() => {
+    if (!currentAccountId || !transactionId) return
+    const unsubscribe = lineageService.subscribeToEdgesFromTransaction(currentAccountId, transactionId, (edge) => {
+      try {
+        // If an edge's from_transaction_id matches this transaction, it indicates the item moved out
+        refreshTransactionItems()
+      } catch (err) {
+        console.debug('TransactionDetail - failed to refresh on lineage event', err)
+      }
+    })
+
+    return () => {
+      try { unsubscribe() } catch (err) { /* noop */ }
+    }
+  }, [currentAccountId, transactionId])
 
 
   // Clean up any unwanted icons from transaction type badges
