@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { Edit, Trash2, ArrowLeft, Package, DollarSign, ImagePlus, FileText, Copy } from 'lucide-react'
 import { Item, Project } from '@/types'
 import { unifiedItemsService, projectService } from '@/services/inventoryService'
@@ -10,11 +11,13 @@ import { useDuplication } from '@/hooks/useDuplication'
 import { useAccount } from '@/contexts/AccountContext'
 import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
 import { lineageService } from '@/services/lineageService'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
+  const { buildContextUrl } = useNavigationContext()
   const [item, setItem] = useState<Item | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -366,7 +369,7 @@ export default function BusinessInventoryItemDetail() {
               </button>
             )}
             <Link
-              to={`/business-inventory/${id}/edit?returnTo=/business-inventory/${id}`}
+              to={buildContextUrl(`/business-inventory/${id}/edit`)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
@@ -528,7 +531,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.projectId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={buildContextUrl(`/project/${item.projectId}`, { from: 'business-inventory-item' })}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {formatLinkedProjectText(item.projectId)}
@@ -542,7 +545,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <Link
-                        to={`/project/${item.projectId}/transaction/${item.transactionId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                        to={buildContextUrl(`/project/${item.projectId}/transaction/${item.transactionId}`, { from: 'business-inventory-item' })}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {item.transactionId}
@@ -564,7 +567,7 @@ export default function BusinessInventoryItemDetail() {
                     <dd className="mt-1 text-sm text-gray-900">
                       {item.previousProjectId ? (
                         <Link
-                          to={`/project/${item.previousProjectId}/transaction/${item.previousProjectTransactionId}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
+                          to={buildContextUrl(`/project/${item.previousProjectId}/transaction/${item.previousProjectTransactionId}`, { from: 'business-inventory-item' })}
                           className="text-primary-600 hover:text-primary-800 font-medium"
                         >
                           {item.previousProjectTransactionId}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate, Link, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { ArrowLeft, X, Save } from 'lucide-react'
 import { Transaction, Project, TaxPreset } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
@@ -10,7 +11,7 @@ import { useAccount } from '@/contexts/AccountContext'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function AddBusinessInventoryTransaction() {
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const location = useLocation()
   const { currentAccountId } = useAccount()
   const { user } = useAuth()

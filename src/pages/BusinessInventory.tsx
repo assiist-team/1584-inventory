@@ -2,6 +2,7 @@ import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, B
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
 import { Item, Transaction, ItemImage, Project } from '@/types'
 import type { Transaction as TransactionType } from '@/types'
 import { unifiedItemsService, transactionService, projectService, integrationService } from '@/services/inventoryService'
@@ -14,6 +15,7 @@ import { COMPANY_INVENTORY, COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE }
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useAccount } from '@/contexts/AccountContext'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 interface FilterOptions {
   status?: string
@@ -22,6 +24,7 @@ interface FilterOptions {
 
 export default function BusinessInventory() {
   const { currentAccountId, loading: accountLoading } = useAccount()
+  const { buildContextUrl } = useNavigationContext()
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<Item[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -676,13 +679,13 @@ export default function BusinessInventory() {
             <>
               {/* Header - Just Add Item button */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
-                <Link
-                  to="/business-inventory/add?returnTo=/business-inventory"
+                <ContextLink
+                  to={buildContextUrl('/business-inventory/add')}
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Item
-                </Link>
+                </ContextLink>
               </div>
 
               {/* Search and Controls - Sticky Container */}
@@ -840,14 +843,14 @@ export default function BusinessInventory() {
                             >
                               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                             </button>
-                            <Link
-                              to={`/business-inventory/${item.itemId}/edit?returnTo=/business-inventory`}
+                            <ContextLink
+                              to={buildContextUrl(`/business-inventory/${item.itemId}/edit`)}
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Edit item"
                             >
                               <Edit className="h-4 w-4" />
-                            </Link>
+                            </ContextLink>
                             <button
                               onClick={(e) => {
                                 e.preventDefault()
@@ -901,7 +904,7 @@ export default function BusinessInventory() {
                         </div>
 
                         {/* Main tappable content - wrapped in Link */}
-                        <Link to={`/business-inventory/${item.itemId}`}>
+                        <ContextLink to={buildContextUrl(`/business-inventory/${item.itemId}`)}>
                           <div className="block bg-transparent">
                             <div className="px-4 pb-3 sm:px-6">
                               {/* Middle row: Thumbnail and Description - now tappable */}
@@ -984,7 +987,7 @@ export default function BusinessInventory() {
                               </div>
                             </div>
                           </div>
-                        </Link>
+                        </ContextLink>
                       </li>
                     ))}
                   </ul>
@@ -997,13 +1000,13 @@ export default function BusinessInventory() {
             <>
               {/* Header - Add Transaction button */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                <Link
-                  to="/business-inventory/transaction/add"
+                <ContextLink
+                  to={buildContextUrl('/business-inventory/transaction/add')}
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Transaction
-                </Link>
+                </ContextLink>
               </div>
 
               {/* Search and Controls - Sticky Container */}
@@ -1125,7 +1128,7 @@ export default function BusinessInventory() {
                   <ul className="divide-y divide-gray-200">
                     {filteredTransactions.map((transaction) => (
                       <li key={transaction.transactionId} className="relative">
-                        <Link to={`/business-inventory/transaction/${transaction.transactionId}`}>
+                        <ContextLink to={buildContextUrl(`/business-inventory/transaction/${transaction.transactionId}`)}>
                           <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                             <div className="px-4 py-4 sm:px-6">
                             {/* Top row: Header with source and status */}
@@ -1181,7 +1184,7 @@ export default function BusinessInventory() {
 
                             </div>
                           </div>
-                        </Link>
+                        </ContextLink>
                       </li>
                     ))}
                   </ul>

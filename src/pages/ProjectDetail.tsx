@@ -1,6 +1,7 @@
 import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign, Building2, User, Receipt } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import { Link, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, useEffect } from 'react'
 import { Project, Transaction, Item } from '@/types'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
@@ -16,7 +17,7 @@ import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const location = useLocation()
   const { currentAccountId } = useAccount()
   const [searchParams, setSearchParams] = useSearchParams()

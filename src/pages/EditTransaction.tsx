@@ -1,5 +1,6 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, useEffect, useRef, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
@@ -16,7 +17,7 @@ import { getTaxPresets } from '@/services/taxPresetsService'
 
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const { hasRole } = useAuth()
   const { currentAccountId } = useAccount()
 

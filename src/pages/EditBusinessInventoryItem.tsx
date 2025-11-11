@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate, Link, useLocation } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Item } from '@/types'
 import { unifiedItemsService } from '@/services/inventoryService'
@@ -7,7 +8,7 @@ import { useAccount } from '@/contexts/AccountContext'
 
 export default function EditBusinessInventoryItem() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const location = useLocation()
   const { currentAccountId } = useAccount()
   const [isLoading, setIsLoading] = useState(true)

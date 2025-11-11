@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, FolderOpen } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { Project, Transaction } from '@/types'
 import { projectService, transactionService } from '@/services/inventoryService'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,6 +10,7 @@ import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 
 export default function Projects() {
+  const { buildContextUrl } = useNavigationContext()
   const { user } = useAuth()
   const { currentAccountId, loading: accountLoading } = useAccount()
   const [projects, setProjects] = useState<Project[]>([])
@@ -254,7 +256,7 @@ export default function Projects() {
                 {/* Action Button */}
                 <div className="flex justify-center">
                   <Link
-                    to={`/project/${project.id}`}
+                    to={buildContextUrl(`/project/${project.id}`)}
                     className="flex-1 inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
                   >
                     <FolderOpen className="h-4 w-4 mr-2" />

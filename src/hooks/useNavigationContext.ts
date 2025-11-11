@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom'
+import { useNavigationStack } from '../contexts/NavigationStackContext'
 
 export interface NavigationContext {
   getBackDestination: (defaultPath: string) => string
@@ -9,10 +10,22 @@ export interface NavigationContext {
 export function useNavigationContext(): NavigationContext {
   const location = useLocation()
   const searchParams = new URLSearchParams(location.search)
+  const navigationStack = useNavigationStack()
 
   return {
     getBackDestination: (defaultPath: string) => {
-      // Check for returnTo parameter first (highest priority)
+      // Prefer navigation stack first (mimic native Back).
+      // Use `peek` here (non-mutating) because this function is called during render
+      // to compute the Back link target; calling `pop` during render triggers state
+      // updates and can cause render-time side-effects / freezes.
+      try {
+        const candidate = navigationStack.peek(location.pathname + location.search)
+        if (candidate) return candidate
+      } catch {
+        // ignore if stack not available
+      }
+
+      // Check for returnTo parameter next
       const returnTo = searchParams.get('returnTo')
       if (returnTo) return returnTo
 
@@ -45,6 +58,7 @@ export function useNavigationContext(): NavigationContext {
     },
 
     buildContextUrl: (targetPath: string, additionalParams?: Record<string, string>) => {
+
       const url = new URL(targetPath, window.location.origin)
       const currentParams = new URLSearchParams(location.search)
 
@@ -52,8 +66,7 @@ export function useNavigationContext(): NavigationContext {
       const from = currentParams.get('from')
       if (from) url.searchParams.set('from', from)
 
-      // Add current path as returnTo for back navigation
-      // Always set returnTo to current path to maintain navigation stack
+      // Add current path as returnTo for back navigation (fallback)
       url.searchParams.set('returnTo', location.pathname + location.search)
 
       // Add any additional parameters

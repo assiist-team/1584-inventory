@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { supabase } from '../services/supabase'
 import { checkInvitationByToken } from '../services/supabase'
 
 export default function AuthCallback() {
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
 
   useEffect(() => {
     const handleAuthCallback = async () => {

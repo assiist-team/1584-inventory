@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
 import { useAccount } from '@/contexts/AccountContext'
 import { lineageService } from '@/services/lineageService'
 import { transactionService } from '@/services/inventoryService'
 import type { ItemLineageEdge } from '@/types'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 interface ItemLineageBreadcrumbProps {
   itemId: string
@@ -12,6 +14,7 @@ interface ItemLineageBreadcrumbProps {
 
 export default function ItemLineageBreadcrumb({ itemId, compact = true }: ItemLineageBreadcrumbProps) {
   const { currentAccountId } = useAccount()
+  const { buildContextUrl } = useNavigationContext()
   const [edges, setEdges] = useState<ItemLineageEdge[]>([])
   const [resolvedProjectByTx, setResolvedProjectByTx] = useState<Record<string, string | null>>({})
 
@@ -104,10 +107,10 @@ export default function ItemLineageBreadcrumb({ itemId, compact = true }: ItemLi
           const displayLabel = isInventory ? 'Inventory' : (node!.length > 12 ? `${node!.slice(0, 12)}…` : node)
           const projectId = node ? resolvedProjectByTx[node] : null
           const to = isInventory
-            ? `/business-inventory`
+            ? buildContextUrl('/business-inventory')
             : projectId
-              ? `/project/${projectId}/transaction/${node}`
-              : `/project/unknown/transaction/${node}`
+              ? buildContextUrl(`/project/${projectId}/transaction/${node}`, { project: projectId })
+              : buildContextUrl(`/project/unknown/transaction/${node}`)
 
           return (
             <li key={`${node ?? 'inventory'}-${idx}`} className="flex items-center">
@@ -115,9 +118,9 @@ export default function ItemLineageBreadcrumb({ itemId, compact = true }: ItemLi
               {isInventory ? (
                 <span className="text-gray-500">{displayLabel}</span>
               ) : (
-                <Link to={to} className="text-primary-600 hover:underline">
+                <ContextLink to={to} className="text-primary-600 hover:underline">
                   {displayLabel}
-                </Link>
+                </ContextLink>
               )}
             </li>
           )

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { signInWithGoogle, signUpWithEmailPassword, supabase } from '../services/supabase'
 import { getInvitationByToken } from '../services/supabase'
 import { UserRole } from '../types'
@@ -7,7 +8,7 @@ import { Mail, Shield, Users, AlertCircle, Eye, EyeOff } from 'lucide-react'
 
 export default function InviteAccept() {
   const { token } = useParams<{ token: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [invitation, setInvitation] = useState<{

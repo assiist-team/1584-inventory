@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
@@ -350,13 +351,13 @@ export default function InventoryList({ projectId, projectName, items: propItems
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
-        <Link
-          to={`/project/${projectId}/item/add`}
+        <ContextLink
+          to={buildContextUrl(`/project/${projectId}/item/add`, { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Item
-        </Link>
+        </ContextLink>
       </div>
 
       {/* Search and Controls - Sticky Container */}
@@ -561,14 +562,14 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       >
                         <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
-                      <Link
-                        to={`/project/${projectId}/edit-item/${item.itemId}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+                      <ContextLink
+                        to={buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId })}
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Edit item"
                       >
                         <Edit className="h-4 w-4" />
-                      </Link>
+                      </ContextLink>
                       <button
                         onClick={(e) => {
                           e.preventDefault()
@@ -621,7 +622,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                   </div>
 
                   {/* Main tappable content - wrapped in Link */}
-                  <Link to={buildContextUrl(`/item/${item.itemId}`, { project: projectId })}>
+                  <ContextLink to={buildContextUrl(`/item/${item.itemId}`, { project: projectId })}>
                     <div className="block bg-transparent">
                       <div className="px-4 pb-3 sm:px-6">
                         {/* Middle row: Thumbnail and Description - now tappable */}
@@ -697,7 +698,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </ContextLink>
                 </li>
               ))}
             </ul>

@@ -1,5 +1,6 @@
 import { Plus, Search, Filter } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, useEffect, useMemo } from 'react'
 import { Transaction, TransactionCompleteness } from '@/types'
 import { transactionService } from '@/services/inventoryService'
@@ -39,6 +40,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
   const { currentAccountId } = useAccount()
   // Use prop if provided, otherwise fall back to route param
   const projectId = propProjectId || routeProjectId
+  const { buildContextUrl } = useNavigationContext()
   const [transactions, setTransactions] = useState<Transaction[]>(propTransactions || [])
   const [isLoading, setIsLoading] = useState(!propTransactions)
   const [completenessById, setCompletenessById] = useState<Record<string, TransactionCompleteness | null>>({})
@@ -201,7 +203,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
       {/* Header - Add Transaction button */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
         <Link
-          to={`/project/${projectId}/transaction/add`}
+          to={buildContextUrl(`/project/${projectId}/transaction/add`, { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -307,7 +309,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
             {filteredTransactions.map((transaction) => (
               <li key={transaction.transactionId} className="relative">
                 <Link
-                  to={`/project/${projectId}/transaction/${transaction.transactionId}`}
+                  to={buildContextUrl(`/project/${projectId}/transaction/${transaction.transactionId}`, { project: projectId, transactionId: transaction.transactionId })}
                   className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
                   <div className="px-4 py-4 sm:px-6">

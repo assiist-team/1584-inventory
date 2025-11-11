@@ -1,5 +1,8 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, FormEvent, useEffect } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionItemFormData, ItemImage, TaxPreset } from '@/types'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
@@ -16,9 +19,10 @@ import { getTaxPresets } from '@/services/taxPresetsService'
 
 export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const { user, isOwner } = useAuth()
   const { currentAccountId } = useAccount()
+  const { getBackDestination } = useNavigationContext()
 
   // Check if user has permission to add transactions
   // Users must belong to an account (have currentAccountId) or be a system owner
@@ -34,7 +38,7 @@ export default function AddTransaction() {
             You don't have permission to add transactions. Please contact an administrator if you need access.
           </p>
           <Link
-            to={`/project/${projectId}`}
+            to={getBackDestination(`/project/${projectId}`)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
@@ -458,13 +462,13 @@ export default function AddTransaction() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={`/project/${projectId}?tab=transactions`}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=transactions`)}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
 
       </div>
@@ -1020,12 +1024,16 @@ export default function AddTransaction() {
           {/* Form Actions */}
           <div className="flex justify-end space-x-3 pt-4">
             <Link
-              to={`/project/${projectId}?tab=transactions`}
+              to={getBackDestination(`/project/${projectId}?tab=transactions`)}
               className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Link>
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=transactions`)}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+          >
+            <X className="h-4 w-4 mr-2" />
+            Cancel
+          </ContextBackLink>
             <button
               type="submit"
               disabled={isSubmitting || isUploadingImages}

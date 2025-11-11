@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { Button } from '@/components/ui/Button'
 import type { Item, Project } from '@/types'
 import { projectService, unifiedItemsService } from '@/services/inventoryService'
@@ -19,7 +20,7 @@ function toNumber(value: string | number | null | undefined): number {
 
 export default function PropertyManagementSummary() {
   const { id: projectId } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
   const { businessName, businessLogoUrl } = useBusinessProfile()
 

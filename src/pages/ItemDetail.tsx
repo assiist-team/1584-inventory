@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown, Copy } from 'lucide-react'
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
+import ContextBackLink from '@/components/ContextBackLink'
 import { Item, ItemImage } from '@/types'
 import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
@@ -14,10 +16,11 @@ import { useToast } from '@/components/ui/ToastContext'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useAccount } from '@/contexts/AccountContext'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 
 export default function ItemDetail() {
   const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
   const [searchParams] = useSearchParams()
   const [item, setItem] = useState<Item | null>(null)
@@ -458,14 +461,14 @@ export default function ItemDetail() {
   if (!item) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center space-x-4">
-          <Link
-            to={backDestination}
+      <div className="flex items-center space-x-4">
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
         <div className="bg-white shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
@@ -487,13 +490,13 @@ export default function ItemDetail() {
       >
         {/* Back button and controls row */}
         <div className="flex items-center justify-between gap-4">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
 
           <div className="flex flex-wrap gap-2 sm:space-x-2">
             <button
@@ -508,16 +511,16 @@ export default function ItemDetail() {
               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
             </button>
 
-            <Link
+            <ContextLink
               to={isBusinessInventoryItem
-                ? `/business-inventory/${item.itemId}/edit?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
-                : `/project/${projectId}/edit-item/${item.itemId}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+                ? buildContextUrl(`/business-inventory/${item.itemId}/edit`)
+              : buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId || '' })
               }
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
               <Edit className="h-4 w-4" />
-            </Link>
+            </ContextLink>
 
             <button
               onClick={() => duplicateItem(item.itemId)}
@@ -714,19 +717,19 @@ export default function ItemDetail() {
                 <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
-                    <Link
+                    <ContextLink
                       to={isBusinessInventoryItem
                         ? buildContextUrl(`/business-inventory/transaction/${item.transactionId}`)
                         : buildContextUrl(`/project/${projectId}/transaction/${item.transactionId}`)
                       }
-                    className="text-primary-600 hover:text-primary-800 underline"
+                      className="text-primary-600 hover:text-primary-800 underline"
                     >
                       {item.transactionId
                         ? item.transactionId.startsWith('INV_PURCHASE')
                           ? 'INV_PURCHASE...'
                           : (item.transactionId.length > 12 ? `${item.transactionId.slice(0, 12)}...` : item.transactionId)
                         : ''}
-                    </Link>
+                    </ContextLink>
                   </dd>
                 </div>
               {/* Lineage breadcrumb (compact) */}

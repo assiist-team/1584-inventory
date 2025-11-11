@@ -1,5 +1,8 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, FormEvent, useEffect, useRef } from 'react'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -31,7 +34,8 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
 
 export default function AddItem() {
   const { id: projectId } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
+  const { getBackDestination } = useNavigationContext()
   const { hasRole } = useAuth()
   const { currentAccountId } = useAccount()
   const { showError } = useToast()
@@ -51,7 +55,7 @@ export default function AddItem() {
             You don't have permission to add items. Please contact an administrator if you need access.
           </p>
           <Link
-            to={`/project/${projectId}`}
+            to={getBackDestination(`/project/${projectId}`)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
@@ -326,13 +330,13 @@ export default function AddItem() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={`/project/${projectId}?tab=inventory`}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=inventory`)}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
 
       </div>
@@ -701,13 +705,13 @@ export default function AddItem() {
 
           {/* Form Actions - Normal on desktop, hidden on mobile (replaced by sticky bar) */}
           <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
-            <Link
-              to={`/project/${projectId}?tab=inventory`}
-              className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Link>
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=inventory`)}
+            className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+          >
+            <X className="h-4 w-4 mr-2" />
+            Cancel
+          </ContextBackLink>
             <button
               type="submit"
               disabled={isSubmitting}
@@ -723,13 +727,13 @@ export default function AddItem() {
       {/* Sticky mobile action bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
         <div className="flex space-x-3">
-          <Link
-            to={`/project/${projectId}?tab=inventory`}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=inventory`)}
             className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <X className="h-4 w-4 mr-2" />
             Cancel
-          </Link>
+          </ContextBackLink>
           <button
             type="submit"
             disabled={isSubmitting}

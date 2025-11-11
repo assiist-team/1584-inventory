@@ -1,5 +1,6 @@
 import { ArrowLeft, Save, X, Shield } from 'lucide-react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, FormEvent, useEffect, useMemo, useRef } from 'react'
 import { unifiedItemsService, transactionService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -29,7 +30,7 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
 }
 
 export default function AddBusinessInventoryItem() {
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const location = useLocation()
   const { hasRole } = useAuth()
   const { currentAccountId } = useAccount()
