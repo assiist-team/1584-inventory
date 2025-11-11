@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { User, Settings as SettingsIcon, Building2, Upload } from 'lucide-react'
+import { User, Settings as SettingsIcon, Building2, Upload, Tag } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAccount } from '../contexts/AccountContext'
 import { useBusinessProfile } from '../contexts/BusinessProfileContext'
@@ -9,6 +9,7 @@ import UserManagement from '../components/auth/UserManagement'
 import AccountManagement from '../components/auth/AccountManagement'
 import TaxPresetsManager from '../components/TaxPresetsManager'
 import VendorDefaultsManager from '../components/VendorDefaultsManager'
+import BudgetCategoriesManager from '../components/BudgetCategoriesManager'
 import { Button } from '../components/ui/Button'
 
 export default function Settings() {
@@ -189,6 +190,28 @@ export default function Settings() {
                 </div>
               </div>
               <VendorDefaultsManager />
+            </div>
+          </div>
+        )}
+
+        {/* Budget Categories Management Section - Only for admins */}
+        {isAdmin && (
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="flex-shrink-0">
+                  <Tag className="h-8 w-8 text-gray-400" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Budget Categories
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Manage budget categories for organizing transactions
+                  </p>
+                </div>
+              </div>
+              <BudgetCategoriesManager />
             </div>
           </div>
         )}

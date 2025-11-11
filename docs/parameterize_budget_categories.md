@@ -118,6 +118,83 @@ Tests to update:
 - Ensure all frontend components and backend endpoints enforce `account_id` scoping for categories and progress reads/writes. Never expose categories from other accounts.
 - Consider adding feature flags or rollout gating for toggling new category-based reporting in staging before production.
 
+## Category lifecycle — archival and renames (decided)
+The authoritative policy for category lifecycle is:
+- Do not hard-delete `budget_categories`. Instead, mark them as `is_archived = true` to remove them from normal selectors while preserving historical integrity.
+- Renaming a `budget_category` is allowed and the new name will be reflected everywhere (including historical transactions) because `transactions` read the category name via the `category_id` FK.
+- Do not denormalize or snapshot category labels on write. We will not add a `category_label` column to `transactions` in the initial plan. If a future requirement mandates immutable historical labels, we will revisit and add a `category_label` field and migration.
+
+Implementation notes:
+- Add `is_archived BOOLEAN DEFAULT FALSE` to `budget_categories`.
+- When deleting via API, return 400 if the category is referenced and require archive or reassignment instead.
+- Update frontend selectors to hide `is_archived = true` categories by default and offer an "include archived" toggle in admin views.
+
+## Implementation chunks (authoritative, small digestible pieces)
+Break the work into sequential chunks that a developer can complete independently. Each chunk below lists the primary acceptance criteria.
+
+Chunk 1 — DB: create categories table and add FK on transactions (current in_progress)
+- Changes:
+  - Add `supabase/migrations/017_create_budget_categories.sql` to create `budget_categories`:
+    - columns: `id` UUID/serial PK, `account_id` FK, `name` TEXT NOT NULL, `slug` TEXT UNIQUE per account, `is_archived` BOOLEAN DEFAULT FALSE, `metadata` JSONB NULL, `created_at` TIMESTAMP, `updated_at` TIMESTAMP
+  - Add `supabase/migrations/018_add_transaction_category_id.sql` to add nullable `category_id` FK to `transactions`.
+- Acceptance criteria:
+  - Migrations apply cleanly on a dev DB.
+  - `category_id` is nullable and references `budget_categories(id)`.
+
+Chunk 2 — Backend: model, service, CRUD, and delete rules
+- Changes:
+  - Add model/entity for `budget_categories`.
+  - Implement `budgetCategoriesService` with create/read/update/archive (no hard delete).
+  - Add routes: `GET /accounts/:id/categories`, `POST /accounts/:id/categories`, `PATCH /categories/:id`, `DELETE /categories/:id` (DELETE must archive or require reassignment).
+- Acceptance criteria:
+  - API enforces `account_id` scoping.
+  - Delete endpoint prevents hard deletes when referenced and returns clear error.
+
+Chunk 3 — Frontend Settings: categories management
+- Changes:
+  - Add Settings page `Categories.tsx` to list, create, edit, and archive categories.
+  - Create reusable `CategorySelect` component that loads account categories and hides archived by default.
+- Acceptance criteria:
+  - Settings page allows full CRUD (archive instead of delete).
+  - `CategorySelect` returns { id, name } and supports disabled/archived options.
+
+Chunk 4 — Project creation: use account categories
+- Changes:
+  - Update `frontend/src/pages/projects/CreateProject.tsx` to load account categories via `CategorySelect` and persist `default_category_id` on project if the project schema supports it.
+  - Backend `projects` service accepts and persists `default_category_id`.
+- Acceptance criteria:
+  - New projects can set a default category and it's stored on the `projects` row.
+
+Chunk 5 — Transactions UI and API: require `category_id`
+- Changes:
+  - Update `frontend/src/components/TransactionForm.tsx` to require selecting a category from `CategorySelect`.
+  - Update transaction create/update API to validate `category_id` belongs to the transaction's account.
+- Acceptance criteria:
+  - Transactions can be created/updated with `category_id` and validation prevents cross-account category use.
+
+Chunk 6 — Budget Progress: reporting and UI updates
+- Changes:
+  - Update backend aggregation queries, views, and report endpoints to group by `budget_categories.id`.
+  - Update `src/components/ui/BudgetProgress.tsx`, `src/pages/ProjectDetail.tsx`, `src/pages/Projects.tsx` to use category names via join on `budget_categories`.
+- Acceptance criteria:
+  - Budget progress charts and totals display correctly grouped by category.
+
+Chunk 7 — Seeds and admin tools
+- Changes:
+  - Add optional seed migration `019_seed_budget_category_defaults.sql` to provide defaults for new accounts.
+  - Add small admin UI for bulk-archival/reassignment (optional script).
+- Acceptance criteria:
+  - New accounts get sensible defaults; admins can bulk-archive/reassign if needed.
+
+Chunk 8 — Tests, rollout, and smoke checks
+- Changes:
+  - Unit tests for service logic and API validation.
+  - Integration tests for frontend flows (Settings, TransactionForm, CreateProject).
+  - Deploy plan: backend+frontend with migrations, smoke tests verifying categories and budget progress.
+- Acceptance criteria:
+  - Tests cover CRUD, scoping, archival behavior, and reporting.
+  - Post-deploy smoke checklist passes in staging before production rollout.
+
 ## Existing non-doc/test files that reference budget progress
 The following files in the repository reference budget progress and must be included in implementation and testing. (Docs and test files are intentionally excluded.)
 - `src/pages/Projects.tsx`

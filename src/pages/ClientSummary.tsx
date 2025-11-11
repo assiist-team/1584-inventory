@@ -7,6 +7,7 @@ import { projectService, transactionService, unifiedItemsService } from '@/servi
 import { useAccount } from '@/contexts/AccountContext'
 import { useBusinessProfile } from '@/contexts/BusinessProfileContext'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+import { useCategories } from '@/components/CategorySelect'
 
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
@@ -24,6 +25,7 @@ export default function ClientSummary() {
   const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
   const { businessName, businessLogoUrl } = useBusinessProfile()
+  const { categories: accountCategories } = useCategories(false)
 
   const [project, setProject] = useState<Project | null>(null)
   const [items, setItems] = useState<Item[]>([])
@@ -69,6 +71,15 @@ export default function ClientSummary() {
     load()
   }, [projectId, currentAccountId, navigate])
 
+  // Create a map of categoryId -> category name for quick lookup
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, string>()
+    accountCategories.forEach(cat => {
+      map.set(cat.id, cat.name)
+    })
+    return map
+  }, [accountCategories])
+
   // Calculate summary values
   const summary = useMemo(() => {
     // Total spent overall (sum of projectPrice for all items)
@@ -77,22 +88,25 @@ export default function ClientSummary() {
       return sum + projectPrice
     }, 0)
 
-    // Breakdown by budget categories (sum of item project prices by budgetCategory from their transactions)
+    // Breakdown by budget categories (sum of item project prices by categoryId from their transactions)
     const categoryBreakdown: Record<string, number> = {}
-    // Create a map of transactionId -> budgetCategory for quick lookup
+    // Create a map of transactionId -> categoryName for quick lookup
     const transactionCategoryMap = new Map<string, string>()
     transactions.forEach(transaction => {
-      if (transaction.budgetCategory && transaction.transactionId) {
-        transactionCategoryMap.set(transaction.transactionId, transaction.budgetCategory)
+      if (transaction.categoryId && transaction.transactionId) {
+        const categoryName = categoryMap.get(transaction.categoryId)
+        if (categoryName) {
+          transactionCategoryMap.set(transaction.transactionId, categoryName)
+        }
       }
     })
     // Sum item project prices by their transaction's budget category
     items.forEach(item => {
       if (item.transactionId) {
-        const budgetCategory = transactionCategoryMap.get(item.transactionId)
-        if (budgetCategory) {
+        const categoryName = transactionCategoryMap.get(item.transactionId)
+        if (categoryName) {
           const projectPrice = toNumber(item.projectPrice)
-          categoryBreakdown[budgetCategory] = (categoryBreakdown[budgetCategory] || 0) + projectPrice
+          categoryBreakdown[categoryName] = (categoryBreakdown[categoryName] || 0) + projectPrice
         }
       }
     })
@@ -121,7 +135,7 @@ export default function ClientSummary() {
       totalMarketValue,
       totalSaved
     }
-  }, [items, transactions])
+  }, [items, transactions, categoryMap])
 
   const handlePrint = () => window.print()
   const handleBack = () => {

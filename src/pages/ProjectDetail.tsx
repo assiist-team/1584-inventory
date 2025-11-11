@@ -500,6 +500,7 @@ export default function ProjectDetail() {
               budget: project.budget,
               designFee: project.designFee,
               budgetCategories: project.budgetCategories,
+              defaultCategoryId: project.defaultCategoryId,
             }}
             onSubmit={handleEditProject}
             onCancel={handleCancelEdit}

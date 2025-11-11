@@ -9,6 +9,17 @@ export interface TaxPreset {
   rate: number; // percentage, e.g., 8.375
 }
 
+export interface BudgetCategory {
+  id: string;
+  accountId: string;
+  name: string;
+  slug: string;
+  isArchived: boolean;
+  metadata?: Record<string, any> | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -61,6 +72,7 @@ export interface Project {
   budget?: number;
   designFee?: number;
   budgetCategories?: ProjectBudgetCategories;
+  defaultCategoryId?: string;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -212,7 +224,8 @@ export interface Transaction {
   transactionType: string;
   paymentMethod: string;
   amount: string;
-  budgetCategory?: string;
+  budgetCategory?: string; // Legacy field - kept for backward compatibility
+  categoryId?: string; // New field - FK to budget_categories.id
   notes?: string;
   transactionImages?: TransactionImage[]; // Legacy field for backward compatibility
   receiptImages?: TransactionImage[]; // New field for receipt images
@@ -262,7 +275,8 @@ export interface TransactionFormData {
   transactionType: string;
   paymentMethod: string;
   amount: string;
-  budgetCategory?: string;
+  budgetCategory?: string; // Legacy field - kept for backward compatibility
+  categoryId?: string; // New field - FK to budget_categories.id
   notes?: string;
   status?: 'pending' | 'completed' | 'canceled';
   reimbursementType?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
@@ -297,7 +311,8 @@ export interface TransactionValidationErrors {
   transactionType?: string;
   paymentMethod?: string;
   amount?: string;
-  budgetCategory?: string;
+  budgetCategory?: string; // Legacy field - kept for backward compatibility
+  categoryId?: string; // New field - FK to budget_categories.id
   notes?: string;
   status?: string;
   reimbursementType?: string;

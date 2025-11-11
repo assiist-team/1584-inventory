@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Transaction, ProjectBudgetCategories, BudgetCategory } from '@/types'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useCategories } from '@/components/CategorySelect'
+import { useAccount } from '@/contexts/AccountContext'
 
 interface BudgetProgressProps {
   budget?: number
@@ -11,25 +13,42 @@ interface BudgetProgressProps {
 }
 
 interface CategoryBudgetData {
-  category: BudgetCategory
+  categoryId: string
+  categoryName: string
   budget: number
   spent: number
   percentage: number
+  isDesignFee: boolean
 }
 
 
 export default function BudgetProgress({ budget, designFee, budgetCategories, transactions, previewMode = false }: BudgetProgressProps) {
+  const { currentAccountId } = useAccount()
+  const { categories: accountCategories, isLoading: categoriesLoading } = useCategories(false)
   const [showAllCategories, setShowAllCategories] = useState(false)
 
+  // Create a map of categoryId -> category name for quick lookup
+  const categoryMap = new Map<string, string>()
+  accountCategories.forEach(cat => {
+    categoryMap.set(cat.id, cat.name)
+  })
+
+  // Helper to check if a category is "Design Fee" by name (for backward compatibility)
+  const isDesignFeeCategory = (categoryName: string): boolean => {
+    return categoryName.toLowerCase().includes('design') && categoryName.toLowerCase().includes('fee')
+  }
+
   // Calculate total spent for overall budget (exclude Design Fee transactions)
-  const calculateSpent = async (): Promise<number> => {
+  const calculateSpent = (): number => {
     // Sum all transactions (purchases add, returns subtract), excluding canceled and design fee transactions
     let totalAmount = 0
 
-    const activeTransactions = transactions.filter(t =>
-      (t.status || '').toLowerCase() !== 'canceled' &&
-      t.budgetCategory !== BudgetCategory.DESIGN_FEE
-    )
+    const activeTransactions = transactions.filter(t => {
+      if ((t.status || '').toLowerCase() === 'canceled') return false
+      if (!t.categoryId) return true // Include uncategorized transactions in overall
+      const categoryName = categoryMap.get(t.categoryId)
+      return categoryName && !isDesignFeeCategory(categoryName)
+    })
 
     for (const transaction of activeTransactions) {
       const transactionAmount = parseFloat(transaction.amount || '0')
@@ -41,83 +60,114 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     return totalAmount
   }
 
-  // Calculate spending for each budget category
-  const calculateCategoryBudgetData = async (): Promise<CategoryBudgetData[]> => {
-    if (!budgetCategories) {
-      return []
-    }
-
+  // Calculate spending for each budget category using categoryId
+  const calculateCategoryBudgetData = (): CategoryBudgetData[] => {
     const categoryData: CategoryBudgetData[] = []
 
-    // Define the categories to track in desired order
-    const categories = [
-      { key: 'furnishings' as keyof ProjectBudgetCategories, label: BudgetCategory.FURNISHINGS },
-      { key: 'install' as keyof ProjectBudgetCategories, label: BudgetCategory.INSTALL },
-      { key: 'fuel' as keyof ProjectBudgetCategories, label: BudgetCategory.FUEL },
-      { key: 'storageReceiving' as keyof ProjectBudgetCategories, label: BudgetCategory.STORAGE_RECEIVING },
-      { key: 'kitchen' as keyof ProjectBudgetCategories, label: BudgetCategory.KITCHEN },
-      { key: 'propertyManagement' as keyof ProjectBudgetCategories, label: BudgetCategory.PROPERTY_MANAGEMENT },
-      { key: 'designFee' as keyof ProjectBudgetCategories, label: BudgetCategory.DESIGN_FEE },
-    ]
+    // Group transactions by categoryId
+    const transactionsByCategoryId = new Map<string, Transaction[]>()
+    transactions.forEach(transaction => {
+      if ((transaction.status || '').toLowerCase() === 'canceled') return
+      if (!transaction.categoryId) return // Skip uncategorized transactions for category breakdown
+      
+      if (!transactionsByCategoryId.has(transaction.categoryId)) {
+        transactionsByCategoryId.set(transaction.categoryId, [])
+      }
+      transactionsByCategoryId.get(transaction.categoryId)!.push(transaction)
+    })
 
-    for (const { key, label } of categories) {
-      const categoryBudget = budgetCategories[key] || 0
-      // Show design fee progress bar even if no transactions yet
-      const shouldShowCategory = label === BudgetCategory.DESIGN_FEE ?
-        (designFee !== null && designFee !== undefined && designFee > 0) :
-        categoryBudget > 0
+    // Process each category that has transactions or a budget set
+    transactionsByCategoryId.forEach((categoryTransactions, categoryId) => {
+      const categoryName = categoryMap.get(categoryId)
+      if (!categoryName) return // Skip if category not found
+
+      const isDesignFee = isDesignFeeCategory(categoryName)
+      
+      // Calculate spent for this category
+      let categorySpent = 0
+      for (const transaction of categoryTransactions) {
+        const transactionAmount = parseFloat(transaction.amount || '0')
+        const multiplier = transaction.transactionType === 'Return' ? -1 : 1
+        const finalAmount = transactionAmount * multiplier
+        categorySpent += finalAmount
+      }
+
+      // Determine budget for this category
+      let categoryBudget = 0
+      if (isDesignFee) {
+        // Use designFee prop for design fee category
+        categoryBudget = designFee || 0
+      } else {
+        // Try to match category name to legacy budgetCategories structure
+        // This is a fallback for backward compatibility
+        if (budgetCategories) {
+          // Map category names to legacy keys (approximate matching)
+          const nameLower = categoryName.toLowerCase()
+          if (nameLower.includes('furnish')) {
+            categoryBudget = budgetCategories.furnishings || 0
+          } else if (nameLower.includes('install')) {
+            categoryBudget = budgetCategories.install || 0
+          } else if (nameLower.includes('fuel')) {
+            categoryBudget = budgetCategories.fuel || 0
+          } else if (nameLower.includes('storage') || nameLower.includes('receiving')) {
+            categoryBudget = budgetCategories.storageReceiving || 0
+          } else if (nameLower.includes('kitchen')) {
+            categoryBudget = budgetCategories.kitchen || 0
+          } else if (nameLower.includes('property') || nameLower.includes('management')) {
+            categoryBudget = budgetCategories.propertyManagement || 0
+          }
+        }
+      }
+
+      // Show category if it has a budget set or has transactions
+      const shouldShowCategory = categoryBudget > 0 || categorySpent !== 0
 
       if (shouldShowCategory) {
-        // Special handling for Design Fee - track received vs remaining to receive
-        if (label === BudgetCategory.DESIGN_FEE) {
-          const designFeeReceived = transactions
-            .filter(transaction =>
-              transaction.budgetCategory === BudgetCategory.DESIGN_FEE
-            )
-            .reduce((total, transaction) => {
-              const amount = parseFloat(transaction.amount || '0')
-              // Apply transaction type multiplier: purchases add, returns subtract
-              const multiplier = transaction.transactionType === 'Return' ? -1 : 1
-              return total + (amount * multiplier)
-            }, 0)
+        const percentage = categoryBudget > 0 ? (categorySpent / categoryBudget) * 100 : 0
 
-          const percentage = designFee && designFee > 0 ? (designFeeReceived / designFee) * 100 : 0
+        categoryData.push({
+          categoryId,
+          categoryName,
+          budget: categoryBudget,
+          spent: Math.round(categorySpent),
+          percentage: Math.min(percentage, 100), // Cap at 100%
+          isDesignFee
+        })
+      }
+    })
 
-          categoryData.push({
-            category: label,
-            budget: designFee || 0, // Use designFee instead of budgetCategories[key]
-            spent: Math.round(designFeeReceived), // For design fee, "spent" represents "received"
-            percentage: Math.min(percentage, 100) // Cap at 100%
-          })
-        } else {
-          // Regular categories - track spent vs budget based on transaction amounts directly
-          let categorySpent = 0
-
-          const categoryTransactions = transactions.filter(transaction =>
-            (transaction.status || '').toLowerCase() !== 'canceled' &&
-            transaction.budgetCategory === label
+    // Also include categories from budgetCategories that might not have transactions yet
+    if (budgetCategories) {
+      // Check for furnishings budget
+      if (budgetCategories.furnishings > 0) {
+        const furnishingsCategory = categoryData.find(cat => 
+          cat.categoryName.toLowerCase().includes('furnish')
+        )
+        if (!furnishingsCategory) {
+          // Find a furnishings category from account categories, or create a placeholder
+          const furnishingsCat = accountCategories.find(cat => 
+            cat.name.toLowerCase().includes('furnish')
           )
-
-          for (const transaction of categoryTransactions) {
-            // Use transaction amount directly for budget calculation
-            const transactionAmount = parseFloat(transaction.amount || '0')
-            // Apply transaction type multiplier: purchases add, returns subtract
-            const multiplier = transaction.transactionType === 'Return' ? -1 : 1
-            const finalAmount = transactionAmount * multiplier
-            categorySpent += finalAmount
+          if (furnishingsCat) {
+            categoryData.push({
+              categoryId: furnishingsCat.id,
+              categoryName: furnishingsCat.name,
+              budget: budgetCategories.furnishings,
+              spent: 0,
+              percentage: 0,
+              isDesignFee: false
+            })
           }
-
-          const percentage = categoryBudget > 0 ? (categorySpent / categoryBudget) * 100 : 0
-
-          categoryData.push({
-            category: label,
-            budget: categoryBudget,
-            spent: Math.round(categorySpent),
-            percentage: Math.min(percentage, 100) // Cap at 100%
-          })
         }
       }
     }
+
+    // Sort: Design Fee last, then by name
+    categoryData.sort((a, b) => {
+      if (a.isDesignFee && !b.isDesignFee) return 1
+      if (!a.isDesignFee && b.isDesignFee) return -1
+      return a.categoryName.localeCompare(b.categoryName)
+    })
 
     return categoryData
   }
@@ -130,18 +180,22 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
   // Calculate budget data when component mounts or when props change
   useEffect(() => {
-    const calculateBudgetData = async () => {
+    // Wait for categories to load
+    if (categoriesLoading || !currentAccountId) {
+      return
+    }
+
+    const calculateBudgetData = () => {
       setIsLoading(true)
 
       try {
-        const spentAmount = await calculateSpent()
-        const categoryData = await calculateCategoryBudgetData()
+        const spentAmount = calculateSpent()
+        const categoryData = calculateCategoryBudgetData()
 
-        // Compute overall budget as the sum of category budgets (exclude designFee key)
-        const overallFromCategories = budgetCategories ? Object.entries(budgetCategories).reduce((sum, [key, val]) => {
-          if (key === 'designFee') return sum
-          return sum + (val as number || 0)
-        }, 0) : 0
+        // Compute overall budget as the sum of category budgets (exclude design fee)
+        const overallFromCategories = categoryData
+          .filter(cat => !cat.isDesignFee)
+          .reduce((sum, cat) => sum + cat.budget, 0)
 
         const spentRounded = Math.round(spentAmount)
         const percentageValue = overallFromCategories > 0 ? (spentRounded / overallFromCategories) * 100 : 0
@@ -161,42 +215,55 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     }
 
     calculateBudgetData()
-  }, [budget, designFee, budgetCategories, transactions])
+  }, [budget, designFee, budgetCategories, transactions, accountCategories, categoriesLoading, currentAccountId])
 
   // In preview mode, determine what to show: furnishings budget if it exists, otherwise overall furnishings-only budget
   let categoryData = allCategoryData
-  let overallBudgetCategory = null
+  let overallBudgetCategory: CategoryBudgetData | null = null
 
   if (previewMode) {
-    // In preview mode, show only the primary budget (furnishings if set, otherwise overall furnishings-only budget)
-    const furnishingsCategory = allCategoryData.find(cat => cat.category === BudgetCategory.FURNISHINGS)
+    // In preview mode, show only the primary budget (furnishings if set, otherwise overall)
+    const furnishingsCategory = allCategoryData.find(cat => 
+      cat.categoryName.toLowerCase().includes('furnish')
+    )
     if (furnishingsCategory) {
       // Show only furnishings budget category
       categoryData = [furnishingsCategory]
     } else if (computedOverallBudget > 0) {
       // No category budgets set, show overall budget (sum of categories, excluding design fee)
       overallBudgetCategory = {
-        category: 'Overall Budget' as BudgetCategory,
+        categoryId: 'overall',
+        categoryName: 'Overall Budget',
         budget: computedOverallBudget,
         spent: spent,
-        percentage: percentage
+        percentage: percentage,
+        isDesignFee: false
       }
     }
   } else {
     // Full mode: Filter categories based on toggle state - show only furnishings by default, others when expanded
-    categoryData = allCategoryData.filter(category =>
-      category.category === BudgetCategory.FURNISHINGS || showAllCategories
+    const furnishingsCategory = allCategoryData.find(cat => 
+      cat.categoryName.toLowerCase().includes('furnish')
     )
+    
+    if (showAllCategories) {
+      categoryData = allCategoryData
+    } else {
+      // Show only furnishings if it exists
+      categoryData = furnishingsCategory ? [furnishingsCategory] : []
+    }
 
     // Add overall budget as a category if it exists and should be shown
     // Show overall budget only when the toggle is expanded (showAllCategories === true)
     const shouldShowOverallBudget = computedOverallBudget > 0 && showAllCategories
 
     overallBudgetCategory = shouldShowOverallBudget ? {
-      category: 'Overall Budget' as BudgetCategory,
+      categoryId: 'overall',
+      categoryName: 'Overall Budget',
       budget: computedOverallBudget,
       spent: spent,
-      percentage: percentage
+      percentage: percentage,
+      isDesignFee: false
     } : null
   }
 
@@ -243,9 +310,12 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
   }
 
   // Format category names to include "Budget" suffix
-  const formatCategoryName = (categoryName: string | BudgetCategory) => {
+  const formatCategoryName = (categoryName: string) => {
     // Don't add "Budget" to Design Fee or Overall Budget as they're already clear
-    if (categoryName === BudgetCategory.DESIGN_FEE || categoryName === 'Overall Budget') {
+    if (categoryName.toLowerCase().includes('design') && categoryName.toLowerCase().includes('fee')) {
+      return categoryName
+    }
+    if (categoryName === 'Overall Budget') {
       return categoryName
     }
     return `${categoryName} Budget`
@@ -282,18 +352,17 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
             <div className="space-y-4">
               {[...categoryData, ...(overallBudgetCategory ? [overallBudgetCategory] : [])].map((category) => {
-                const isDesignFee = category.category === BudgetCategory.DESIGN_FEE
                 return (
-                  <div key={category.category}>
+                  <div key={category.categoryId}>
                     <div className="mb-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-base font-medium text-gray-900">{formatCategoryName(category.category)}</span>
+                        <span className="text-base font-medium text-gray-900">{formatCategoryName(category.categoryName)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-500">
-                          ${Math.round(category.spent).toLocaleString('en-US')} {isDesignFee ? 'received' : 'spent'}
+                          ${Math.round(category.spent).toLocaleString('en-US')} {category.isDesignFee ? 'received' : 'spent'}
                         </span>
-                        <span className={`text-sm ${isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
+                        <span className={`text-sm ${category.isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
                           <span className="font-bold">${Math.round((category.budget || 0) - category.spent).toLocaleString('en-US')}</span> remaining
                         </span>
                       </div>
@@ -304,7 +373,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
                       <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
                         <div
                           className={`h-2 rounded-full transition-all duration-300 ${
-                            isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
+                            category.isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
                           }`}
                           style={{ width: `${Math.min(category.percentage, 100)}%` }}
                         />
@@ -338,18 +407,17 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
           <div className="space-y-4">
             {renderCategories.map((category) => {
-              const isDesignFee = category.category === BudgetCategory.DESIGN_FEE
               return (
-                <div key={category.category}>
+                <div key={category.categoryId}>
                   <div className="mb-2">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-base font-medium text-gray-900">{formatCategoryName(category.category)}</span>
+                      <span className="text-base font-medium text-gray-900">{formatCategoryName(category.categoryName)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500">
-                        ${Math.round(category.spent).toLocaleString('en-US')} {isDesignFee ? 'received' : 'spent'}
+                        ${Math.round(category.spent).toLocaleString('en-US')} {category.isDesignFee ? 'received' : 'spent'}
                       </span>
-                      <span className={`text-sm ${isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
+                      <span className={`text-sm ${category.isDesignFee ? getDesignFeeRemainingColor(category.percentage) : getRemainingColor(category.percentage)}`}>
                         <span className="font-bold">${Math.round((category.budget || 0) - category.spent).toLocaleString('en-US')}</span> remaining
                       </span>
                     </div>
@@ -360,7 +428,7 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
                       <div
                         className={`h-2 rounded-full transition-all duration-300 ${
-                          isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
+                          category.isDesignFee ? getDesignFeeProgressColor(category.percentage) : getProgressColor(category.percentage)
                         }`}
                         style={{ width: `${Math.min(category.percentage, 100)}%` }}
                       />
@@ -373,7 +441,10 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
           </div>
 
           {/* Show All Categories Toggle - positioned at bottom */}
-          {(allCategoryData.some(cat => cat.category !== BudgetCategory.FURNISHINGS && cat.category !== BudgetCategory.DESIGN_FEE) || (budget !== null && budget !== undefined && budget > 0)) && (
+          {(allCategoryData.some(cat => {
+            const nameLower = cat.categoryName.toLowerCase()
+            return !nameLower.includes('furnish') && !cat.isDesignFee
+          }) || (budget !== null && budget !== undefined && budget > 0)) && (
             <div className="mt-4">
               <button
                 onClick={() => setShowAllCategories(!showAllCategories)}

@@ -16,6 +16,7 @@ import { useAccount } from '../contexts/AccountContext'
 import { Shield } from 'lucide-react'
 import { getTaxPresets } from '@/services/taxPresetsService'
 import { getAvailableVendors } from '@/services/vendorDefaultsService'
+import CategorySelect from '@/components/CategorySelect'
 
 export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -77,7 +78,7 @@ export default function AddTransaction() {
     transactionType: 'Purchase',
     paymentMethod: '',
     amount: '',
-    budgetCategory: 'Furnishings',
+    categoryId: '',
     notes: '',
     status: 'completed',
     reimbursementType: '',
@@ -164,8 +165,8 @@ export default function AddTransaction() {
     // Transaction type is optional
     // Payment method is optional
 
-    if (!formData.budgetCategory?.trim()) {
-      newErrors.budgetCategory = 'Budget category is required'
+    if (!formData.categoryId?.trim()) {
+      newErrors.categoryId = 'Budget category is required'
     }
 
     if (!formData.amount.trim()) {
@@ -428,6 +429,14 @@ export default function AddTransaction() {
   }
 
   const handleInputChange = (field: Exclude<keyof TransactionFormData, 'taxRatePreset' | 'subtotal'>, value: string | boolean | File[]) => {
+    // Handle categoryId separately since it's not in the original TransactionFormData type exclusion
+    if (field === 'categoryId') {
+      setFormData(prev => ({ ...prev, categoryId: value as string }))
+      if (errors.categoryId) {
+        setErrors(prev => ({ ...prev, categoryId: undefined }))
+      }
+      return
+    }
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Clear error when user starts typing
@@ -572,112 +581,15 @@ export default function AddTransaction() {
 
           {/* Budget Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Budget Category *
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_design_fee"
-                  name="budgetCategory"
-                  value="Design Fee"
-                  checked={formData.budgetCategory === 'Design Fee'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
-                  Design Fee
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_furnishings"
-                  name="budgetCategory"
-                  value="Furnishings"
-                  checked={formData.budgetCategory === 'Furnishings'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
-                  Furnishings
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_property_management"
-                  name="budgetCategory"
-                  value="Property Management"
-                  checked={formData.budgetCategory === 'Property Management'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
-                  Property Management
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_kitchen"
-                  name="budgetCategory"
-                  value="Kitchen"
-                  checked={formData.budgetCategory === 'Kitchen'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
-                  Kitchen
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_install"
-                  name="budgetCategory"
-                  value="Install"
-                  checked={formData.budgetCategory === 'Install'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
-                  Install
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_storage_receiving"
-                  name="budgetCategory"
-                  value="Storage & Receiving"
-                  checked={formData.budgetCategory === 'Storage & Receiving'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
-                  Storage & Receiving
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_fuel"
-                  name="budgetCategory"
-                  value="Fuel"
-                  checked={formData.budgetCategory === 'Fuel'}
-                  onChange={(e) => handleInputChange('budgetCategory', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
-                  Fuel
-                </label>
-              </div>
-            </div>
-            {errors.budgetCategory && (
-              <p className="mt-1 text-sm text-red-600">{errors.budgetCategory}</p>
-            )}
+            <CategorySelect
+              value={formData.categoryId}
+              onChange={(categoryId) => {
+                handleInputChange('categoryId', categoryId)
+              }}
+              label="Budget Category"
+              error={errors.categoryId}
+              required
+            />
           </div>
 
           {/* Transaction Type */}

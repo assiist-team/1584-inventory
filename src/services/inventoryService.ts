@@ -112,6 +112,7 @@ export const projectService = {
         budget: converted.budget ? parseFloat(converted.budget) : undefined,
         designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
         budgetCategories: converted.budget_categories || undefined,
+        defaultCategoryId: converted.default_category_id || undefined,
         createdAt: converted.created_at,
         updatedAt: converted.updated_at,
         createdBy: converted.created_by,
@@ -154,6 +155,7 @@ export const projectService = {
       budget: converted.budget ? parseFloat(converted.budget) : undefined,
       designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
       budgetCategories: converted.budget_categories || undefined,
+      defaultCategoryId: converted.default_category_id || undefined,
       createdAt: converted.created_at,
       updatedAt: converted.updated_at,
       createdBy: converted.created_by,
@@ -179,6 +181,7 @@ export const projectService = {
         budget: projectData.budget || null,
         design_fee: projectData.designFee || null,
         budget_categories: projectData.budgetCategories || {},
+        default_category_id: projectData.defaultCategoryId || null,
         settings: projectData.settings || {},
         metadata: projectData.metadata || {},
         created_by: projectData.createdBy,
@@ -209,6 +212,7 @@ export const projectService = {
     if (updates.budget !== undefined) updateData.budget = updates.budget
     if (updates.designFee !== undefined) updateData.design_fee = updates.designFee
     if (updates.budgetCategories !== undefined) updateData.budget_categories = updates.budgetCategories
+    if (updates.defaultCategoryId !== undefined) updateData.default_category_id = updates.defaultCategoryId || null
     if (updates.settings !== undefined) updateData.settings = updates.settings
     if (updates.metadata !== undefined) updateData.metadata = updates.metadata
 
@@ -323,7 +327,8 @@ function _convertTransactionFromDb(dbTransaction: any): Transaction {
     transactionType: converted.transaction_type || '',
     paymentMethod: converted.payment_method || '',
     amount: converted.amount || '0.00',
-    budgetCategory: converted.budget_category || undefined,
+    budgetCategory: converted.budget_category || undefined, // Legacy field
+    categoryId: converted.category_id || undefined, // New field
     notes: converted.notes || undefined,
     transactionImages: Array.isArray(converted.transaction_images) ? converted.transaction_images : [],
     receiptImages: Array.isArray(converted.receipt_images) ? converted.receipt_images : [],
@@ -399,7 +404,8 @@ function _convertTransactionToDb(transaction: Partial<Transaction>): any {
   if (transaction.transactionType !== undefined) dbTransaction.transaction_type = transaction.transactionType
   if (transaction.paymentMethod !== undefined) dbTransaction.payment_method = transaction.paymentMethod
   if (transaction.amount !== undefined) dbTransaction.amount = transaction.amount
-  if (transaction.budgetCategory !== undefined) dbTransaction.budget_category = transaction.budgetCategory
+  if (transaction.budgetCategory !== undefined) dbTransaction.budget_category = transaction.budgetCategory // Legacy field
+  if (transaction.categoryId !== undefined) dbTransaction.category_id = transaction.categoryId ?? null // New field
   if (transaction.notes !== undefined) dbTransaction.notes = transaction.notes
   if (transaction.transactionImages !== undefined) dbTransaction.transaction_images = transaction.transactionImages
   if (transaction.receiptImages !== undefined) dbTransaction.receipt_images = transaction.receiptImages
@@ -934,6 +940,20 @@ export const transactionService = {
       dbTransaction.updated_at = now.toISOString()
       if (!dbTransaction.status) dbTransaction.status = 'completed'
 
+      // Validate category_id belongs to account if provided
+      if (dbTransaction.category_id) {
+        const { data: category, error: categoryError } = await supabase
+          .from('budget_categories')
+          .select('id, account_id')
+          .eq('id', dbTransaction.category_id)
+          .eq('account_id', accountId)
+          .single()
+
+        if (categoryError || !category) {
+          throw new Error(`Category ID '${dbTransaction.category_id}' not found or does not belong to this account.`)
+        }
+      }
+
       console.log('Creating transaction:', dbTransaction)
       console.log('Transaction items:', items)
 
@@ -1064,6 +1084,21 @@ export const transactionService = {
 
     // Convert camelCase updates to database format
     const dbUpdates = _convertTransactionToDb(finalUpdates)
+    
+    // Validate category_id belongs to account if provided
+    if (dbUpdates.category_id !== undefined && dbUpdates.category_id !== null) {
+      const { data: category, error: categoryError } = await supabase
+        .from('budget_categories')
+        .select('id, account_id')
+        .eq('id', dbUpdates.category_id)
+        .eq('account_id', accountId)
+        .single()
+
+      if (categoryError || !category) {
+        throw new Error(`Category ID '${dbUpdates.category_id}' not found or does not belong to this account.`)
+      }
+    }
+    
     // Add updated_at timestamp for database
     dbUpdates.updated_at = new Date().toISOString()
 
