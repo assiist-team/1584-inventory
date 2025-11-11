@@ -1,10 +1,12 @@
-import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy, DollarSign } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy, DollarSign, ChevronDown } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Item, Transaction, ItemImage, Project } from '@/types'
 import type { Transaction as TransactionType } from '@/types'
-import { unifiedItemsService, transactionService, projectService } from '@/services/inventoryService'
+import { unifiedItemsService, transactionService, projectService, integrationService } from '@/services/inventoryService'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { useToast } from '@/components/ui/ToastContext'
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
@@ -42,6 +44,8 @@ export default function BusinessInventory() {
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
+  const { showSuccess, showError } = useToast()
 
   // Batch allocation state
   const [projects, setProjects] = useState<Project[]>([])
@@ -70,6 +74,77 @@ export default function BusinessInventory() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showFilterMenu, showTransactionFilterMenu])
+
+  // Close disposition menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openDispositionMenu && !event.target) return
+
+      const target = event.target as Element
+      if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
+        setOpenDispositionMenu(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [openDispositionMenu])
+
+  const toggleDispositionMenu = (itemId: string) => {
+    setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
+  }
+
+  const getDispositionBadgeClasses = (disposition?: string) => {
+    const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
+
+    switch (d) {
+      case 'keep':
+        return `${baseClasses} bg-green-100 text-green-800`
+      case 'to return':
+        return `${baseClasses} bg-red-100 text-red-700`
+      case 'returned':
+        return `${baseClasses} bg-red-800 text-red-100`
+      case 'inventory':
+        return `${baseClasses} bg-primary-100 text-primary-600`
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800`
+    }
+  }
+
+  const updateDisposition = async (itemId: string, newDisposition: string) => {
+    try {
+      const item = items.find((it: Item) => it.itemId === itemId)
+      if (!item) {
+        console.error('Item not found for disposition update:', itemId)
+        return
+      }
+
+      if (!currentAccountId) throw new Error('Account ID is required')
+      await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: newDisposition })
+
+      if (newDisposition === 'inventory') {
+        try {
+          await integrationService.handleItemDeallocation(currentAccountId, itemId, item.projectId || '', newDisposition)
+          setOpenDispositionMenu(null)
+          showSuccess && showSuccess('Item moved to inventory')
+        } catch (deallocationError) {
+          console.error('Failed to handle deallocation:', deallocationError)
+          await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: item.disposition })
+          showError && showError('Failed to move item to inventory. Please try again.')
+          return
+        }
+      } else {
+        setItems(prev => prev.map(i => i.itemId === itemId ? { ...i, disposition: newDisposition } : i))
+        setOpenDispositionMenu(null)
+      }
+    } catch (error) {
+      console.error('Failed to update disposition:', error)
+      showError && showError('Failed to update disposition. Please try again.')
+    }
+  }
 
   // Compute filtered items (matching InventoryList.tsx)
   const filteredItems = useMemo(() => {
@@ -784,17 +859,44 @@ export default function BusinessInventory() {
                             >
                               <Copy className="h-4 w-4" />
                             </button>
-                            {/* Status badge moved to top-right corner */}
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                              item.inventoryStatus === 'available'
-                                ? 'bg-green-100 text-green-800'
-                                : item.inventoryStatus === 'allocated'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {item.inventoryStatus === 'available' ? 'Available' :
-                               item.inventoryStatus === 'allocated' ? 'Allocated' : 'Sold'}
-                            </span>
+                            {/* Disposition badge (replaces inventory status badge) */}
+                            <div className="relative ml-1">
+                              <span
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  toggleDispositionMenu(item.itemId)
+                                }}
+                                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
+                              >
+                                {displayDispositionLabel(item.disposition) || 'Not Set'}
+                                <ChevronDown className="h-3 w-3 ml-1" />
+                              </span>
+
+                              {/* Dropdown menu */}
+                              {openDispositionMenu === item.itemId && (
+                                <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                  <div className="py-1">
+                                    {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                                      <button
+                                        key={disposition}
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          updateDisposition(item.itemId, disposition)
+                                        }}
+                                        className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
+                                          dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                                        }`}
+                                        disabled={!item.disposition}
+                                      >
+                                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
 
