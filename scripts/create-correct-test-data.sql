@@ -4,6 +4,16 @@
 --   1. Business inventory transaction with 3 individual items
 --   2. Project transaction with 8 individual items (1 table, 4 chairs, 3 pillows, 1 accent chair)
 
+-- Make sure DB columns can store percentage values (e.g. 10.0000). This is safe to run
+-- repeatedly and will upgrade precision if needed.
+ALTER TABLE transactions
+  ALTER COLUMN tax_rate_pct TYPE DECIMAL(6,4)
+    USING tax_rate_pct::numeric;
+
+ALTER TABLE items
+  ALTER COLUMN tax_rate_pct TYPE DECIMAL(6,4)
+    USING tax_rate_pct::numeric;
+
 DO $$
 DECLARE
   v_business_tx_id text := gen_random_uuid()::text;
@@ -14,7 +24,7 @@ DECLARE
   v_project_item_ids text[] := ARRAY[]::text[];
   v_business_total numeric := 0;
   v_project_total numeric := 0;
-  tax_rate_pct numeric := 0.10; -- 10% tax rate
+  tax_rate_pct numeric := 10.0; -- 10% tax rate (stored as percent, e.g. 10.0)
   v_business_tax numeric := 0;
   v_business_final numeric := 0;
   v_project_tax numeric := 0;
@@ -45,10 +55,10 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
     NULL, -- Business inventory
     v_business_tx_id,
     v_item_id,
@@ -59,6 +69,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Neutral beige wool blend area rug',
@@ -88,10 +101,10 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
     NULL,
     v_business_tx_id,
     v_item_id,
@@ -102,6 +115,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Modern sectional sofa in charcoal gray',
@@ -131,10 +147,10 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
     NULL,
     v_business_tx_id,
     v_item_id,
@@ -145,6 +161,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Modern glass and metal coffee table',
@@ -163,7 +182,7 @@ BEGIN
 
   -- Create business inventory transaction
   -- compute tax and final amount for business transaction
-  v_business_tax := round(v_business_total * tax_rate_pct, 2);
+  v_business_tax := round(v_business_total * tax_rate_pct / 100.0, 2);
   v_business_final := v_business_total + v_business_tax;
 
   INSERT INTO transactions(
@@ -171,7 +190,7 @@ BEGIN
     amount, description, budget_category, status, payment_method, notes,
     tax_rate_pct, subtotal, item_ids, receipt_emailed, created_by, created_at, updated_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
     NULL, -- Business inventory has no project_id
     v_business_tx_id,
     current_date,
@@ -209,11 +228,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f', -- Test Project
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70', -- Test Project
     v_project_tx_id,
     v_item_id,
     'Dining Table',
@@ -223,6 +242,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Solid wood dining table',
@@ -253,11 +275,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Dining Chair',
@@ -267,6 +289,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Upholstered dining chair',
@@ -296,11 +321,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Dining Chair',
@@ -310,6 +335,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Upholstered dining chair',
@@ -339,11 +367,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Dining Chair',
@@ -353,6 +381,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Upholstered dining chair',
@@ -385,8 +416,8 @@ BEGIN
     purchase_price, project_price, market_value, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Dining Chair',
@@ -426,11 +457,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Throw Pillow',
@@ -440,6 +471,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct / 100.0, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Decorative throw pillow',
@@ -469,11 +503,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Throw Pillow',
@@ -483,6 +517,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Decorative throw pillow',
@@ -512,11 +549,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Throw Pillow',
@@ -526,6 +563,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Decorative throw pillow',
@@ -555,11 +595,11 @@ BEGIN
   -- per-item tax calculation removed (transaction-level tax)
   INSERT INTO items(
     account_id, project_id, transaction_id, item_id, name, description, sku, source,
-    purchase_price, project_price, market_value, payment_method, disposition, notes,
+    purchase_price, project_price, market_value, tax_rate_pct, tax_amount_purchase_price, tax_amount_project_price, payment_method, disposition, notes,
     qr_key, bookmark, inventory_status, business_inventory_location, date_created, last_updated, images, created_by, created_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f',
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70',
     v_project_tx_id,
     v_item_id,
     'Accent Chair',
@@ -569,6 +609,9 @@ BEGIN
     v_purchase::text,
     v_project_price::text,
     v_market::text,
+    tax_rate_pct,
+    to_char(ROUND(v_purchase * tax_rate_pct, 4), 'FM999999999990.0000'),
+    to_char(ROUND(v_project_price * tax_rate_pct, 4), 'FM999999999990.0000'),
     'Client Card',
     'keep',
     'Velvet accent chair in navy blue',
@@ -587,7 +630,7 @@ BEGIN
 
   -- Create project transaction
   -- compute tax and final amount for project transaction
-  v_project_tax := round(v_project_total * tax_rate_pct, 2);
+  v_project_tax := round(v_project_total * tax_rate_pct / 100.0, 2);
   v_project_final := v_project_total + v_project_tax;
 
   INSERT INTO transactions(
@@ -595,8 +638,8 @@ BEGIN
     amount, description, budget_category, status, payment_method, notes,
     tax_rate_pct, subtotal, item_ids, receipt_emailed, created_by, created_at, updated_at
   ) VALUES (
-    '1dd4fd75-8eea-4f7a-98e7-bf45b987ae94',
-    'db6f557e-fd22-43f1-8ee1-af836d88101f', -- Test Project
+    '2d612868-852e-4a80-9d02-9d10383898d4',
+    '6bb65110-90bc-42ea-a5fa-1b7bfd5d7d70', -- Test Project
     v_project_tx_id,
     current_date,
     'Homegoods',

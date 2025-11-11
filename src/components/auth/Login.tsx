@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../ui/Button'
-import { COMPANY_NAME } from '@/constants/company'
 
 interface LoginProps {
   onSuccess?: () => void
@@ -24,16 +23,16 @@ export default function Login({ onSuccess }: LoginProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full">
+      <div className="max-w-lg w-full">
         <div className="-mt-8">
           <div className="mx-auto h-56 w-56 flex items-center justify-center">
-            <img src="/logo.png" alt={`${COMPANY_NAME} Projects Logo`} className="h-full w-full object-contain" />
+            <img src="/logo.png" alt="Ledger logo" className="h-full w-full object-contain" />
           </div>
-          <h2 className="text-center text-3xl font-extrabold text-gray-900">
-            {COMPANY_NAME} Projects
+          <h2 className="text-center text-4xl font-extrabold text-gray-900">
+            <span className="text-primary-600">Ledger</span> Inventory Assistant
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Sign in to access your inventory and transaction management system
+          <p className="mt-2 text-center text-lg text-gray-600">
+          For <strong className="font-semibold">Interior Designers</strong> by <strong className="font-semibold">Interior Designers</strong>
           </p>
         </div>
 

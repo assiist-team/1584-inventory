@@ -1455,6 +1455,8 @@ export const unifiedItemsService = {
       businessInventoryLocation: converted.business_inventory_location || undefined,
       taxRatePct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
       taxAmount: converted.tax_amount || undefined,
+      taxAmountPurchasePrice: converted.tax_amount_purchase_price || undefined,
+      taxAmountProjectPrice: converted.tax_amount_project_price || undefined,
       createdBy: converted.created_by || undefined,
       createdAt: converted.created_at,
       originTransactionId: converted.origin_transaction_id ?? null,
@@ -1492,6 +1494,8 @@ export const unifiedItemsService = {
     if (item.businessInventoryLocation !== undefined) dbItem.business_inventory_location = item.businessInventoryLocation
     if (item.taxRatePct !== undefined) dbItem.tax_rate_pct = item.taxRatePct
     if (item.taxAmount !== undefined) dbItem.tax_amount = item.taxAmount
+    if (item.taxAmountPurchasePrice !== undefined) dbItem.tax_amount_purchase_price = item.taxAmountPurchasePrice
+    if (item.taxAmountProjectPrice !== undefined) dbItem.tax_amount_project_price = item.taxAmountProjectPrice
     if (item.createdBy !== undefined) dbItem.created_by = item.createdBy
     if (item.createdAt !== undefined) dbItem.created_at = item.createdAt
     if (item.originTransactionId !== undefined) dbItem.origin_transaction_id = item.originTransactionId ?? null
@@ -1765,6 +1769,17 @@ export const unifiedItemsService = {
     } catch (e) {
       console.warn('Failed to inherit tax_rate_pct when creating item:', e)
     }
+
+    // Compute derived tax amounts (store as two-decimal strings). Treat empty/null prices as 0.
+    const computeTaxString = (priceStr: string | null | undefined, ratePct: number | undefined | null) => {
+      const priceNum = parseFloat(priceStr || '0')
+      const rate = (ratePct !== undefined && ratePct !== null) ? (Number(ratePct) / 100) : 0
+      const tax = Math.round((priceNum * rate) * 10000) / 10000
+      return tax.toFixed(4)
+    }
+
+    dbItem.tax_amount_purchase_price = computeTaxString(dbItem.purchase_price, dbItem.tax_rate_pct)
+    dbItem.tax_amount_project_price = computeTaxString(dbItem.project_price, dbItem.tax_rate_pct)
 
     const { error } = await supabase
       .from('items')
@@ -3301,6 +3316,14 @@ export const unifiedItemsService = {
     // Prepare all items for batch insert
     const itemsToInsert: any[] = []
 
+    // Helper: compute tax amount string (two-decimal) given price string and rate pct
+    const computeTaxString = (priceStr: string | null | undefined, ratePct: number | undefined | null) => {
+      const priceNum = parseFloat(priceStr || '0')
+      const rate = (ratePct !== undefined && ratePct !== null) ? (Number(ratePct) / 100) : 0
+      const tax = Math.round((priceNum * rate) * 10000) / 10000
+      return tax.toFixed(4)
+    }
+
     for (const itemData of items) {
       const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
       createdItemIds.push(itemId)
@@ -3336,6 +3359,9 @@ export const unifiedItemsService = {
       } else if (inheritedTax !== undefined) {
         item.tax_rate_pct = inheritedTax
       }
+      // Compute and attach derived tax amounts (purchase and project) as two-decimal strings
+      item.tax_amount_purchase_price = computeTaxString(item.purchase_price, item.tax_rate_pct)
+      item.tax_amount_project_price = computeTaxString(item.project_price, item.tax_rate_pct)
 
       itemsToInsert.push(item)
     }

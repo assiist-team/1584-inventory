@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown, Copy } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
-import { formatDate } from '@/utils/dateUtils'
+import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { unifiedItemsService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
@@ -650,7 +650,10 @@ export default function ItemDetail() {
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchasePrice}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(item.purchasePrice)}</dd>
+                  {item.taxAmountPurchasePrice !== undefined && (
+                    <p className="mt-1 text-sm text-gray-600">Tax on purchase: {formatCurrency(item.taxAmountPurchasePrice)}</p>
+                  )}
                 </div>
               )}
 
@@ -658,7 +661,10 @@ export default function ItemDetail() {
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Project Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the client is charged</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.projectPrice}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(item.projectPrice)}</dd>
+                  {item.taxAmountProjectPrice !== undefined && (
+                    <p className="mt-1 text-sm text-gray-600">Tax on project: {formatCurrency(item.taxAmountProjectPrice)}</p>
+                  )}
                 </div>
               )}
 
