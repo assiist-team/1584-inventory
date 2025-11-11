@@ -31,7 +31,7 @@ export const auditService = {
       }
 
       const { error } = await supabase
-        .from('audit_logs')
+        .from('item_audit_logs')
         .insert({
           account_id: accountId,
           event_type: eventType,
@@ -1875,6 +1875,26 @@ export const unifiedItemsService = {
       }
     } catch (e) {
       console.warn('Failed to auto-update disposition when assigning return transaction:', e)
+    }
+
+    // Recompute derived tax amounts when relevant fields change (purchase/project price or tax rate).
+    const shouldRecomputeTax = updates.purchasePrice !== undefined || updates.projectPrice !== undefined || updates.taxRatePct !== undefined
+    if (shouldRecomputeTax) {
+      const computeTaxString = (priceStr: string | null | undefined, ratePct: number | undefined | null) => {
+        const priceNum = parseFloat(priceStr || '0')
+        const rate = (ratePct !== undefined && ratePct !== null) ? (Number(ratePct) / 100) : 0
+        const tax = Math.round((priceNum * rate) * 10000) / 10000
+        return tax.toFixed(4)
+      }
+
+      const effectiveRate = updates.taxRatePct !== undefined
+        ? updates.taxRatePct
+        : (dbUpdates.tax_rate_pct !== undefined ? dbUpdates.tax_rate_pct : existingItem?.taxRatePct)
+      const effectivePurchase = updates.purchasePrice !== undefined ? String(updates.purchasePrice) : existingItem?.purchasePrice
+      const effectiveProject = updates.projectPrice !== undefined ? String(updates.projectPrice) : existingItem?.projectPrice
+
+      dbUpdates.tax_amount_purchase_price = computeTaxString(effectivePurchase, effectiveRate)
+      dbUpdates.tax_amount_project_price = computeTaxString(effectiveProject, effectiveRate)
     }
 
     const { error } = await supabase
