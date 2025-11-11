@@ -24,6 +24,7 @@ interface FilterOptions {
 
 export default function BusinessInventory() {
   const { currentAccountId, loading: accountLoading } = useAccount()
+  const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
   const { buildContextUrl } = useNavigationContext()
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<Item[]>([])
@@ -774,13 +775,15 @@ export default function BusinessInventory() {
                   <DollarSign className="h-4 w-4" />
                 </button>
 
-                <button
-                  className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
-                  disabled={selectedItems.size === 0}
-                  title="Generate QR Codes"
-                >
-                  <QrCode className="h-4 w-4" />
-                </button>
+                {ENABLE_QR && (
+                  <button
+                    className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
+                    disabled={selectedItems.size === 0}
+                    title="Generate QR Codes"
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </button>
+                )}
 
                 <button
                   onClick={handleDeleteSelectedItems}

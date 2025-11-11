@@ -21,6 +21,7 @@ interface InventoryListProps {
 
 export default function InventoryList({ projectId, projectName, items: propItems }: InventoryListProps) {
   const { currentAccountId, loading: accountLoading } = useAccount()
+  const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<Item[]>(propItems || [])
@@ -468,13 +469,15 @@ export default function InventoryList({ projectId, projectName, items: propItems
                 )}
               </div>
 
-              <button
-                className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
-                disabled={selectedItems.size === 0}
-                title="Generate QR Codes"
-              >
-                <QrCode className="h-4 w-4" />
-              </button>
+              {ENABLE_QR && (
+                <button
+                  className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
+                  disabled={selectedItems.size === 0}
+                  title="Generate QR Codes"
+                >
+                  <QrCode className="h-4 w-4" />
+                </button>
+              )}
 
               <button
                 onClick={handleBulkDelete}

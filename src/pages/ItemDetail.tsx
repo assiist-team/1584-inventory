@@ -20,6 +20,7 @@ import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 
 export default function ItemDetail() {
   const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
+  const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
   const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
   const [searchParams] = useSearchParams()
@@ -530,13 +531,15 @@ export default function ItemDetail() {
               <Copy className="h-4 w-4" />
             </button>
 
-            <button
-              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              onClick={() => window.open(`/qr-image/${item.qrKey}`, '_blank')}
-              title="View QR Code"
-            >
-              <QrCode className="h-4 w-4" />
-            </button>
+            {ENABLE_QR && (
+              <button
+                className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                onClick={() => window.open(`/qr-image/${item.qrKey}`, '_blank')}
+                title="View QR Code"
+              >
+                <QrCode className="h-4 w-4" />
+              </button>
+            )}
 
 
             <div className="relative">
