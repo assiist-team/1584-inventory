@@ -36,7 +36,7 @@ export default function EditBusinessInventoryItem() {
     purchasePrice: '',
     projectPrice: '',
     marketValue: '',
-    disposition: 'keep',
+    disposition: 'inventory',
     notes: '',
     bookmark: false,
     businessInventoryLocation: '',
@@ -78,7 +78,7 @@ export default function EditBusinessInventoryItem() {
           purchasePrice: itemData.purchasePrice || '',
           projectPrice: itemData.projectPrice || '',
           marketValue: itemData.marketValue || '',
-          disposition: itemData.disposition || 'keep',
+          disposition: itemData.disposition === 'keep' ? 'inventory' : (itemData.disposition || 'inventory'),
           notes: itemData.notes || '',
           bookmark: itemData.bookmark,
           businessInventoryLocation: itemData.businessInventoryLocation || '',
@@ -344,6 +344,26 @@ export default function EditBusinessInventoryItem() {
               {formErrors.businessInventoryLocation && (
                 <p className="mt-1 text-sm text-red-600">{formErrors.businessInventoryLocation}</p>
               )}
+            </div>
+ 
+            {/* Disposition */}
+            <div>
+              <label htmlFor="disposition" className="block text-sm font-medium text-gray-700">
+                Disposition
+              </label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">What should happen to this item in business inventory</p>
+              <div className="mt-1">
+                <select
+                  id="disposition"
+                  value={formData.disposition}
+                  onChange={(e) => handleInputChange('disposition', e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="to return">To Return</option>
+                  <option value="returned">Returned</option>
+                  <option value="inventory">Inventory</option>
+                </select>
+              </div>
             </div>
 
             {/* Notes */}

@@ -76,6 +76,7 @@ export default function AddBusinessInventoryItem() {
     purchasePrice: string
     projectPrice: string
     marketValue: string
+    disposition: string
     notes: string
     businessInventoryLocation: string
     selectedTransactionId: string
@@ -86,6 +87,7 @@ export default function AddBusinessInventoryItem() {
     purchasePrice: '',
     projectPrice: '',
     marketValue: '',
+    disposition: 'inventory',
     notes: '',
     businessInventoryLocation: '',
     selectedTransactionId: ''
@@ -174,6 +176,7 @@ export default function AddBusinessInventoryItem() {
         // Default projectPrice to purchasePrice at save time when left blank
         projectPrice: formData.projectPrice || formData.purchasePrice,
         marketValue: formData.marketValue,
+          disposition: formData.disposition || 'inventory',
         notes: formData.notes,
         businessInventoryLocation: formData.businessInventoryLocation,
         qrKey: `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -628,6 +631,26 @@ export default function AddBusinessInventoryItem() {
               <p className="mt-1 text-sm text-red-600">{errors.businessInventoryLocation}</p>
                   )}
                 </div>
+
+          {/* Disposition */}
+            <div>
+              <label htmlFor="disposition" className="block text-sm font-medium text-gray-700">
+                Disposition
+              </label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">What should happen to this item in business inventory</p>
+              <div className="mt-1">
+                <select
+                  id="disposition"
+                  value={formData.disposition}
+                  onChange={(e) => handleInputChange('disposition', e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="to return">To Return</option>
+                  <option value="returned">Returned</option>
+                  <option value="inventory">Inventory</option>
+                </select>
+              </div>
+            </div>
 
 
           {/* Notes */}

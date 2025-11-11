@@ -173,7 +173,7 @@ export default function AddItem() {
         transactionId: formData.selectedTransactionId || '', // Use selected transaction or empty string
         dateCreated: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),
-        disposition: formData.disposition || 'keep', // Default to 'keep' if not set
+        disposition: formData.disposition || 'keep',
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
@@ -669,10 +669,9 @@ export default function AddItem() {
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="keep">Keep</option>
-                <option value="return">Return to Client</option>
-                <option value="donate">Donate</option>
-                <option value="sell">Sell</option>
-                <option value="dispose">Dispose</option>
+                <option value="to return">To Return</option>
+                <option value="returned">Returned</option>
+                <option value="inventory">Inventory</option>
               </select>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { unifiedItemsService, integrationService } from '@/services/inventorySer
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { Item, ItemImage } from '@/types'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
@@ -209,12 +210,12 @@ export default function InventoryList({ projectId, projectName, items: propItems
 
   const getDispositionBadgeClasses = (disposition?: string) => {
     const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
 
-    switch (disposition) {
+    switch (d) {
       case 'keep':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
-      case 'return': // Backward compatibility for old disposition
         return `${baseClasses} bg-red-100 text-red-700`
       case 'returned':
         return `${baseClasses} bg-red-800 text-red-100`
@@ -588,7 +589,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                             }}
                           className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
                         >
-                          {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
+                          {displayDispositionLabel(item.disposition) || 'Not Set'}
                             <ChevronDown className="h-3 w-3 ml-1" />
                           </span>
 
@@ -605,9 +606,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                                       updateDisposition(item.itemId, disposition)
                                     }}
                                     className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
-                                      (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
-                                        ? 'bg-gray-100 text-gray-900'
-                                        : 'text-gray-700'
+                                      dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
                                     }`}
                                     disabled={!item.disposition}
                                   >

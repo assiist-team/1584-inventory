@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown, Copy } from 'lucide-react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Item, ItemImage } from '@/types'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { unifiedItemsService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -276,12 +277,12 @@ export default function ItemDetail() {
 
   const getDispositionBadgeClasses = (disposition: string) => {
     const baseClasses = 'inline-flex items-center px-3 py-2 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
 
-    switch (disposition) {
+    switch (d) {
       case 'keep':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
-      case 'return': // Backward compatibility for old disposition
         return `${baseClasses} bg-red-100 text-red-700`
       case 'returned':
         return `${baseClasses} bg-red-800 text-red-100`
@@ -540,7 +541,7 @@ export default function ItemDetail() {
                 onClick={toggleDispositionMenu}
                 className={`disposition-badge ${getDispositionBadgeClasses(item.disposition || 'keep')}`}
               >
-                {item.disposition === 'to return' ? 'To Return' : (item.disposition || 'keep').charAt(0).toUpperCase() + (item.disposition || 'keep').slice(1)}
+                {displayDispositionLabel(item.disposition)}
                 <ChevronDown className="h-3 w-3 ml-1" />
               </span>
 
@@ -553,9 +554,7 @@ export default function ItemDetail() {
                         key={disposition}
                         onClick={() => updateDisposition(disposition)}
                         className={`block w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
-                          (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'text-gray-700'
+                          dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
                         }`}
                       >
                         {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
