@@ -4,7 +4,7 @@ import ContextBackLink from '@/components/ContextBackLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, FormEvent, useEffect, useRef } from 'react'
 import { transactionService, unifiedItemsService } from '@/services/inventoryService'
-import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { Transaction } from '@/types'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '../contexts/AuthContext'
@@ -82,21 +82,36 @@ export default function EditItem() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
 
   // Track if user has manually edited project_price
   const projectPriceEditedRef = useRef(false)
 
   console.log('EditItem - URL params:', { projectId, itemId })
 
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
+
   // Initialize custom states based on form data
   useEffect(() => {
-    const predefinedSources = TRANSACTION_SOURCES
-    if (formData.source && !predefinedSources.includes(formData.source as any)) {
+    if (formData.source && !availableVendors.includes(formData.source)) {
       setIsCustomSource(true)
-    } else if (formData.source && predefinedSources.includes(formData.source as any)) {
+    } else if (formData.source && availableVendors.includes(formData.source)) {
       setIsCustomSource(false)
     }
-  }, [formData.source])
+  }, [formData.source, availableVendors])
 
   // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
   // purchasePrice should happen only when the user saves the item.
@@ -367,7 +382,7 @@ export default function EditItem() {
                   Source
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-                  {TRANSACTION_SOURCES.map((source) => (
+                  {availableVendors.map((source) => (
                     <div key={source} className="flex items-center">
                       <input
                         type="radio"

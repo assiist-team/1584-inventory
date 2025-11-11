@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, useEffect, useRef, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
-import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { COMPANY_NAME, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
@@ -14,6 +13,7 @@ import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
@@ -80,6 +80,23 @@ export default function EditTransaction() {
 
   // Custom source state
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
+
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        // Fallback to empty array - will show only "Other" option
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
 
   // Load tax presets on mount
   useEffect(() => {
@@ -125,7 +142,7 @@ export default function EditTransaction() {
           const resolvedSource = legacyOther && project ? project.name : transaction.source
 
           // Check if source is custom (not in predefined list)
-          const sourceIsCustom = Boolean(resolvedSource && !TRANSACTION_SOURCES.includes(resolvedSource as any))
+          const sourceIsCustom = Boolean(resolvedSource && !availableVendors.includes(resolvedSource))
 
           // Use the transaction date directly for date input (convert Date object to YYYY-MM-DD string)
           setFormData({
@@ -227,7 +244,7 @@ export default function EditTransaction() {
     }
 
     loadTransaction()
-  }, [projectId, transactionId, currentAccountId])
+  }, [projectId, transactionId, currentAccountId, availableVendors])
 
   // Validation function
   const validateForm = (): boolean => {
@@ -522,7 +539,7 @@ export default function EditTransaction() {
               Source/Vendor *
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"

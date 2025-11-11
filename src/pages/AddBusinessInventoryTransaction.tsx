@@ -4,9 +4,8 @@ import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { ArrowLeft, X, Save } from 'lucide-react'
 import { Transaction, Project, TaxPreset } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
-import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
-import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { useAccount } from '@/contexts/AccountContext'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -36,6 +35,7 @@ export default function AddBusinessInventoryTransaction() {
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
 
   // Tax form state
   const [taxRatePreset, setTaxRatePreset] = useState<string | undefined>(undefined)
@@ -45,12 +45,27 @@ export default function AddBusinessInventoryTransaction() {
 
   // Initialize custom source state based on initial form data
   useEffect(() => {
-    if (formData.source && !TRANSACTION_SOURCES.includes(formData.source as any)) {
+    if (formData.source && !availableVendors.includes(formData.source)) {
       setIsCustomSource(true)
-    } else if (formData.source && TRANSACTION_SOURCES.includes(formData.source as any)) {
+    } else if (formData.source && availableVendors.includes(formData.source)) {
       setIsCustomSource(false)
     }
-  }, [formData.source])
+  }, [formData.source, availableVendors])
+
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
 
   // Navigation context logic
   const backDestination = useMemo(() => {
@@ -270,11 +285,11 @@ export default function AddBusinessInventoryTransaction() {
               Transaction Source *
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"
-                id={`source_${source.toLowerCase().replace(/\s+/g, '_')}`}
+                    id={`source_${source.toLowerCase().replace(/\s+/g, '_')}`}
                     name="source"
                     value={source}
                     checked={formData.source === source}

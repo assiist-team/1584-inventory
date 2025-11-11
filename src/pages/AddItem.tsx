@@ -6,7 +6,8 @@ import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, FormEvent, useEffect, useRef } from 'react'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
-import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
+import { TransactionSource } from '@/constants/transactionSources'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { Transaction, ItemImage } from '@/types'
 import { Select } from '@/components/ui/Select'
 import ImagePreview from '@/components/ui/ImagePreview'
@@ -92,6 +93,7 @@ export default function AddItem() {
   })
 
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [images, setImages] = useState<ItemImage[]>([])
@@ -130,15 +132,29 @@ export default function AddItem() {
     fetchProjectAndTransactions()
   }, [projectId, currentAccountId])
 
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
+
   // Initialize custom states based on initial form data
   useEffect(() => {
-    const predefinedSources = TRANSACTION_SOURCES
-    if (formData.source && !predefinedSources.includes(formData.source as TransactionSource)) {
+    if (formData.source && !availableVendors.includes(formData.source)) {
       setIsCustomSource(true)
-    } else if (formData.source && predefinedSources.includes(formData.source as TransactionSource)) {
+    } else if (formData.source && availableVendors.includes(formData.source)) {
       setIsCustomSource(false)
     }
-  }, [formData.source])
+  }, [formData.source, availableVendors])
 
   // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
   // purchasePrice should happen only when the user saves the item.
@@ -222,7 +238,7 @@ export default function AddItem() {
 
     // Update custom state based on pre-filled values
     if (selectedTransaction?.source) {
-      const isPredefinedSource = TRANSACTION_SOURCES.includes(selectedTransaction.source as TransactionSource)
+      const isPredefinedSource = availableVendors.includes(selectedTransaction.source as TransactionSource)
       setIsCustomSource(!isPredefinedSource)
     }
 
@@ -462,7 +478,7 @@ export default function AddItem() {
               Source
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"

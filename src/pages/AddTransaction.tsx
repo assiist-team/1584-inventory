@@ -5,7 +5,6 @@ import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, FormEvent, useEffect } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionItemFormData, ItemImage, TaxPreset } from '@/types'
-import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
 import { COMPANY_NAME, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { transactionService, projectService } from '@/services/inventoryService'
 import { unifiedItemsService } from '@/services/inventoryService'
@@ -16,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useAccount } from '../contexts/AccountContext'
 import { Shield } from 'lucide-react'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 
 export default function AddTransaction() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -98,15 +98,32 @@ export default function AddTransaction() {
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
 
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
+
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        // Fallback to empty array - will show only "Other" option
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
 
   // Initialize custom source state based on initial form data
   useEffect(() => {
-    if (formData.source && !TRANSACTION_SOURCES.includes(formData.source as any)) {
+    if (formData.source && !availableVendors.includes(formData.source)) {
       setIsCustomSource(true)
-    } else if (formData.source && TRANSACTION_SOURCES.includes(formData.source as any)) {
+    } else if (formData.source && availableVendors.includes(formData.source)) {
       setIsCustomSource(false)
     }
-  }, [formData.source])
+  }, [formData.source, availableVendors])
 
   // Load tax presets on mount
   useEffect(() => {
@@ -499,7 +516,7 @@ export default function AddTransaction() {
               Transaction Source *
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"
@@ -1023,10 +1040,6 @@ export default function AddTransaction() {
 
           {/* Form Actions */}
           <div className="flex justify-end space-x-3 pt-4">
-            <Link
-              to={getBackDestination(`/project/${projectId}?tab=transactions`)}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
           <ContextBackLink
             fallback={getBackDestination(`/project/${projectId}?tab=transactions`)}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"

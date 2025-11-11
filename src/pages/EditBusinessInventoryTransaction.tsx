@@ -5,9 +5,8 @@ import { ArrowLeft, Save, X } from 'lucide-react'
 import { Transaction, Project, TaxPreset } from '@/types'
 import { transactionService, projectService } from '@/services/inventoryService'
 import { toDateOnlyString } from '@/utils/dateUtils'
-import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
-import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { getTaxPresets } from '@/services/taxPresetsService'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { useAccount } from '@/contexts/AccountContext'
 
 export default function EditBusinessInventoryTransaction() {
@@ -35,6 +34,22 @@ export default function EditBusinessInventoryTransaction() {
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
+
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
 
   // Tax form state
   const [taxRatePreset, setTaxRatePreset] = useState<string | undefined>(undefined)
@@ -104,7 +119,7 @@ export default function EditBusinessInventoryTransaction() {
           setTransaction(transactionData)
           const resolvedSource = transactionData.source || ''
           // Check if source is custom (not in predefined list)
-          const sourceIsCustom = Boolean(resolvedSource && !TRANSACTION_SOURCES.includes(resolvedSource as any))
+          const sourceIsCustom = Boolean(resolvedSource && !availableVendors.includes(resolvedSource))
           
           setFormData({
             projectId: transactionData.projectId || '',
@@ -137,7 +152,7 @@ export default function EditBusinessInventoryTransaction() {
     }
 
     loadData()
-  }, [projectId, transactionId, currentAccountId])
+  }, [projectId, transactionId, currentAccountId, availableVendors])
 
   const handleInputChange = (field: keyof typeof formData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -319,7 +334,7 @@ export default function EditBusinessInventoryTransaction() {
               Source/Vendor *
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"
