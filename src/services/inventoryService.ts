@@ -11,7 +11,7 @@ export const auditService = {
   // Log allocation/de-allocation events
   async logAllocationEvent(
     accountId: string,
-    eventType: 'allocation' | 'deallocation' | 'return',
+    eventType: 'allocation' | 'deallocation' | 'to return',
     itemId: string,
     projectId: string | null,
     transactionIdOrDetails: any,
@@ -2904,7 +2904,7 @@ export const unifiedItemsService = {
 
     // Log return start (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', itemId, item.projectId ?? null, currentTransactionId ?? null, {
+      await auditService.logAllocationEvent(accountId, 'to return', itemId, item.projectId ?? null, currentTransactionId ?? null, {
         action: 'return_started',
         target_project_id: projectId,
         current_transaction_id: currentTransactionId,
@@ -2971,7 +2971,7 @@ export const unifiedItemsService = {
 
     // Log successful return (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', item.itemId, null, currentTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'to return', item.itemId, null, currentTransactionId, {
         action: 'return_completed',
         scenario: 'return_from_purchase',
         from_transaction: currentTransactionId,
@@ -3122,7 +3122,7 @@ export const unifiedItemsService = {
 
     // Log successful return (catch errors to prevent cascading failures)
     try {
-      await auditService.logAllocationEvent(accountId, 'return', item.itemId, null, saleTransactionId, {
+      await auditService.logAllocationEvent(accountId, 'to return', item.itemId, null, saleTransactionId, {
         action: 'return_completed',
         scenario: 'new_return',
         from_status: 'inventory',

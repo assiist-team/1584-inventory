@@ -700,8 +700,6 @@ export default function TransactionDetail() {
                 ? 'bg-green-100 text-green-800'
                 : item.disposition === 'to return'
                 ? 'bg-red-100 text-red-700'
-                : item.disposition === 'return' // Backward compatibility
-                ? 'bg-red-100 text-red-700'
                 : item.disposition === 'returned'
                 ? 'bg-red-800 text-red-100'
                 : item.disposition === 'inventory'
