@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Transaction, Project, TaxPreset } from '@/types'
@@ -258,12 +259,12 @@ export default function EditBusinessInventoryTransaction() {
         <p className="text-sm text-gray-500 mb-4">
           The transaction you're looking for doesn't exist or has been deleted.
         </p>
-        <Link
-          to={backDestination}
+        <ContextBackLink
+          fallback={backDestination}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
         >
           Back to Business Inventory
-        </Link>
+        </ContextBackLink>
       </div>
     )
   }
@@ -274,13 +275,13 @@ export default function EditBusinessInventoryTransaction() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={backDestination}
-            className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Link>
+        <ContextBackLink
+          fallback={backDestination}
+          className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          Back
+        </ContextBackLink>
         </div>
       </div>
 

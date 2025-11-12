@@ -68,7 +68,7 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     return Object.values(formData.budgetCategories).reduce((sum, value) => sum + (value || 0), 0)
   }
 
-  const handleChange = (field: keyof ProjectFormData, value: string | number | ProjectBudgetCategories) => {
+  const handleChange = (field: keyof ProjectFormData, value: string | number | ProjectBudgetCategories | undefined) => {
     if (field === 'budgetCategories' && typeof value === 'object') {
       setFormData(prev => ({ ...prev, [field]: value }))
     } else {
@@ -201,14 +201,15 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
               />
             </div>
 
-            {/* Default Budget Category */}
+            {/* Default Transaction Category */}
             <div>
               <CategorySelect
                 id="defaultCategoryId"
-                label="Default Budget Category"
+                label="Default Transaction Category"
                 value={formData.defaultCategoryId}
                 onChange={(categoryId) => handleChange('defaultCategoryId', categoryId || undefined)}
-                helperText="Optional: Set a default budget category for transactions in this project"
+                helperText="Optional: This sets the default category when creating transactions for this project"
+                asDropdown={true}
                 error={errors.defaultCategoryId}
               />
             </div>

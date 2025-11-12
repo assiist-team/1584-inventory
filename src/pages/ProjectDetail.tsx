@@ -1,6 +1,7 @@
 import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign, Building2, User, Receipt } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, useEffect } from 'react'
 import { Project, Transaction, Item } from '@/types'
@@ -300,13 +301,13 @@ export default function ProjectDetail() {
           >
             Try Again
           </button>
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )
@@ -319,13 +320,13 @@ export default function ProjectDetail() {
         <h3 className="mt-2 text-sm font-medium text-gray-900">Project not found</h3>
         <p className="mt-1 text-sm text-gray-500">The project you're looking for doesn't exist.</p>
         <div className="mt-6">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )
@@ -337,13 +338,13 @@ export default function ProjectDetail() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
           <div className="flex items-center space-x-3">
             <button
               onClick={handleStartEdit}

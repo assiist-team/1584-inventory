@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
+import ContextLink from '@/components/ContextLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { Button } from '@/components/ui/Button'
 import type { Item, Project, Transaction } from '@/types'
@@ -336,12 +338,12 @@ export default function ClientSummary() {
                               <>
                                 {item.source && <span className="text-xs text-gray-400">•</span>}
                                 {receiptLink.isInternal ? (
-                                  <Link
-                                    to={receiptLink.href}
+                                  <ContextLink
+                                    to={buildContextUrl(receiptLink.href)}
                                     className="text-xs text-primary-600 hover:text-primary-700 underline print:hidden"
                                   >
                                     View Receipt
-                                  </Link>
+                                  </ContextLink>
                                 ) : (
                                   <a
                                     href={receiptLink.href}

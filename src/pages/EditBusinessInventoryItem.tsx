@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Item } from '@/types'
@@ -156,7 +157,7 @@ export default function EditBusinessInventoryItem() {
 
   if (!item) {
     return (
-      <div className="text-center py-12 px-4">
+        <div className="text-center py-12 px-4">
         <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">📦</div>
         <h3 className="text-lg font-medium text-gray-900 mb-1">
           Item not found
@@ -164,12 +165,12 @@ export default function EditBusinessInventoryItem() {
         <p className="text-sm text-gray-500 mb-4">
           The item you're looking for doesn't exist or has been deleted.
         </p>
-        <Link
-            to={backDestination}
+        <ContextBackLink
+            fallback={backDestination}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
         >
           Back to Inventory
-        </Link>
+        </ContextBackLink>
       </div>
     )
   }
@@ -180,13 +181,13 @@ export default function EditBusinessInventoryItem() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
 
@@ -430,13 +431,13 @@ export default function EditBusinessInventoryItem() {
 
             {/* Form Actions - Desktop */}
             <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
-              <Link
-                to={backDestination}
-                className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Link>
+            <ContextBackLink
+              fallback={backDestination}
+              className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </ContextBackLink>
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -452,13 +453,13 @@ export default function EditBusinessInventoryItem() {
         {/* Sticky mobile action bar */}
         <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
           <div className="flex space-x-3">
-            <Link
-              to={backDestination}
+            <ContextBackLink
+              fallback={backDestination}
               className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <X className="h-4 w-4 mr-2" />
               Cancel
-            </Link>
+            </ContextBackLink>
             <button
               type="submit"
               disabled={isSubmitting}

@@ -1,5 +1,5 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import ContextBackLink from '@/components/ContextBackLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
@@ -55,12 +55,12 @@ export default function AddItem() {
           <p className="text-gray-600">
             You don't have permission to add items. Please contact an administrator if you need access.
           </p>
-          <Link
-            to={getBackDestination(`/project/${projectId}`)}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}`)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )

@@ -476,9 +476,8 @@ export default function BudgetCategoriesManager() {
                   No categories found. Create your first category to get started.
                 </td>
               </tr>
-            ) : (
-              <>
-                {activeCategories.map((category) => {
+            ) : 
+              activeCategories.map((category) => {
                   const transactionCount = transactionCounts.get(category.id) || 0
                   const isSelected = selectedCategoryIds.has(category.id)
                   const canArchive = transactionCount === 0
@@ -586,52 +585,55 @@ export default function BudgetCategoriesManager() {
                       )}
                     </td>
                   </tr>
-                ))}
-                {archivedCategories.length > 0 && (
-                  <>
-                    <tr>
-                      <td colSpan={showBulkOperations ? 6 : 5} className="py-2 bg-gray-100">
-                        <div className="flex items-center justify-between px-4">
-                          <span className="text-sm font-medium text-gray-700">Archived Categories</span>
-                          <button
-                            type="button"
-                            onClick={() => setShowArchived(!showArchived)}
-                            className="text-sm text-primary-600 hover:text-primary-700"
-                          >
-                            {showArchived ? 'Hide' : 'Show'} Archived
-                          </button>
-                        </div>
+                )})
+            }
+            {archivedCategories.length > 0 && (
+              <>
+                <tr>
+                  <td colSpan={showBulkOperations ? 6 : 5} className="py-2 bg-gray-100">
+                    <div className="flex items-center justify-between px-4">
+                      <span className="text-sm font-medium text-gray-700">Archived Categories</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowArchived(!showArchived)}
+                        className="text-sm text-primary-600 hover:text-primary-700"
+                      >
+                        {showArchived ? 'Hide' : 'Show'} Archived
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {showArchived &&
+                  archivedCategories.map((category) => (
+                    <tr key={category.id} className="bg-gray-50">
+                      {showBulkOperations && <td className="py-4 pl-4 pr-3 sm:pl-6" />}
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-500 sm:pl-6">
+                        {category.name}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        <span className="font-mono text-xs">{category.slug}</span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {/* Empty cell for transactions column */}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          Archived
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        <button
+                          type="button"
+                          onClick={() => handleUnarchive(category.id)}
+                          disabled={isSaving}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ArchiveRestore className="h-3 w-3 mr-1" />
+                          Unarchive
+                        </button>
                       </td>
                     </tr>
-                    {showArchived &&
-                      archivedCategories.map((category) => (
-                        <tr key={category.id} className="bg-gray-50">
-                          <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-500 sm:pl-6">
-                            {category.name}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            <span className="font-mono text-xs">{category.slug}</span>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              Archived
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            <button
-                              type="button"
-                              onClick={() => handleUnarchive(category.id)}
-                              disabled={isSaving}
-                              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <ArchiveRestore className="h-3 w-3 mr-1" />
-                              Unarchive
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                  </>
-                )}
+                  ))}
               </>
             )}
           </tbody>

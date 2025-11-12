@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Transaction, ProjectBudgetCategories, BudgetCategory } from '@/types'
+import { Transaction, ProjectBudgetCategories } from '@/types'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useCategories } from '@/components/CategorySelect'
 import { useAccount } from '@/contexts/AccountContext'
@@ -138,25 +138,43 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
 
     // Also include categories from budgetCategories that might not have transactions yet
     if (budgetCategories) {
-      // Check for furnishings budget
-      if (budgetCategories.furnishings > 0) {
-        const furnishingsCategory = categoryData.find(cat => 
-          cat.categoryName.toLowerCase().includes('furnish')
-        )
-        if (!furnishingsCategory) {
-          // Find a furnishings category from account categories, or create a placeholder
-          const furnishingsCat = accountCategories.find(cat => 
-            cat.name.toLowerCase().includes('furnish')
-          )
-          if (furnishingsCat) {
-            categoryData.push({
-              categoryId: furnishingsCat.id,
-              categoryName: furnishingsCat.name,
-              budget: budgetCategories.furnishings,
-              spent: 0,
-              percentage: 0,
-              isDesignFee: false
-            })
+      // Legacy mapping of project budget keys to matchers and display names
+      const legacyMappings: Array<{ key: keyof ProjectBudgetCategories; matcher: (name: string) => boolean; displayName: string }> = [
+        { key: 'furnishings', matcher: n => n.includes('furnish'), displayName: 'Furnishings' },
+        { key: 'install', matcher: n => n.includes('install'), displayName: 'Install' },
+        { key: 'fuel', matcher: n => n.includes('fuel'), displayName: 'Fuel' },
+        { key: 'storageReceiving', matcher: n => n.includes('storage') || n.includes('receiving'), displayName: 'Storage & Receiving' },
+        { key: 'kitchen', matcher: n => n.includes('kitchen'), displayName: 'Kitchen' },
+        { key: 'propertyManagement', matcher: n => n.includes('property') || n.includes('management'), displayName: 'Property Management' }
+      ]
+
+      for (const mapping of legacyMappings) {
+        const value = (budgetCategories as any)[mapping.key] || 0
+        if (value > 0) {
+          const alreadyPresent = categoryData.find(cat => mapping.matcher(cat.categoryName.toLowerCase()))
+          if (!alreadyPresent) {
+            // Prefer matching an account-level category if it exists
+            const accountCat = accountCategories.find(cat => mapping.matcher(cat.name.toLowerCase()))
+            if (accountCat) {
+              categoryData.push({
+                categoryId: accountCat.id,
+                categoryName: accountCat.name,
+                budget: value,
+                spent: 0,
+                percentage: 0,
+                isDesignFee: false
+              })
+            } else {
+              // Fallback placeholder when no account-level category exists
+              categoryData.push({
+                categoryId: `legacy-${mapping.key}`,
+                categoryName: mapping.displayName,
+                budget: value,
+                spent: 0,
+                percentage: 0,
+                isDesignFee: false
+              })
+            }
           }
         }
       }

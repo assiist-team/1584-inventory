@@ -12,7 +12,14 @@ export function useStackedNavigate() {
   const stackedNavigate = useCallback(
     (to: To, options?: NavigateOptions) => {
       try {
-        navigationStack.push(location.pathname + location.search)
+        // Don't record a navigation entry when performing a history jump (e.g. navigate(-1))
+        // because that would push the current location onto the stack right before going back,
+        // which causes the previous page to treat the back destination as the page we just left,
+        // creating an endless back/forward loop.
+        // Only push for non-numeric navigations or forward numeric jumps.
+        if (typeof to !== 'number' || to > 0) {
+          navigationStack.push(location.pathname + location.search)
+        }
       } catch {
         // ignore if stack not available
       }

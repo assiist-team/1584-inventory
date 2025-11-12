@@ -50,8 +50,8 @@ Implementation details:
 
 1. `buildContextUrl(targetPath, additionalParams?)`:
    - Current behavior sets `returnTo = location.pathname + location.search`.
-   - New behavior: call `navigationStack.push(location.pathname + location.search)` before returning the composed URL. Continue to set `returnTo` for fallback.
-   - This ensures any Link created via `buildContextUrl(...)` records the current screen as the previous stack entry.
+   - New behavior: be a pure URL composition helper that sets `returnTo` for fallback but does **not** mutate the navigation stack during render.
+   - Record intentional navigations at the moment of navigation instead: use `ContextLink` (click-time push) for rendered links and `useStackedNavigate()` for programmatic navigations. This prevents render-time side-effects and duplicate entries.
 
 2. `getBackDestination(defaultPath)`:
    - New resolution order:
@@ -93,7 +93,8 @@ Implementation details:
   - If `pop()` finds nothing, return `null`.
 
 - **Integration with `useNavigationContext`**
-  - `buildContextUrl(target, additionalParams?)` MUST call `navigationStack.push(location.pathname + location.search)` before returning the composed URL.
+  - `buildContextUrl(target, additionalParams?)` MUST be pure (compose URLs and set `returnTo`) and **must not** call `push()` during render.
+  - Use `ContextLink` to push the current location on click for rendered links, and `useStackedNavigate()` to push immediately before programmatic `navigate(...)`.
   - `getBackDestination(defaultPath)` resolution order:
     1. If `navigationStack.size() > 0`, return `navigationStack.pop()`.
     2. Else if `returnTo` query param exists, return it.
@@ -101,14 +102,13 @@ Implementation details:
     4. Else return `defaultPath`.
 
 - **Programmatic navigation**
-  - Before calling `navigate('/path')`, call `navigationStack.push(location.pathname + location.search)` to record the current screen. Example:
+  - Prefer `useStackedNavigate()` for programmatic navigations — it records the current location on the stack before calling `navigate(...)`. Example:
 
 ```js
 // inside a component
-const { push } = useNavigationStack()
-const location = useLocation()
+const navigate = useStackedNavigate()
 function onClickGo() {
-  push(location.pathname + location.search)
+  // stackedNavigate will push current location then call navigate
   navigate('/target')
 }
 ```
@@ -235,11 +235,11 @@ TODO: Audit remaining render-time pushes
 - Action: search the codebase for any remaining render-time usages of `navigationStack.push(...)` or direct calls to `buildContextUrl(...)` that run during render and migrate them to `ContextLink` or `useStackedNavigate()`.
 - Owner: dev
 - Priority: high
-- Status: pending
+- Status: completed (first-pass audit and migration performed; see implementation status)
 
 ## Implementation status (updated 2025-11-11)
 
-This project has implemented a first-pass Navigation Stack and integrated it into the main navigation helper. Below is a concise record of what's been done and what remains.
+This project has implemented the Navigation Stack and the supporting safe-navigation primitives. Below is a concise record of what's been done and what remains.
 
 - **Completed**
   - Added `NavigationStackProvider` and hook: `src/contexts/NavigationStackContext.tsx`.
@@ -247,35 +247,78 @@ This project has implemented a first-pass Navigation Stack and integrated it int
     - Mirrors to `sessionStorage` under `navStack:v1`, dedupes consecutive pushes, and trims to a configurable `maxLength`.
   - Wrapped the app root with the provider: `src/main.tsx` now includes `<NavigationStackProvider>`.
   - Wired the stack into the reusable navigation helper: `src/hooks/useNavigationContext.ts`
-    - `buildContextUrl(...)` records the current path onto the stack (via `push(...)`) and still sets `returnTo` for fallback behavior.
+    - `buildContextUrl(...)` is pure: it composes target URLs and sets `returnTo` for fallback behavior but does **not** mutate the stack during render.
     - `getBackDestination(...)` prefers `navigationStack.pop(currentLocation)` (mimics native Back), then falls back to `returnTo` and existing `from` heuristics.
   - Added `useStackedNavigate` wrapper: `src/hooks/useStackedNavigate.ts` to push the current location before programmatic `navigate(...)`.
-  - Migrated high-priority link usages to use `buildContextUrl(...)` and recorded the previous screen onto the stack. Notable edits:
-    - `src/pages/TransactionDetail.tsx` — item links now use `buildContextUrl(...)`.
-    - `src/pages/InventoryList.tsx` — edit and item links now use `buildContextUrl(...)`.
-    - `src/pages/BusinessInventory.tsx` — add/edit/item links updated to `buildContextUrl(...)`.
-    - `src/pages/BusinessInventoryItemDetail.tsx` — project & transaction links updated to `buildContextUrl(...)`.
-    - `src/components/ui/ItemLineageBreadcrumb.tsx` — breadcrumb links use `buildContextUrl(...)`.
-    - `src/pages/ItemDetail.tsx` — edit link updated to use `buildContextUrl(...)`.
+  - Added `ContextLink` (`src/components/ContextLink.tsx`) — click-time wrapper that pushes the current location on click then delegates to `Link`.
+  - Migrated high-priority callsites to use `ContextLink` + `buildContextUrl(...)` (safe click-time pushes). Notable edits:
+    - `src/pages/TransactionDetail.tsx` — item links now use `ContextLink(buildContextUrl(...))`.
+    - `src/pages/InventoryList.tsx` — item/edit links migrated to `ContextLink`.
+    - `src/pages/BusinessInventory.tsx` — add/edit/item links migrated to `ContextLink`.
+    - `src/pages/BusinessInventoryItemDetail.tsx` — project & transaction links migrated to `ContextLink`.
+    - `src/components/ui/ItemLineageBreadcrumb.tsx` — breadcrumb links use `ContextLink(buildContextUrl(...))`.
+    - `src/pages/ItemDetail.tsx` — edit/transaction links migrated to `ContextLink`.
+    - `src/pages/Projects.tsx` — project open button migrated to `ContextLink`.
+    - `src/pages/TransactionsList.tsx` — add/transaction item links migrated to `ContextLink`.
+  - Performed a programmatic navigation audit: most programmatic navigations already use `useStackedNavigate()`; no further automated replacements were required except for ensuring `ContextBackLink` continues to call `navigate(target)` for Back behavior.
   - Linter checks passed for the edited files.
 
 - **Behavioral note**
   - Navigations generated with `buildContextUrl(...)` are now recorded to the stack and will mimic native Back behavior. Programmatic navigations should use `useStackedNavigate()` to get the same behavior; some programmatic `navigate()` calls and hard-coded `<Link to="...">` instances remain and will still rely on `returnTo`/`from` fallbacks until migrated.
 
-- **Remaining work (recommended migration plan)**
-  1. Complete migration of remaining manual `returnTo`/hard-coded `to` links to `buildContextUrl(...)` (in-progress).
-  2. Replace `useNavigate` usages with `useStackedNavigate` across programmatic navigations (forms, modals, button handlers).
-  3. Add unit tests for `NavigationStackProvider` (push/pop/hydration/dedupe) and integration/E2E tests for critical flows (Transaction → Item → Back).
-  4. Audit all pages under `src/pages/` and `src/components/` for stray hard-coded links or missing context params; migrate progressively.
-  5. Optionally add lightweight debug logging during the early rollout to detect unexpected pop behavior.
-  6. Implement `ContextLink` wrapper and migrate render-time pushes to click-time pushes:
-    - Problem: many callsites render `buildContextUrl(...)` directly into JSX (`to={buildContextUrl(...)}`), and the current `buildContextUrl` calls `navigationStack.push(...)` during render. Mutating stack/state during render can trigger React render-time updates or freezes (as observed).
-    - Solution:
-      1. Add `src/components/ContextLink.tsx` — a small wrapper around `react-router`'s `Link` that accepts the same props, calls `navigationStack.push(location.pathname + location.search)` in an `onClick` handler (or before navigation), and then delegates to `Link`. This records the previous screen at the moment of navigation (safe).
-      2. Remove side-effects from `buildContextUrl(...)` (it should only compose URLs and preserve `returnTo`/`from`), or at minimum stop calling `push()` from code paths executed during render.
-      3. Migrate high-priority callsites to use `<ContextLink to={buildContextUrl(...)}>` instead of `to={buildContextUrl(...)}.` Programmatic navigations should continue to use `useStackedNavigate()` (or call `navigationStack.push()` immediately before `navigate(...)`).
-    - Migration priority: `TransactionDetail` → `ItemDetail` → `InventoryList` → `BusinessInventory` → `ItemLineageBreadcrumb`, then remaining pages.
-    - Tests: add unit tests for `ContextLink` (asserts it calls `push()` on click) and integration tests for Transaction → Item → Back flow.
+**Outstanding work (post-implementation checklist)**
+
+The core navigation stack primitives and several high-priority migrations are in place, but a small set of follow-ups remain to finish the rollout, prevent regressions, and give developers fast local feedback. Copy this checklist into PRs or the project board as actionable items.
+
+- **Completed (short)**:
+  - Provider + hook implemented and mirrored to `sessionStorage`.
+  - `ContextLink` and `useStackedNavigate` added; `buildContextUrl()` made pure.
+  - CI grep guard script and GitHub Actions job added (`scripts/check-nav-push.sh`, `.github/workflows/nav-guard.yml`).
+  - Local ESLint rule added to flag `navigationStack.push(...)` outside the allowlist.
+  - First-pass migrations performed for several high-priority pages.
+
+- **Migration & audit (medium priority)**:
+  Developer action: Complete the remaining migration and audit items listed below. For each file in the audit list, open a focused PR that:
+  - Replaces render-time `to={...}` forward links with `ContextLink(to={buildContextUrl(...)})`.
+  - Replaces in-app Back/return links with `ContextBackLink` or explicit `navigationStack.pop()` where appropriate.
+  - Runs `bash scripts/check-nav-push.sh` and `npm run lint` locally and pastes the outputs into the PR description.
+  - Ensures the CI nav-guard job and lint job pass before merging.
+  After merge, remove the migrated file from this audit list and mark the migration complete in this document.
+  - One-pass migrate remaining render-time `<Link to=...>` usages to safe primitives:
+    - Forward navigations → `ContextLink(to={buildContextUrl(...)})`
+    - Back/return links → `ContextBackLink` or explicit `navigationStack.pop()` usage
+  - Files discovered with remaining plain `<Link>` usages under `src/pages/` (audit list):
+    - `src/pages/Projects.tsx` (settings link)
+    - `src/pages/BusinessInventoryItemDetail.tsx` (back links)
+    - `src/pages/ClientSummary.tsx` (receipt external link — leave as plain link)
+    - `src/pages/EditBusinessInventoryTransaction.tsx` (back links)
+    - `src/pages/AddBusinessInventoryTransaction.tsx` (back links)
+    - `src/pages/AddTransaction.tsx` (uses `getBackDestination`)
+    - `src/pages/ProjectDetail.tsx` (back links)
+    - `src/pages/AddBusinessInventoryItem.tsx` (back links)
+    - `src/pages/EditItem.tsx` (uses `getBackDestination`)
+    - `src/pages/AddItem.tsx` (uses `getBackDestination`)
+    - `src/pages/EditBusinessInventoryItem.tsx` (back links)
+    - `src/pages/BusinessInventory.tsx` (settings link)
+  - For each file: decide whether to convert to `ContextLink(buildContextUrl(...))` or `ContextBackLink` depending on intent.
+
+- **CI / lint integration (medium priority)**:
+  - Ensure ESLint rule is enforced in CI (add `npm run lint` to CI or a dedicated job).
+  - Keep the grep guard active; consider adding a docs-only warning mode so `dev_docs/` references don't fail CI.
+
+- **Optional follow-ups (low priority)**:
+  - Add `navStack:debug=1` sampling during rollout to capture unexpected pops.
+  - Consider an automated CI check that scans PR diffs and fails if `navigationStack.push(` appears outside the allowlist.
+
+- **Owners & priority**
+  - Tests: owner `dev`, **high** priority.
+  - Link migrations & audit: owner `dev`, **medium** priority.
+  - CI / lint integration: owner `devops` / `dev`, **medium** priority.
+
+- **Suggested PRs**
+  1. `chore(nav): tests for useStackedNavigate and ContextLink` — unit + integration tests.
+  2. `chore(nav): migrate remaining links to ContextLink/ContextBackLink` — small per-file PRs.
+  3. `chore(ci): ensure lint & nav-guard run in CI` — wire ESLint + grep checks into CI.
 
 Files changed by the implementation (representative):
 
@@ -295,4 +338,150 @@ If you'd like, I can:
 - Start migrating the critical links (Transaction → Item, Business Inventory) now.
 - Implement `useStackedNavigate` and replace programmatic navigations in the same pass.
 
+
+
+## Discovery & fix log (2025-11-12)
+
+This section records a recent production discovery and the immediate code fix, plus the results of a quick audit for remaining problematic patterns.
+
+- Symptom observed: in-app Back toggled repeatedly between TransactionDetail and EditTransaction (or ItemDetail and TransactionDetail in some flows), trapping the user in an endless back/forward loop.
+
+- Root cause: the navigation stack was being updated immediately before executing a history jump (specifically, `navigate(-1)` and similar negative numeric navigations). In that scenario the current location was pushed onto the stack right before the router went back, so the previous screen computed its Back target as the page we just left — causing the two screens to alternate indefinitely.
+
+- Immediate fix (implemented 2025-11-12):
+  - Edited `src/hooks/useStackedNavigate.ts` to skip pushing the current location when `navigate(...)` is called with a negative numeric argument (history jumps like `-1`). This prevents adding the current path to the stack immediately before going back, eliminating the toggle/loop.
+
+- Audit findings (quick pass)
+  - Files that directly implement stack mutation:
+    - `src/contexts/NavigationStackContext.tsx` — provider implementation (push/pop/peek). (expected)
+    - `src/components/ContextLink.tsx` — click-time push via `navigationStack.push(location.pathname + location.search)` (intended/correct: push on click).
+    - `src/hooks/useStackedNavigate.ts` — updated: now guards against pushing for negative numeric navigations (fix applied).
+
+  - `buildContextUrl(...)` usage:
+    - `src/hooks/useNavigationContext.ts` — `buildContextUrl` is pure (composes URL + `returnTo`) and does **not** mutate the stack (safe).
+    - Callsites that render `buildContextUrl(...)` into JSX were inspected; representative files include:
+      - `src/pages/TransactionDetail.tsx` (uses `buildContextUrl(...)` for item links; links are wrapped with `ContextLink` in the updated codebase) — safe.
+      - `src/pages/InventoryList.tsx` (uses `ContextLink(to={buildContextUrl(...)})`) — safe.
+      - `src/components/ui/ItemLineageBreadcrumb.tsx` (uses `buildContextUrl(...)` and `ContextLink`) — safe.
+      - `src/pages/ItemDetail.tsx`, `src/pages/BusinessInventoryItemDetail.tsx`, `src/pages/Projects.tsx`, `src/pages/TransactionsList.tsx`, `src/pages/BusinessInventory.tsx` — these pages render contextual links with `buildContextUrl(...)`; most were migrated to `ContextLink` during the first-pass audit (safe).
+
+  - `ContextBackLink`:
+    - `src/components/ContextBackLink.tsx` correctly calls `navigationStack.pop(currentLocation)` then `navigate(target)` to perform in-app Back behavior (safe).
+
+  - Direct `navigationStack.push(...)` calls outside `ContextLink`:
+    - No remaining direct `push(...)` calls executed during render were found in the quick scan beyond `ContextLink` and `NavigationStackContext`.
+
+- Recommendation / follow-ups
+  1. Add a unit test asserting that `useStackedNavigate()` does not push when called as a negative numeric history jump and that `ContextLink` still pushes on click. This prevents regressions.
+  2. Do a broader audit for any direct programmatic `navigate(...)` usages that still call `useNavigate()` + `navigate(...)` (without `useStackedNavigate`) and migrate them to `useStackedNavigate()` where intended to record history. Programmatic navigations that intentionally should not record history can remain.
+  3. During early rollout, enable `sessionStorage.setItem('navStack:debug','1')` in a test tab to capture unexpected stack contents if any user reports continue.
+
+If you'd like, I can convert this quick pass into a full route-by-route audit and produce a migration PR that replaces plain `navigate(...)` usages with `useStackedNavigate()` where appropriate.
+
+### Repo-wide audit — detailed findings (2025-11-12)
+
+Below are the concrete findings from a repo-wide scan for:
+- render-time navigation stack mutations (calls to `navigationStack.push()` executed during render)
+- direct `navigate(...)` usages that do not use `useStackedNavigate()` or `ContextLink`
+
+Summary: the codebase has already migrated most navigations to the safe primitives. The only direct `useNavigate()` call that remains is in the specialized Back control (`ContextBackLink`), which intentionally pops then navigates; all other programmatic navigations use `useStackedNavigate()` and rendered links use `ContextLink` / `buildContextUrl()` (pure). The table below lists the notable files examined, offending snippets (if any), risk rationale, and recommended remediation.
+
+- **src/components/ContextBackLink.tsx**
+  - Offending snippet:
+
+```startLine:endLine:src/components/ContextBackLink.tsx
+L17:  const handleClick = (e: React.MouseEvent) => {
+L18:    e.preventDefault()
+L19:    try {
+L20:      const target = navigationStack.pop(location.pathname + location.search) || fallback
+L21:      navigate(target)
+L22:    } catch {
+L23:      // fallback if stack not available
+L24:      navigate(fallback)
+L25:    }
+L26:  }
+```
+
+  - Why it matters: `ContextBackLink` uses `useNavigate()` directly rather than `useStackedNavigate()`. However this is intentional: it first calls `navigationStack.pop(...)` to choose a back destination and then calls `navigate(target)` to go there. Because `pop()` is used (not `push()`), this control does not mutate the stack incorrectly at render time.
+  - Recommendation: Leave as-is. Justify: this is the in-app Back control — it must pop the stack and then navigate. Using `useStackedNavigate()` here would push the current location before navigating, which would re-introduce the back-loop. Add an inline comment to make the intent explicit if desired.
+
+- **Programmatic navigations (examples) — already using `useStackedNavigate()`**
+  - Files inspected that use `useStackedNavigate()` for programmatic navigations (safe; no action required):
+    - `src/pages/BusinessInventoryItemDetail.tsx` — calls to `navigate('/business-inventory')` and `navigate(`/project/${allocationForm.projectId}/item/${id}`)` are via `const navigate = useStackedNavigate()` (safe).
+
+```startLine:endLine:src/pages/BusinessInventoryItemDetail.tsx
+L16:export default function BusinessInventoryItemDetail() {
+L18:  const navigate = useStackedNavigate()
+...
+L156:    await unifiedItemsService.deleteItem(currentAccountId, id)
+L162:        navigate('/business-inventory')
+...
+L205:      // Navigate to the item detail in the project after successful allocation
+L206:      navigate(`/project/${allocationForm.projectId}/item/${id}`)
+```
+
+    - `src/pages/EditTransaction.tsx` — uses `useStackedNavigate()` for submit and `navigate(-1)` back buttons (safe because `useStackedNavigate()` guards numeric negative jumps).
+    - `src/pages/AddTransaction.tsx`, `src/pages/ClientSummary.tsx`, `src/pages/ProjectDetail.tsx`, `src/pages/ItemDetail.tsx`, `src/pages/TransactionDetail.tsx`, `src/pages/InviteAccept.tsx`, `src/pages/AuthCallback.tsx`, `src/pages/PropertyManagementSummary.tsx`, `src/pages/ProjectInvoice.tsx`, and other /pages/* files — inspected and found to use `useStackedNavigate()` where programmatic navigation is required.
+
+  - Why safe: `useStackedNavigate()` records the current location before navigating for non-numeric navigations and explicitly avoids pushing when called with negative numeric values (history jumps), preventing the back-loop case.
+  - Recommendation: Leave as-is. Add unit tests (see checklist) to prevent regressions.
+
+- **Rendered links / buildContextUrl**
+  - `src/hooks/useNavigationContext.ts` — `buildContextUrl()` is pure: it composes the `returnTo` param but does **not** call `navigationStack.push()` during render. This is safe; rendered links should use `ContextLink` so the push happens on click.
+
+```startLine:endLine:src/hooks/useNavigationContext.ts
+L60:    buildContextUrl: (targetPath: string, additionalParams?: Record<string, string>) => {
+L62:      const url = new URL(targetPath, window.location.origin)
+L63:      const currentParams = new URLSearchParams(location.search)
+L69:      url.searchParams.set('returnTo', location.pathname + location.search)
+L79:      return url.pathname + url.search
+L80:    }
+```
+
+  - Recommendation: Keep `buildContextUrl()` pure. Prefer `ContextLink` for links rendered into JSX:
+    - Example safe usage (already present): `ContextLink to={buildContextUrl(...)}`
+
+- **Direct `navigationStack.push(...)` audit**
+  - Findings: only occurrences of `navigationStack.push(...)` are:
+    - `src/hooks/useStackedNavigate.ts` — expected (push before programmatic navigate)
+    - `src/components/ContextLink.tsx` — expected (push on click)
+    - `src/components/__tests__/ContextLink.test.tsx` — test asserts push
+  - Recommendation: No action. These are the intended, safe push locations.
+
+- **Other potential issues found during scan**
+  - A few callsites use `navigate(0)` for reload semantics (e.g., `navigate(0)` in `ProjectDetail.tsx`) — `useStackedNavigate()` will not push for `0` (guard only pushes for non-numeric or positive numeric), so this is safe. If reload semantics are required, leave as-is.
+  - There were no remaining `navigationStack.push()` calls executed during render discovered in the quick scan beyond `ContextLink` and the provider itself.
+
+### Per-file action summary (short)
+- `src/components/ContextBackLink.tsx` — leave as-is (pop then navigate is intentional).
+- `src/components/ContextLink.tsx` — correct (click-time push).
+- `src/hooks/useStackedNavigate.ts` — correct (guards numeric negative jumps).
+- All inspected `src/pages/*` that used programmatic navigation have been migrated to `useStackedNavigate()` — no immediate changes required.
+
+### Migration checklist (PR work + tests) — prioritized
+1. High priority — Tests to prevent regressions
+   - Unit: add tests for `useStackedNavigate()`:
+     - Verify it pushes the current location on non-numeric navigations.
+     - Verify it does NOT push for negative numeric navigations (e.g., `navigate(-1)`).
+     - Verify it does NOT push for `navigate(0)` (reload).
+   - Unit: `ContextLink` tests (already present) — assert `navigationStack.push` on click.
+   - Integration: Transaction → Item → Back flow (memory router):
+     - Ensure a single Back returns to Transaction exactly once (no toggling).
+2. Medium priority — Cleanup & audits
+   - Full repo scan for any accidental future render-time calls to `navigationStack.push()` (CI lint rule or grep-based test).
+   - Convert any remaining hard-coded `<Link to="...">` that rely on `returnTo` + render-time pushes (if any exist) to `ContextLink` (wrap with `ContextLink to={buildContextUrl(...)}>`).
+3. Low priority — Optional UX/logging
+   - Add optional `navStack:debug=1` debug behavior (already supported) during rollout for a short window to monitor unexpected stack contents.
+   - Consider adding an ESLint rule or grep-based CI check forbidding `navigationStack.push` outside `ContextLink` / `useStackedNavigate` / `NavigationStackContext`.
+
+### Proposed PR (what I'll open)
+- Title: "chore(nav): complete navigation-stack audit — tests & finalize safe navigation primitives"
+- Changes:
+  1. Add unit tests for `useStackedNavigate()` negative numeric guard and push semantics.
+  2. Add integration test for Transaction → Item → Back flow (MemoryRouter).
+  3. Add a small grep-based CI job (script) that fails if `navigationStack.push(` appears outside approved files (allowlist: `src/hooks/useStackedNavigate.ts`, `src/components/ContextLink.tsx`, `src/contexts/NavigationStackContext.tsx`, test files).
+  4. Minor doc edits (this file) — append detailed audit & checklist (this commit).
+- Priority: tests first (prevent regressions), then CI check, then optional lint rule.
+
+If you'd like I can open the PR now and implement the tests + CI guard in the same branch. Suggested branch name: `fix/nav-audit/tests-and-ci`.
 

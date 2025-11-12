@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { Edit, Trash2, ArrowLeft, Package, DollarSign, ImagePlus, FileText, Copy } from 'lucide-react'
 import { Item, Project } from '@/types'
@@ -332,13 +333,13 @@ export default function BusinessInventoryItemDetail() {
         <p className="text-sm text-gray-500 mb-4">
           The item you're looking for doesn't exist or has been deleted.
         </p>
-        <Link
-          to={backDestination}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Inventory
-        </Link>
+            <ContextBackLink
+              fallback={backDestination}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Inventory
+            </ContextBackLink>
       </div>
     )
   }
@@ -349,13 +350,13 @@ export default function BusinessInventoryItemDetail() {
       <div className="sticky top-0 bg-gray-50 z-10 px-4 py-2 border-b border-gray-200">
         {/* Back button and controls row */}
         <div className="flex items-center justify-between gap-4">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
 
           <div className="flex flex-wrap gap-2 sm:space-x-2">
             {item.inventoryStatus === 'available' && (
@@ -368,13 +369,13 @@ export default function BusinessInventoryItemDetail() {
                 <DollarSign className="h-4 w-4" />
               </button>
             )}
-            <Link
+            <ContextLink
               to={buildContextUrl(`/business-inventory/${id}/edit`)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
               <Edit className="h-4 w-4" />
-            </Link>
+            </ContextLink>
             <button
               onClick={() => item && duplicateItem(item.itemId)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
@@ -530,12 +531,12 @@ export default function BusinessInventoryItemDetail() {
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <Link
+                      <ContextLink
                         to={buildContextUrl(`/project/${item.projectId}`, { from: 'business-inventory-item' })}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {formatLinkedProjectText(item.projectId)}
-                      </Link>
+                      </ContextLink>
                     </dd>
                   </div>
                 )}
@@ -544,12 +545,12 @@ export default function BusinessInventoryItemDetail() {
                   <div>
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
-                      <Link
+                      <ContextLink
                         to={buildContextUrl(`/project/${item.projectId}/transaction/${item.transactionId}`, { from: 'business-inventory-item' })}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {item.transactionId}
-                      </Link>
+                      </ContextLink>
                     </dd>
                   </div>
                 )}
@@ -566,12 +567,12 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Original Transaction</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       {item.previousProjectId ? (
-                        <Link
+                        <ContextLink
                           to={buildContextUrl(`/project/${item.previousProjectId}/transaction/${item.previousProjectTransactionId}`, { from: 'business-inventory-item' })}
                           className="text-primary-600 hover:text-primary-800 font-medium"
                         >
                           {item.previousProjectTransactionId}
-                        </Link>
+                        </ContextLink>
                       ) : (
                         <span>{item.previousProjectTransactionId}</span>
                       )}

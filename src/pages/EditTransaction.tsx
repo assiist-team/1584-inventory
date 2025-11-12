@@ -1,6 +1,7 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { useNavigationStack } from '@/contexts/NavigationStackContext'
 import { useState, useEffect, useRef, FormEvent } from 'react'
 import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
 import { COMPANY_NAME, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
@@ -8,6 +9,8 @@ import { transactionService, projectService, unifiedItemsService } from '@/servi
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
 import { useAuth } from '../contexts/AuthContext'
+import ContextLink from '@/components/ContextLink'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
@@ -19,8 +22,11 @@ import CategorySelect from '@/components/CategorySelect'
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
   const navigate = useStackedNavigate()
+  const navigationStack = useNavigationStack()
+  const location = useLocation()
   const { hasRole } = useAuth()
   const { currentAccountId } = useAccount()
+  const { buildContextUrl } = useNavigationContext()
 
   // Check if user has permission to edit transactions (USER role or higher)
   if (!hasRole(UserRole.USER)) {
@@ -34,12 +40,12 @@ export default function EditTransaction() {
           <p className="text-gray-600">
             You don't have permission to edit transactions. Please contact an administrator if you need access.
           </p>
-          <Link
-            to={`/project/${projectId}`}
+          <ContextLink
+            to={buildContextUrl(`/project/${projectId}`)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
-          </Link>
+          </ContextLink>
         </div>
       </div>
     )
@@ -512,7 +518,10 @@ export default function EditTransaction() {
         {/* Back button row */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              const target = navigationStack.pop(location.pathname + location.search) || buildContextUrl(`/project/${projectId}`)
+              navigate(target)
+            }}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -994,7 +1003,10 @@ export default function EditTransaction() {
           {/* Form Actions - Normal on desktop, hidden on mobile (replaced by sticky bar) */}
           <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                const target = navigationStack.pop(location.pathname + location.search) || buildContextUrl(`/project/${projectId}`)
+                navigate(target)
+              }}
               className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <X className="h-4 w-4 mr-2" />
@@ -1016,7 +1028,10 @@ export default function EditTransaction() {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
         <div className="flex space-x-3">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              const target = navigationStack.pop(location.pathname + location.search) || buildContextUrl(`/project/${projectId}`)
+              navigate(target)
+            }}
             className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <X className="h-4 w-4 mr-2" />

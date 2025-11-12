@@ -1,5 +1,6 @@
 import { Plus, Search, Filter } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, useEffect, useMemo } from 'react'
 import { Transaction, TransactionCompleteness } from '@/types'
@@ -202,13 +203,13 @@ export default function TransactionsList({ projectId: propProjectId, transaction
     <div className="space-y-4">
       {/* Header - Add Transaction button */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-        <Link
+        <ContextLink
           to={buildContextUrl(`/project/${projectId}/transaction/add`, { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Transaction
-        </Link>
+        </ContextLink>
       </div>
 
       {/* Search and Controls - Sticky Container */}
@@ -308,7 +309,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
           <ul className="divide-y divide-gray-200">
             {filteredTransactions.map((transaction) => (
               <li key={transaction.transactionId} className="relative">
-                <Link
+                <ContextLink
                   to={buildContextUrl(`/project/${projectId}/transaction/${transaction.transactionId}`, { project: projectId, transactionId: transaction.transactionId })}
                   className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
@@ -388,7 +389,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
                     </div>
 
                   </div>
-                </Link>
+                </ContextLink>
               </li>
             ))}
           </ul>

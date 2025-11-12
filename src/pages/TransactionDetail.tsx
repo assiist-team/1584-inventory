@@ -2,7 +2,7 @@ import { ArrowLeft, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-rea
 import { useState, useEffect, useMemo } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import ContextBackLink from '@/components/ContextBackLink'
 import ContextLink from '@/components/ContextLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
@@ -842,13 +842,13 @@ export default function TransactionDetail() {
             Back
           </ContextBackLink>
           <div className="flex space-x-3">
-            <Link
-              to={`/project/${projectId}/transaction/${transactionId}/edit`}
+            <ContextLink
+              to={buildContextUrl(`/project/${projectId}/transaction/${transactionId}/edit`)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Transaction"
             >
               <Edit className="h-4 w-4" />
-            </Link>
+            </ContextLink>
           </div>
         </div>
       </div>
