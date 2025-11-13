@@ -114,7 +114,7 @@ export default function VendorDefaultsManager() {
       <div>
         <h4 className="text-lg font-medium text-gray-900 mb-1">Transaction Vendor Defaults</h4>
         <p className="text-sm text-gray-500">
-          Configure exactly 10 vendor/source slots that will be available in transaction forms. Each slot can be individually edited and saved.
+          Set your top 10 vendors/sources for transaction forms. Each slot can be individually edited and saved.
         </p>
       </div>
 
@@ -172,7 +172,6 @@ export default function VendorDefaultsManager() {
                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                         autoFocus
                       />
-                      <div className="text-xs text-gray-400"><em>Freeform text allowed. Leave blank to clear slot.</em></div>
                     </div>
                   ) : (
                     <div className="flex items-center">

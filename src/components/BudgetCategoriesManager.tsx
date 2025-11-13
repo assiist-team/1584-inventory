@@ -204,7 +204,7 @@ export default function BudgetCategoriesManager() {
       <div>
         <h4 className="text-lg font-medium text-gray-900 mb-1">Budget Categories</h4>
         <p className="text-sm text-gray-500">
-          Manage budget categories for transactions. Categories can be archived but not deleted if they are referenced by transactions.
+          Manage budget categories for transactions. Archive transactions to hide them from the list in forms.
         </p>
       </div>
 

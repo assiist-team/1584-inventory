@@ -280,57 +280,21 @@ export default function Settings() {
               <>
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-6">
-                    <div className="flex items-center mb-4">
-                      <div className="flex-shrink-0">
-                        <SettingsIcon className="h-8 w-8 text-gray-400" />
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <h3 className="text-lg font-medium text-gray-900">
-                          Tax Rate Presets
-                        </h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          Manage tax rate presets available when creating transactions
-                        </p>
-                      </div>
-                    </div>
+                    {/* Section header removed — manager renders its own title/description */}
                     <TaxPresetsManager />
                   </div>
                 </div>
 
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-6">
-                    <div className="flex items-center mb-4">
-                      <div className="flex-shrink-0">
-                        <SettingsIcon className="h-8 w-8 text-gray-400" />
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <h3 className="text-lg font-medium text-gray-900">
-                          Transaction Vendor Defaults
-                        </h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          Configure the 10 vendor/source options available in transaction forms
-                        </p>
-                      </div>
-                    </div>
+                    {/* Section header removed — manager renders its own title/description */}
                     <VendorDefaultsManager />
                   </div>
                 </div>
 
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-6">
-                    <div className="flex items-center mb-4">
-                      <div className="flex-shrink-0">
-                        <Tag className="h-8 w-8 text-gray-400" />
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <h3 className="text-lg font-medium text-gray-900">
-                          Budget Categories
-                        </h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          Manage budget categories for organizing transactions
-                        </p>
-                      </div>
-                    </div>
+                    {/* Section header removed — manager renders its own title/description */}
                     <BudgetCategoriesManager />
                   </div>
                 </div>
