@@ -13,6 +13,7 @@ vi.mock('../supabase', async () => {
 import { getTaxPresets, updateTaxPresets, getTaxPresetById } from '../taxPresetsService'
 import { DEFAULT_TAX_PRESETS } from '../../constants/taxPresets'
 import * as supabaseModule from '../supabase'
+import * as accountPresetsModule from '../accountPresetsService'
 
 describe('taxPresetsService', () => {
   beforeEach(() => {
@@ -26,7 +27,11 @@ describe('taxPresetsService', () => {
         { id: 'preset-2', name: 'UT Tax', rate: 6.85 }
       ]
       const mockData = { account_id: 'test-account-id', presets: mockPresets }
-      const mockQueryBuilder = createMockSupabaseClient().from('tax_presets')
+      // Simulate migrated data present in account_presets
+      vi.mocked(accountPresetsModule.getAccountPresets).mockResolvedValue({
+        presets: { tax_presets: mockPresets }
+      } as any)
+      const mockQueryBuilder = createMockSupabaseClient().from()
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
@@ -42,9 +47,11 @@ describe('taxPresetsService', () => {
     it('should initialize with defaults when not found', async () => {
       const notFoundError = createNotFoundError()
       let insertCalled = false
+      // Ensure account_presets read returns null so legacy table path is exercised
+      vi.mocked(accountPresetsModule.getAccountPresets).mockResolvedValue(null as any)
       
-      vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        const mockQueryBuilder = createMockSupabaseClient().from(table)
+      vi.mocked(supabaseModule.supabase.from).mockImplementation(() => {
+        const mockQueryBuilder = createMockSupabaseClient().from()
         return {
           ...mockQueryBuilder,
           select: vi.fn().mockReturnThis(),
@@ -80,8 +87,12 @@ describe('taxPresetsService', () => {
         })
       }
       
-      vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        const mockQueryBuilder = createMockSupabaseClient().from(table)
+      // Ensure account_presets read returns null so legacy table path is exercised
+      vi.mocked(accountPresetsModule.getAccountPresets).mockResolvedValue(null as any)
+      vi.mocked(accountPresetsModule.upsertAccountPresets).mockResolvedValue(undefined as any)
+
+      vi.mocked(supabaseModule.supabase.from).mockImplementation(() => {
+        const mockQueryBuilder = createMockSupabaseClient().from()
         return {
           ...mockQueryBuilder,
           select: vi.fn().mockReturnThis(),
@@ -106,7 +117,9 @@ describe('taxPresetsService', () => {
 
     it('should fallback to defaults on error', async () => {
       const error = { code: '500', message: 'Server error', details: null, hint: null }
-      const mockQueryBuilder = createMockSupabaseClient().from('tax_presets')
+      // Simulate account_presets read throwing to exercise fallback
+      vi.mocked(accountPresetsModule.getAccountPresets).mockRejectedValue(new Error('boom'))
+      const mockQueryBuilder = createMockSupabaseClient().from()
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
@@ -129,6 +142,9 @@ describe('taxPresetsService', () => {
       ]
       let updateCalled = false
       
+      // Make sure account_presets upsert doesn't reject during test
+      vi.mocked(accountPresetsModule.upsertAccountPresets).mockResolvedValue(undefined as any)
+
       // Create an awaitable chain for the update operation
       const awaitableUpdateChain = {
         update: vi.fn().mockReturnThis(),
@@ -142,8 +158,8 @@ describe('taxPresetsService', () => {
         })
       }
       
-      vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        const mockQueryBuilder = createMockSupabaseClient().from(table)
+      vi.mocked(supabaseModule.supabase.from).mockImplementation(() => {
+        const mockQueryBuilder = createMockSupabaseClient().from()
         return {
           ...mockQueryBuilder,
           select: vi.fn().mockReturnThis(),
@@ -163,9 +179,11 @@ describe('taxPresetsService', () => {
         { id: 'preset-1', name: 'NV Tax', rate: 8.25 }
       ]
       let insertCalled = false
+      // Ensure account_presets upsert is stubbed
+      vi.mocked(accountPresetsModule.upsertAccountPresets).mockResolvedValue(undefined as any)
       
-      vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        const mockQueryBuilder = createMockSupabaseClient().from(table)
+      vi.mocked(supabaseModule.supabase.from).mockImplementation(() => {
+        const mockQueryBuilder = createMockSupabaseClient().from()
         return {
           ...mockQueryBuilder,
           select: vi.fn().mockReturnThis(),
@@ -239,7 +257,7 @@ describe('taxPresetsService', () => {
         { id: 'preset-2', name: 'UT Tax', rate: 6.85 }
       ]
       const mockData = { account_id: 'test-account-id', presets: mockPresets }
-      const mockQueryBuilder = createMockSupabaseClient().from('tax_presets')
+      const mockQueryBuilder = createMockSupabaseClient().from()
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,
@@ -259,7 +277,7 @@ describe('taxPresetsService', () => {
         { id: 'preset-1', name: 'NV Tax', rate: 8.25 }
       ]
       const mockData = { account_id: 'test-account-id', presets: mockPresets }
-      const mockQueryBuilder = createMockSupabaseClient().from('tax_presets')
+      const mockQueryBuilder = createMockSupabaseClient().from()
       
       vi.mocked(supabaseModule.supabase.from).mockReturnValue({
         ...mockQueryBuilder,

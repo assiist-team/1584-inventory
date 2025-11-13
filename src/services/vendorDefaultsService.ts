@@ -1,5 +1,5 @@
-import { supabase } from './supabase'
 import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
+import { getAccountPresets, upsertAccountPresets } from './accountPresetsService'
 
 export interface VendorSlot {
   id: string | null
@@ -16,46 +16,30 @@ export interface VendorDefaultsResponse {
  */
 export async function getVendorDefaults(accountId: string): Promise<VendorDefaultsResponse> {
   try {
-    const { data, error } = await supabase
-      .from('vendor_defaults')
-      .select('slots')
-      .eq('account_id', accountId)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Not found - initialize with first 10 from TRANSACTION_SOURCES (store as plain strings)
-        const initialStoredSlots: Array<string | null> = TRANSACTION_SOURCES.slice(0, 10).map(name => name)
-        while (initialStoredSlots.length < 10) {
-          initialStoredSlots.push(null)
-        }
-        await updateVendorDefaults(accountId, initialStoredSlots)
-        // Return the normalized VendorSlot[] for the UI
-        const initialSlots = initialStoredSlots.map(s => (s ? { id: s, name: s } : { id: null, name: null }))
-        return { slots: initialSlots }
-      }
-      throw error
+    // Read canonical vendor_defaults from account_presets
+    const ap = await getAccountPresets(accountId)
+    const migrated: any[] | undefined = ap?.presets?.vendor_defaults
+    if (Array.isArray(migrated)) {
+      const rawSlots: any[] = migrated.slice()
+      while (rawSlots.length < 10) rawSlots.push(null)
+      const truncated = rawSlots.slice(0, 10)
+      const slots: VendorSlot[] = truncated.map(slot => {
+        if (typeof slot === 'string') return { id: slot, name: slot }
+        return { id: null, name: null }
+      })
+      return { slots }
     }
 
-    // Ensure we have exactly 10 slots
-    const rawSlots: any[] = Array.isArray(data?.slots) ? data.slots : []
-
-    // Pad or truncate to exactly 10 slots
-    while (rawSlots.length < 10) {
-      rawSlots.push(null)
+    // Initialize vendor defaults from TRANSACTION_SOURCES if missing
+    const initialStoredSlots: Array<string | null> = TRANSACTION_SOURCES.slice(0, 10).map(name => name)
+    while (initialStoredSlots.length < 10) initialStoredSlots.push(null)
+    try {
+      await upsertAccountPresets(accountId, { presets: { vendor_defaults: initialStoredSlots } })
+    } catch (err) {
+      console.warn('Failed to initialize vendor_defaults in account_presets:', err)
     }
-    const truncated = rawSlots.slice(0, 10)
-
-    // Normalize to VendorSlot[] (expect stored strings or null; no legacy object support)
-    const slots: VendorSlot[] = truncated.map(slot => {
-      if (typeof slot === 'string') {
-        return { id: slot, name: slot }
-      }
-      // Anything other than a string is treated as empty (no object-based compatibility)
-      return { id: null, name: null }
-    })
-
-    return { slots }
+    const initialSlots = initialStoredSlots.map(s => (s ? { id: s, name: s } : { id: null, name: null }))
+    return { slots: initialSlots }
   } catch (error) {
     console.error('Error fetching vendor defaults from Postgres:', error)
     // Fallback to first 10 from TRANSACTION_SOURCES
@@ -133,45 +117,9 @@ export async function updateVendorDefaults(
       // Reject any non-string/non-null input to enforce no backwards compatibility
       throw new Error('Slots must be plain strings or null (legacy object formats are not supported)')
     })
-
-    // Check if vendor defaults exist for this account
-    const { data: existing, error: checkError } = await supabase
-      .from('vendor_defaults')
-      .select('account_id')
-      .eq('account_id', accountId)
-      .single()
-
-    // Handle "not found" error gracefully - it means we need to insert
-    const shouldInsert = !existing || (checkError && checkError.code === 'PGRST116')
-
-    const defaultsData: any = {
-      account_id: accountId,
-      slots: storedSlots,
-      updated_at: new Date().toISOString()
-    }
-
-    if (updatedBy) {
-      defaultsData.updated_by = updatedBy
-    }
-
-    if (!shouldInsert) {
-      // Update existing
-      const { error } = await supabase
-        .from('vendor_defaults')
-        .update(defaultsData)
-        .eq('account_id', accountId)
-
-      if (error) throw error
-    } else {
-      // Create new
-      const { error } = await supabase
-        .from('vendor_defaults')
-        .insert(defaultsData)
-
-      if (error) throw error
-    }
-
-    console.log('Vendor defaults updated successfully')
+    // Persist exclusively to canonical account_presets
+    await upsertAccountPresets(accountId, { presets: { vendor_defaults: storedSlots } })
+    console.log('Vendor defaults updated successfully (account_presets)')
   } catch (error) {
     console.error('Error updating vendor defaults:', error)
     throw error

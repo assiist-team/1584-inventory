@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { X, DollarSign } from 'lucide-react'
 import { ProjectBudgetCategories } from '@/types'
-import CategorySelect from '@/components/CategorySelect'
 
 interface ProjectFormData {
   name: string;
@@ -10,7 +9,6 @@ interface ProjectFormData {
   budget?: number;
   designFee?: number;
   budgetCategories?: ProjectBudgetCategories;
-  defaultCategoryId?: string;
 }
 
 interface ProjectFormProps {
@@ -57,7 +55,6 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     budget: initialData?.budget || undefined,
     designFee: initialData?.designFee || undefined,
     budgetCategories: migratedBudgetCategories,
-    defaultCategoryId: initialData?.defaultCategoryId || undefined,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -201,18 +198,7 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
               />
             </div>
 
-            {/* Default Transaction Category */}
-            <div>
-              <CategorySelect
-                id="defaultCategoryId"
-                label="Default Transaction Category"
-                value={formData.defaultCategoryId}
-                onChange={(categoryId) => handleChange('defaultCategoryId', categoryId || undefined)}
-                helperText="Optional: This sets the default category when creating transactions for this project"
-                asDropdown={true}
-                error={errors.defaultCategoryId}
-              />
-            </div>
+            {/* Default Transaction Category moved to account-level presets (Settings → Presets → Budget Categories) */}
 
             {/* Budget Categories Section */}
             <div className="border-t border-gray-200 pt-4">

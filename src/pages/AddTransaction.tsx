@@ -16,6 +16,7 @@ import { useAccount } from '../contexts/AccountContext'
 import { Shield } from 'lucide-react'
 import { getTaxPresets } from '@/services/taxPresetsService'
 import { getAvailableVendors } from '@/services/vendorDefaultsService'
+import { getDefaultCategory } from '@/services/accountPresetsService'
 import CategorySelect from '@/components/CategorySelect'
 
 export default function AddTransaction() {
@@ -68,6 +69,22 @@ export default function AddTransaction() {
 
     fetchProject()
   }, [projectId, currentAccountId])
+
+  // Load account-wide default category from Postgres account_presets
+  useEffect(() => {
+    if (!currentAccountId) return
+    const loadDefault = async () => {
+      try {
+        const defaultCategory = await getDefaultCategory(currentAccountId)
+        if (defaultCategory) {
+          setFormData(prev => ({ ...prev, categoryId: defaultCategory }))
+        }
+      } catch (err) {
+        console.error('Error loading account default category:', err)
+      }
+    }
+    loadDefault()
+  }, [currentAccountId])
 
   const [formData, setFormData] = useState<TransactionFormData>({
     transactionDate: (() => {

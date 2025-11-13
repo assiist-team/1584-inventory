@@ -1,32 +1,24 @@
-import { supabase } from './supabase'
 import { DEFAULT_TAX_PRESETS, TaxPreset } from '@/constants/taxPresets'
+import { getAccountPresets, upsertAccountPresets } from './accountPresetsService'
 
 /**
  * Get tax presets from Postgres for an account, falling back to defaults if not found
  */
 export async function getTaxPresets(accountId: string): Promise<TaxPreset[]> {
   try {
-    const { data, error } = await supabase
-      .from('tax_presets')
-      .select('presets')
-      .eq('account_id', accountId)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Not found - initialize with defaults
-        await updateTaxPresets(accountId, DEFAULT_TAX_PRESETS)
-        return DEFAULT_TAX_PRESETS
-      }
-      throw error
+    // Read canonical presets from account_presets
+    const ap = await getAccountPresets(accountId)
+    const migrated: any = ap?.presets?.tax_presets
+    if (Array.isArray(migrated) && migrated.length > 0) {
+      return migrated as TaxPreset[]
     }
 
-    if (data.presets && Array.isArray(data.presets) && data.presets.length > 0) {
-      return data.presets as TaxPreset[]
+    // If missing, initialize with defaults in account_presets and return defaults
+    try {
+      await upsertAccountPresets(accountId, { presets: { tax_presets: DEFAULT_TAX_PRESETS } })
+    } catch (err) {
+      console.warn('Failed to initialize tax_presets in account_presets:', err)
     }
-
-    // If presets array is empty, initialize with defaults
-    await updateTaxPresets(accountId, DEFAULT_TAX_PRESETS)
     return DEFAULT_TAX_PRESETS
   } catch (error) {
     console.error('Error fetching tax presets from Postgres:', error)
@@ -67,40 +59,9 @@ export async function updateTaxPresets(accountId: string, presets: TaxPreset[]):
       throw new Error('Preset IDs must be unique')
     }
 
-    // Check if presets exist for this account
-    const { data: existing, error: checkError } = await supabase
-      .from('tax_presets')
-      .select('account_id')
-      .eq('account_id', accountId)
-      .single()
-
-    // Handle "not found" error gracefully - it means we need to insert
-    const shouldInsert = !existing || (checkError && checkError.code === 'PGRST116')
-
-    const presetData = {
-      account_id: accountId,
-      presets: presets,
-      updated_at: new Date().toISOString()
-    }
-
-    if (!shouldInsert) {
-      // Update existing
-      const { error } = await supabase
-        .from('tax_presets')
-        .update(presetData)
-        .eq('account_id', accountId)
-
-      if (error) throw error
-    } else {
-      // Create new
-      const { error } = await supabase
-        .from('tax_presets')
-        .insert(presetData)
-
-      if (error) throw error
-    }
-
-    console.log('Tax presets updated successfully')
+    // Persist exclusively to the canonical account_presets table
+    await upsertAccountPresets(accountId, { presets: { tax_presets: presets } })
+    console.log('Tax presets updated successfully (account_presets)')
   } catch (error) {
     console.error('Error updating tax presets:', error)
     throw error

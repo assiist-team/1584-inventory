@@ -26,7 +26,8 @@ describe('ProjectForm', () => {
     
     await waitFor(() => {
       expect(screen.getByLabelText(/Project Name/)).toBeInTheDocument()
-      expect(screen.getByLabelText(/Default Budget Category/)).toBeInTheDocument()
+      // Default category is now account-wide; project form should not render it
+      expect(screen.queryByLabelText(/Default Budget Category/)).not.toBeInTheDocument()
     })
   })
 
@@ -35,59 +36,14 @@ describe('ProjectForm', () => {
     render(<ProjectForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />)
     
     await waitFor(() => {
-      expect(screen.getByLabelText(/Default Budget Category/)).toBeInTheDocument()
+      // Project form no longer contains a default category select
+      expect(screen.queryByLabelText(/Default Budget Category/)).not.toBeInTheDocument()
     })
 
-    const categorySelect = screen.getByLabelText(/Default Budget Category/)
-    await user.selectOptions(categorySelect, 'cat-1')
-    
-    // Verify the form has the selected category
-    expect((categorySelect as HTMLSelectElement).value).toBe('cat-1')
+    // No category select to interact with; this test is intentionally a no-op now.
   })
 
-  it('should submit form with defaultCategoryId when provided', async () => {
-    const user = userEvent.setup()
-    render(<ProjectForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />)
-    
-    await waitFor(() => {
-      expect(screen.getByLabelText(/Project Name/)).toBeInTheDocument()
-    })
-
-    // Fill in required fields
-    await user.type(screen.getByLabelText(/Project Name/), 'Test Project')
-    await user.type(screen.getByLabelText(/Client Name/), 'Test Client')
-    
-    // Select a category
-    const categorySelect = screen.getByLabelText(/Default Budget Category/)
-    await user.selectOptions(categorySelect, 'cat-1')
-
-    // Submit form
-    const submitButton = screen.getByRole('button', { name: /Create Project/ })
-    await user.click(submitButton)
-    
-    await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalled()
-      const submittedData = mockOnSubmit.mock.calls[0][0]
-      expect(submittedData.defaultCategoryId).toBe('cat-1')
-      expect(submittedData.name).toBe('Test Project')
-      expect(submittedData.clientName).toBe('Test Client')
-    })
-  })
-
-  it('should pre-populate defaultCategoryId when editing', async () => {
-    const initialData = {
-      name: 'Existing Project',
-      clientName: 'Existing Client',
-      defaultCategoryId: 'cat-2'
-    }
-
-    render(<ProjectForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} initialData={initialData} />)
-    
-    await waitFor(() => {
-      const categorySelect = screen.getByLabelText(/Default Budget Category/) as HTMLSelectElement
-      expect(categorySelect.value).toBe('cat-2')
-    })
-  })
+  // Tests related to defaultCategoryId removed because default category is now account-wide.
 
   it('should validate required fields', async () => {
     const user = userEvent.setup()

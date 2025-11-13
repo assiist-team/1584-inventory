@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Save, AlertCircle, Plus, Edit2, Archive, ArchiveRestore, X, Trash2 } from 'lucide-react'
 import { budgetCategoriesService } from '@/services/budgetCategoriesService'
+import { getDefaultCategory, setDefaultCategory } from '@/services/accountPresetsService'
 import { BudgetCategory } from '@/types'
 import { useAccount } from '@/contexts/AccountContext'
 import { Button } from './ui/Button'
+import CategorySelect from '@/components/CategorySelect'
 
 export default function BudgetCategoriesManager() {
   const { currentAccountId, loading: accountLoading } = useAccount()
@@ -16,6 +18,9 @@ export default function BudgetCategoriesManager() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [formData, setFormData] = useState({ name: '' })
+  const [selectedDefaultCategoryId, setSelectedDefaultCategoryId] = useState<string | null>(null)
+  const [isSavingDefault, setIsSavingDefault] = useState(false)
+  const [defaultSaveMessage, setDefaultSaveMessage] = useState<string | null>(null)
 
   const loadCategories = useCallback(async () => {
     if (!currentAccountId) return
@@ -28,8 +33,14 @@ export default function BudgetCategoriesManager() {
         showArchived
       )
       setCategories(loadedCategories)
-
-      // nothing extra to load for simple categories list
+      // Load saved account-wide default category from Postgres account_presets
+      try {
+        const defaultCategory = await getDefaultCategory(currentAccountId)
+        setSelectedDefaultCategoryId(defaultCategory)
+      } catch (err) {
+        console.error('Error loading account default category:', err)
+        setSelectedDefaultCategoryId(null)
+      }
     } catch (err) {
       console.error('Error loading budget categories:', err)
       setError('Failed to load budget categories')
@@ -206,6 +217,49 @@ export default function BudgetCategoriesManager() {
         <p className="text-sm text-gray-500">
           Manage budget categories for transactions. Archive transactions to hide them from the list in forms.
         </p>
+      </div>
+
+      {/* Account-wide default category preset */}
+      <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+        <h5 className="text-sm font-medium text-gray-900 mb-2">Default transaction category</h5>
+        <p className="text-sm text-gray-500 mb-3">Set the default category that will be used when creating transactions.</p>
+        <div className="flex items-start space-x-3">
+          <div className="flex-1">
+            <CategorySelect
+              id="accountDefaultCategory"
+              label="Default Transaction Category"
+              value={selectedDefaultCategoryId || undefined}
+              onChange={(categoryId) => setSelectedDefaultCategoryId(categoryId || null)}
+              helperText="This default applies account-wide (saved locally for now)"
+              asDropdown={true}
+            />
+          </div>
+          <div className="pt-6">
+            <Button
+              onClick={async () => {
+                if (!currentAccountId) return
+                setIsSavingDefault(true)
+                setDefaultSaveMessage(null)
+                try {
+                  await setDefaultCategory(currentAccountId, selectedDefaultCategoryId)
+                  setDefaultSaveMessage('Default category saved')
+                  setTimeout(() => setDefaultSaveMessage(null), 3000)
+                } catch (err) {
+                  console.error('Error saving default category to Postgres:', err)
+                  setDefaultSaveMessage('Failed to save default')
+                } finally {
+                  setIsSavingDefault(false)
+                }
+              }}
+              disabled={isSavingDefault}
+            >
+              {isSavingDefault ? 'Saving...' : 'Save'}
+            </Button>
+            {defaultSaveMessage && (
+              <div className="mt-2 text-sm text-green-700">{defaultSaveMessage}</div>
+            )}
+          </div>
+        </div>
       </div>
 
       {error && (
