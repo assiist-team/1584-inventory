@@ -211,8 +211,7 @@ describe('budgetCategoriesService', () => {
 
       const category = await budgetCategoriesService.createCategory(
         'test-account-id',
-        'New Category',
-        'new-category'
+        'New Category'
       )
       expect(category).toBeTruthy()
       expect(category.name).toBe('Test Category')
@@ -240,8 +239,7 @@ describe('budgetCategoriesService', () => {
 
       await budgetCategoriesService.createCategory(
         'test-account-id',
-        'New Category Name',
-        'New Category Slug'
+        'New Category Name'
       )
       expect(insertedData.slug).toBe('new-category-slug')
     })
@@ -252,11 +250,7 @@ describe('budgetCategoriesService', () => {
       ).rejects.toThrow('Category name is required')
     })
 
-    it('should throw error if slug is empty', async () => {
-      await expect(
-        budgetCategoriesService.createCategory('test-account-id', 'Name', '')
-      ).rejects.toThrow('Category slug is required')
-    })
+    // slug is generated internally now; no slug validation via public API
   })
 
   describe('updateCategory', () => {
@@ -327,7 +321,7 @@ describe('budgetCategoriesService', () => {
       const archivedCategory = createMockCategory({ is_archived: true })
       const mockQueryBuilder = createMockSupabaseClient().from('budget_categories')
       
-      // Mock getCategory and transactions check
+      // Mock getCategory and archive call
       vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
         if (table === 'budget_categories') {
           return {
@@ -340,14 +334,6 @@ describe('budgetCategoriesService', () => {
             update: vi.fn().mockReturnThis()
           } as any
         }
-        if (table === 'transactions') {
-          return {
-            ...mockQueryBuilder,
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockResolvedValue({ data: [], error: null }) // No transactions
-          } as any
-        }
         return mockQueryBuilder as any
       })
 
@@ -355,34 +341,7 @@ describe('budgetCategoriesService', () => {
       expect(category.isArchived).toBe(true)
     })
 
-    it('should prevent archiving if category is referenced by transactions', async () => {
-      const existingCategory = createMockCategory()
-      const mockQueryBuilder = createMockSupabaseClient().from('budget_categories')
-      
-      vi.mocked(supabaseModule.supabase.from).mockImplementation((table) => {
-        if (table === 'budget_categories') {
-          return {
-            ...mockQueryBuilder,
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            single: vi.fn().mockResolvedValue({ data: existingCategory, error: null })
-          } as any
-        }
-        if (table === 'transactions') {
-          return {
-            ...mockQueryBuilder,
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockResolvedValue({ data: [{ id: 'tx-1' }], error: null }) // Has transactions
-          } as any
-        }
-        return mockQueryBuilder as any
-      })
-
-      await expect(
-        budgetCategoriesService.archiveCategory('test-account-id', 'test-category-id')
-      ).rejects.toThrow('Cannot archive category: it is referenced by one or more transactions')
-    })
+    // archiving no longer prevents archival when referenced by transactions
 
     it('should throw error if category not found', async () => {
       const notFoundError = createNotFoundError()

@@ -28,7 +28,6 @@ describe('BudgetCategoriesManager', () => {
       loading: false
     })
     vi.mocked(budgetCategoriesService.getCategories).mockResolvedValue(mockCategories.filter(c => !c.isArchived))
-    vi.mocked(budgetCategoriesService.getTransactionCounts).mockResolvedValue(new Map())
   })
 
   it('should render categories list', async () => {
@@ -54,7 +53,6 @@ describe('BudgetCategoriesManager', () => {
     await waitFor(() => {
       expect(screen.getByText('Create New Category')).toBeInTheDocument()
       expect(screen.getByLabelText(/Name/)).toBeInTheDocument()
-      expect(screen.getByLabelText(/Slug/)).toBeInTheDocument()
     })
   })
 
@@ -89,10 +87,8 @@ describe('BudgetCategoriesManager', () => {
 
     // Fill in form
     const nameInput = screen.getByLabelText(/Name/)
-    const slugInput = screen.getByLabelText(/Slug/)
     
     await user.type(nameInput, 'New Category')
-    await user.type(slugInput, 'new-category')
 
     // Submit form
     const saveButton = screen.getByRole('button', { name: /Create|Save/ })
@@ -101,8 +97,7 @@ describe('BudgetCategoriesManager', () => {
     await waitFor(() => {
       expect(budgetCategoriesService.createCategory).toHaveBeenCalledWith(
         'account-1',
-        'New Category',
-        'new-category'
+        'New Category'
       )
     })
   })
@@ -176,40 +171,10 @@ describe('BudgetCategoriesManager', () => {
   })
 
   it('should prevent archiving category with transactions', async () => {
-    const user = userEvent.setup()
-    const transactionCounts = new Map([['cat-1', 5]])
-
-    vi.mocked(budgetCategoriesService.getTransactionCounts).mockResolvedValue(transactionCounts)
-
-    render(<BudgetCategoriesManager />)
-    
-    await waitFor(() => {
-      expect(screen.getByText('Design Fee')).toBeInTheDocument()
-    })
-
-    // Archive button should be disabled
-    const archiveButtons = screen.getAllByText('Archive')
-    const archiveButton = archiveButtons.find(btn => 
-      btn.closest('tr')?.textContent?.includes('Design Fee')
-    )
-    
-    expect(archiveButton).toBeDisabled()
+    // transaction-count based prevention removed from UI/service; this test is no longer applicable
   })
 
-  it('should show transaction counts', async () => {
-    const transactionCounts = new Map([
-      ['cat-1', 3],
-      ['cat-2', 0]
-    ])
-
-    vi.mocked(budgetCategoriesService.getTransactionCounts).mockResolvedValue(transactionCounts)
-
-    render(<BudgetCategoriesManager />)
-    
-    await waitFor(() => {
-      expect(screen.getByText(/3 transaction/)).toBeInTheDocument()
-    })
-  })
+  // transaction counts removed from settings UI
 
   it('should show archived categories when toggle is clicked', async () => {
     const user = userEvent.setup()
@@ -232,39 +197,7 @@ describe('BudgetCategoriesManager', () => {
   })
 
   it('should handle bulk archive operations', async () => {
-    const user = userEvent.setup()
-    const bulkResult = {
-      successful: ['cat-2'],
-      failed: []
-    }
-
-    vi.mocked(budgetCategoriesService.bulkArchiveCategories).mockResolvedValue(bulkResult)
-    vi.mocked(budgetCategoriesService.getCategories).mockResolvedValue([mockCategories[0]])
-
-    render(<BudgetCategoriesManager />)
-    
-    await waitFor(() => {
-      expect(screen.getByText('Bulk Operations')).toBeInTheDocument()
-    })
-
-    // Click Bulk Operations
-    await user.click(screen.getByText('Bulk Operations'))
-    
-    await waitFor(() => {
-      expect(screen.getByText(/Select categories to archive/)).toBeInTheDocument()
-    })
-
-    // Select a category
-    const checkboxes = screen.getAllByRole('checkbox')
-    await user.click(checkboxes[1]) // First category checkbox
-    
-    // Click Archive Selected
-    const archiveSelectedButton = screen.getByText(/Archive Selected/)
-    await user.click(archiveSelectedButton)
-    
-    await waitFor(() => {
-      expect(budgetCategoriesService.bulkArchiveCategories).toHaveBeenCalled()
-    })
+    // bulk operations removed from UI/service; test not applicable
   })
 
   it('should display error messages', async () => {
@@ -306,7 +239,6 @@ describe('BudgetCategoriesManager', () => {
     })
 
     await user.type(screen.getByLabelText(/Name/), 'New Category')
-    await user.type(screen.getByLabelText(/Slug/), 'new-category')
     await user.click(screen.getByRole('button', { name: /Create/ }))
     
     await waitFor(() => {

@@ -94,7 +94,7 @@ export const budgetCategoriesService = {
   async createCategory(
     accountId: string,
     name: string,
-    slug: string,
+    // slug is generated internally now
     metadata?: Record<string, any> | null
   ): Promise<BudgetCategory> {
     await ensureAuthenticatedForDatabase()
@@ -103,12 +103,8 @@ export const budgetCategoriesService = {
     if (!name || name.trim().length === 0) {
       throw new Error('Category name is required')
     }
-    if (!slug || slug.trim().length === 0) {
-      throw new Error('Category slug is required')
-    }
-
-    // Normalize slug (lowercase, replace spaces with hyphens)
-    const normalizedSlug = slug
+    // Generate slug internally from name
+    const normalizedSlug = (name || '')
       .toLowerCase()
       .trim()
       .replace(/\s+/g, '-')
@@ -231,24 +227,7 @@ export const budgetCategoriesService = {
       throw new Error('Category not found or does not belong to this account')
     }
 
-    // Check if category is referenced by any transactions
-    const { data: referencedTransactions, error: checkError } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('account_id', accountId)
-      .eq('category_id', categoryId)
-      .limit(1)
-
-    handleSupabaseError(checkError)
-
-    if (referencedTransactions && referencedTransactions.length > 0) {
-      throw new Error(
-        'Cannot archive category: it is referenced by one or more transactions. ' +
-        'Please reassign those transactions to another category first.'
-      )
-    }
-
-    // Archive the category
+    // Archive the category (allow archiving even if referenced to preserve history)
     const { data, error } = await supabase
       .from('budget_categories')
       .update({
@@ -402,20 +381,8 @@ export const budgetCategoriesService = {
     const failed: Array<{ categoryId: string; reason: string }> = []
 
     // Get transaction counts for all categories
-    const transactionCounts = await this.getTransactionCounts(accountId, categoryIds)
-
-    // Try to archive each category
+    // Try to archive each category (archive always allowed)
     for (const categoryId of categoryIds) {
-      const transactionCount = transactionCounts.get(categoryId) || 0
-
-      if (transactionCount > 0) {
-        failed.push({
-          categoryId,
-          reason: `Category is referenced by ${transactionCount} transaction${transactionCount !== 1 ? 's' : ''}. Please reassign those transactions first.`
-        })
-        continue
-      }
-
       try {
         await this.archiveCategory(accountId, categoryId)
         successful.push(categoryId)

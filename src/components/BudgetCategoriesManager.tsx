@@ -12,14 +12,10 @@ export default function BudgetCategoriesManager() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [showArchived, setShowArchived] = useState(false)
+  const [showArchived, setShowArchived] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [formData, setFormData] = useState({ name: '', slug: '' })
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
-  const [transactionCounts, setTransactionCounts] = useState<Map<string, number>>(new Map())
-  const [isLoadingCounts, setIsLoadingCounts] = useState(false)
-  const [showBulkOperations, setShowBulkOperations] = useState(false)
+  const [formData, setFormData] = useState({ name: '' })
 
   const loadCategories = useCallback(async () => {
     if (!currentAccountId) return
@@ -33,22 +29,7 @@ export default function BudgetCategoriesManager() {
       )
       setCategories(loadedCategories)
 
-      // Load transaction counts for active categories
-      if (!showArchived && loadedCategories.length > 0) {
-        setIsLoadingCounts(true)
-        const activeCategoryIds = loadedCategories
-          .filter(c => !c.isArchived)
-          .map(c => c.id)
-        
-        if (activeCategoryIds.length > 0) {
-          const counts = await budgetCategoriesService.getTransactionCounts(
-            currentAccountId,
-            activeCategoryIds
-          )
-          setTransactionCounts(counts)
-        }
-        setIsLoadingCounts(false)
-      }
+      // nothing extra to load for simple categories list
     } catch (err) {
       console.error('Error loading budget categories:', err)
       setError('Failed to load budget categories')
@@ -75,7 +56,7 @@ export default function BudgetCategoriesManager() {
   const handleStartCreate = () => {
     setCreating(true)
     setEditingId(null)
-    setFormData({ name: '', slug: '' })
+    setFormData({ name: '' })
     setError(null)
     setSuccessMessage(null)
   }
@@ -83,7 +64,7 @@ export default function BudgetCategoriesManager() {
   const handleStartEdit = (category: BudgetCategory) => {
     setEditingId(category.id)
     setCreating(false)
-    setFormData({ name: category.name, slug: category.slug })
+    setFormData({ name: category.name })
     setError(null)
     setSuccessMessage(null)
   }
@@ -91,26 +72,11 @@ export default function BudgetCategoriesManager() {
   const handleCancel = () => {
     setCreating(false)
     setEditingId(null)
-    setFormData({ name: '', slug: '' })
-  }
-
-  const generateSlugFromName = (name: string): string => {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
+    setFormData({ name: '' })
   }
 
   const handleFormChange = (field: 'name' | 'slug', value: string) => {
-    setFormData(prev => {
-      const updated = { ...prev, [field]: value }
-      // Auto-generate slug from name if slug is empty or name changed
-      if (field === 'name' && (!prev.slug || prev.slug === generateSlugFromName(prev.name))) {
-        updated.slug = generateSlugFromName(value)
-      }
-      return updated
-    })
+    setFormData(prev => ({ ...prev, [field]: value }))
     setError(null)
     setSuccessMessage(null)
   }
@@ -126,10 +92,7 @@ export default function BudgetCategoriesManager() {
       return
     }
 
-    if (!formData.slug.trim()) {
-      setError('Category slug is required')
-      return
-    }
+    // only name is required in the simplified UI
 
     try {
       setIsSaving(true)
@@ -137,18 +100,16 @@ export default function BudgetCategoriesManager() {
       setSuccessMessage(null)
 
       if (creating) {
-        // Create new category
+        // Create new category (service will generate slug internally)
         await budgetCategoriesService.createCategory(
           currentAccountId,
-          formData.name.trim(),
-          formData.slug.trim()
+          formData.name.trim()
         )
         setSuccessMessage('Category created successfully')
       } else if (editingId) {
         // Update existing category
         await budgetCategoriesService.updateCategory(currentAccountId, editingId, {
-          name: formData.name.trim(),
-          slug: formData.slug.trim()
+          name: formData.name.trim()
         })
         setSuccessMessage('Category updated successfully')
       }
@@ -216,69 +177,15 @@ export default function BudgetCategoriesManager() {
   }
 
   const handleToggleSelect = (categoryId: string) => {
-    setSelectedCategoryIds(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(categoryId)) {
-        newSet.delete(categoryId)
-      } else {
-        newSet.add(categoryId)
-      }
-      return newSet
-    })
+    // removed bulk selection UI — no-op
   }
 
   const handleSelectAll = () => {
-    const activeCats = categories.filter(c => !c.isArchived)
-    const allActiveIds = activeCats.map(c => c.id)
-    if (selectedCategoryIds.size === allActiveIds.length) {
-      setSelectedCategoryIds(new Set())
-    } else {
-      setSelectedCategoryIds(new Set(allActiveIds))
-    }
+    // removed bulk selection UI — no-op
   }
 
   const handleBulkArchive = async () => {
-    if (!currentAccountId || selectedCategoryIds.size === 0) return
-
-    try {
-      setIsSaving(true)
-      setError(null)
-      setSuccessMessage(null)
-
-      const categoryIdsArray = Array.from(selectedCategoryIds)
-      const result = await budgetCategoriesService.bulkArchiveCategories(
-        currentAccountId,
-        categoryIdsArray
-      )
-
-      if (result.successful.length > 0) {
-        setSuccessMessage(
-          `Successfully archived ${result.successful.length} categor${result.successful.length !== 1 ? 'ies' : 'y'}.`
-        )
-      }
-
-      if (result.failed.length > 0) {
-        const failedMessages = result.failed.map(f => 
-          `• ${categories.find(c => c.id === f.categoryId)?.name || f.categoryId}: ${f.reason}`
-        ).join('\n')
-        setError(`Some categories could not be archived:\n${failedMessages}`)
-      }
-
-      // Reload categories
-      await loadCategories()
-      setSelectedCategoryIds(new Set())
-
-      // Clear messages after 5 seconds
-      setTimeout(() => {
-        setSuccessMessage(null)
-        setError(null)
-      }, 5000)
-    } catch (err) {
-      console.error('Error bulk archiving categories:', err)
-      setError(err instanceof Error ? err.message : 'Failed to archive categories')
-    } finally {
-      setIsSaving(false)
-    }
+    // bulk archive removed
   }
 
   if (isLoading) {
@@ -343,26 +250,11 @@ export default function BudgetCategoriesManager() {
               autoFocus
             />
           </div>
-          <div>
-            <label htmlFor="category-slug" className="block text-sm font-medium text-gray-700 mb-1">
-              Slug *
-            </label>
-            <input
-              type="text"
-              id="category-slug"
-              value={formData.slug}
-              onChange={(e) => handleFormChange('slug', e.target.value)}
-              placeholder="e.g., design-fee, furnishings"
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              URL-friendly identifier (auto-generated from name)
-            </p>
-          </div>
+          {/* slug removed from settings UI */}
           <div className="flex items-center space-x-2">
             <Button
               onClick={handleSave}
-              disabled={isSaving || !formData.name.trim() || !formData.slug.trim()}
+              disabled={isSaving || !formData.name.trim()}
               size="sm"
             >
               <Save className="h-4 w-4 mr-2" />
@@ -381,34 +273,10 @@ export default function BudgetCategoriesManager() {
         </div>
       )}
 
-      {/* Create Button and Bulk Operations - Hide when creating or editing */}
+      {/* Create Button - simplified UI */}
       {!creating && !editingId && (
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {activeCategories.length > 0 && (
-              <>
-                <Button
-                  onClick={() => setShowBulkOperations(!showBulkOperations)}
-                  variant="secondary"
-                  size="sm"
-                >
-                  <Archive className="h-4 w-4 mr-2" />
-                  Bulk Operations
-                </Button>
-                {showBulkOperations && selectedCategoryIds.size > 0 && (
-                  <Button
-                    onClick={handleBulkArchive}
-                    variant="secondary"
-                    size="sm"
-                    disabled={isSaving}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Archive Selected ({selectedCategoryIds.size})
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
+          <div />
           <Button onClick={handleStartCreate} size="sm">
             <Plus className="h-4 w-4 mr-2" />
             Add Category
@@ -416,54 +284,17 @@ export default function BudgetCategoriesManager() {
         </div>
       )}
 
-      {/* Bulk Operations Panel */}
-      {showBulkOperations && activeCategories.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h5 className="text-sm font-medium text-gray-900">
-              Select categories to archive
-            </h5>
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-sm text-primary-600 hover:text-primary-700"
-            >
-              {selectedCategoryIds.size === activeCategories.length ? 'Deselect All' : 'Select All'}
-            </button>
-          </div>
-          <p className="text-xs text-gray-600 mb-3">
-            Categories referenced by transactions cannot be archived. You must reassign those transactions first.
-          </p>
-        </div>
-      )}
+      {/* bulk operations removed */}
 
       {/* Categories Table */}
       <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-md">
         <table className="min-w-full divide-y divide-gray-300">
           <thead className="bg-gray-50">
             <tr>
-              {showBulkOperations && (
-                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6 w-12">
-                  <input
-                    type="checkbox"
-                    checked={selectedCategoryIds.size === activeCategories.length && activeCategories.length > 0}
-                    onChange={handleSelectAll}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                </th>
-              )}
               <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
                 Name
               </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                Slug
-              </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                Transactions
-              </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                Status
-              </th>
+              {/* slug and transactions columns removed */}
               <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                 Actions
               </th>
@@ -472,32 +303,16 @@ export default function BudgetCategoriesManager() {
           <tbody className="divide-y divide-gray-200 bg-white">
             {activeCategories.length === 0 && archivedCategories.length === 0 ? (
               <tr>
-                <td colSpan={showBulkOperations ? 6 : 5} className="py-8 text-center text-sm text-gray-500">
+                <td colSpan={3} className="py-8 text-center text-sm text-gray-500">
                   No categories found. Create your first category to get started.
                 </td>
               </tr>
-            ) : 
-              activeCategories.map((category) => {
-                  const transactionCount = transactionCounts.get(category.id) || 0
-                  const isSelected = selectedCategoryIds.has(category.id)
-                  const canArchive = transactionCount === 0
-                  
+            ) : activeCategories.map((category) => {
                   return (
                   <tr 
                     key={category.id} 
-                    className={`${editingId === category.id ? 'bg-gray-50' : ''} ${isSelected ? 'bg-blue-50' : ''}`}
+                    className={`${editingId === category.id ? 'bg-gray-50' : ''}`}
                   >
-                    {showBulkOperations && (
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-900 sm:pl-6">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelect(category.id)}
-                          disabled={!canArchive}
-                          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                      </td>
-                    )}
                     <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
                       {editingId === category.id ? (
                         <input
@@ -513,39 +328,11 @@ export default function BudgetCategoriesManager() {
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                       {editingId === category.id ? (
-                        <input
-                          type="text"
-                          value={formData.slug}
-                          onChange={(e) => handleFormChange('slug', e.target.value)}
-                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                        />
-                      ) : (
-                        <span className="font-mono text-xs">{category.slug}</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      {isLoadingCounts ? (
-                        <span className="text-gray-400">...</span>
-                      ) : transactionCount > 0 ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                          {transactionCount} transaction{transactionCount !== 1 ? 's' : ''}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">0</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Active
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      {editingId === category.id ? (
                         <div className="flex items-center space-x-2">
                           <button
                             type="button"
                             onClick={handleSave}
-                            disabled={isSaving || !formData.name.trim() || !formData.slug.trim()}
+                            disabled={isSaving || !formData.name.trim()}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Save className="h-3 w-3 mr-1" />
@@ -574,9 +361,8 @@ export default function BudgetCategoriesManager() {
                           <button
                             type="button"
                             onClick={() => handleArchive(category.id)}
-                            disabled={isSaving || transactionCount > 0}
+                            disabled={isSaving}
                             className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={transactionCount > 0 ? `Cannot archive: referenced by ${transactionCount} transaction${transactionCount !== 1 ? 's' : ''}` : 'Archive category'}
                           >
                             <Archive className="h-3 w-3 mr-1" />
                             Archive
@@ -590,7 +376,7 @@ export default function BudgetCategoriesManager() {
             {archivedCategories.length > 0 && (
               <>
                 <tr>
-                  <td colSpan={showBulkOperations ? 6 : 5} className="py-2 bg-gray-100">
+                  <td colSpan={3} className="py-2 bg-gray-100">
                     <div className="flex items-center justify-between px-4">
                       <span className="text-sm font-medium text-gray-700">Archived Categories</span>
                       <button
@@ -606,20 +392,8 @@ export default function BudgetCategoriesManager() {
                 {showArchived &&
                   archivedCategories.map((category) => (
                     <tr key={category.id} className="bg-gray-50">
-                      {showBulkOperations && <td className="py-4 pl-4 pr-3 sm:pl-6" />}
                       <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-500 sm:pl-6">
                         {category.name}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        <span className="font-mono text-xs">{category.slug}</span>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {/* Empty cell for transactions column */}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          Archived
-                        </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         <button
