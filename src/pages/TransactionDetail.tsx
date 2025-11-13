@@ -153,7 +153,7 @@ export default function TransactionDetail() {
           console.log('TransactionDetail - No projectId provided, searching across all projects for business inventory transaction')
           const result = await transactionService.getTransactionById(currentAccountId, transactionId)
 
-          if (!result.transaction || !result.projectId) {
+          if (!result.transaction) {
             console.error('TransactionDetail - Transaction not found in any project')
             setIsLoading(false)
             setIsLoadingItems(false)
@@ -163,8 +163,10 @@ export default function TransactionDetail() {
           transactionData = result.transaction
           actualProjectId = result.projectId
 
-          // Get project data for the found project
-          projectData = await projectService.getProject(currentAccountId, actualProjectId)
+          // Get project data only if projectId exists (business inventory transactions have null projectId)
+          if (actualProjectId) {
+            projectData = await projectService.getProject(currentAccountId, actualProjectId)
+          }
         } else {
           // Fetch transaction and project data for regular project transactions.
           // We intentionally do NOT rely on `getItemsForTransaction` here because moved/deallocated
@@ -230,8 +232,8 @@ export default function TransactionDetail() {
         setTransaction(convertedTransaction)
         setProject(projectData)
 
-        // Fetch transaction items for business inventory transactions
-        if (!projectId && actualProjectId) {
+        // Fetch transaction items for business inventory transactions (when no projectId in URL)
+        if (!projectId) {
           // For business inventory transactions, prefer item IDs stored on the transaction record
           // so deallocated/moved items remain discoverable.
           const transactionItemIds = Array.isArray(transactionData?.itemIds) ? transactionData.itemIds : []
@@ -843,7 +845,13 @@ export default function TransactionDetail() {
           </ContextBackLink>
           <div className="flex space-x-3">
             <ContextLink
-              to={buildContextUrl(`/project/${projectId}/transaction/${transactionId}/edit`)}
+              to={buildContextUrl(
+                // Use project route if projectId exists in URL and transaction has a projectId
+                // Otherwise use business inventory route (projectId can be empty string for business inventory transactions)
+                projectId && transaction?.projectId
+                  ? `/project/${projectId}/transaction/${transactionId}/edit`
+                  : `/business-inventory/transaction/${transaction?.projectId || 'null'}/${transactionId}/edit`
+              )}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Transaction"
             >

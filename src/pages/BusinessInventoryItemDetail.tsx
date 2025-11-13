@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import ContextBackLink from '@/components/ContextBackLink'
+import ContextLink from '@/components/ContextLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { Edit, Trash2, ArrowLeft, Package, DollarSign, ImagePlus, FileText, Copy } from 'lucide-react'
 import { Item, Project } from '@/types'
