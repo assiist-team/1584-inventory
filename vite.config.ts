@@ -12,7 +12,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: process.env.NODE_ENV === 'production' ? 'autoUpdate' : null,
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'index.html'],
       manifest: {
         name: '1584 Design Inventory & Transactions',
         short_name: '1584 Design Projects',
