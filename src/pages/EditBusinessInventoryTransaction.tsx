@@ -19,7 +19,7 @@ export default function EditBusinessInventoryTransaction() {
   const { currentAccountId } = useAccount()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [projects, setProjects] = useState<Project[]>([])
+  const [, setProjects] = useState<Project[]>([])
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [formData, setFormData] = useState({
     projectId: '',
@@ -35,7 +35,7 @@ export default function EditBusinessInventoryTransaction() {
     triggerEvent: 'Manual' as 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual',
     receiptEmailed: false
   })
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [formErrors, setFormErrors] = useState<Record<string, string | undefined>>({})
   const [isCustomSource, setIsCustomSource] = useState(false)
   const [availableVendors, setAvailableVendors] = useState<string[]>([])
 
@@ -111,9 +111,11 @@ export default function EditBusinessInventoryTransaction() {
     const loadData = async () => {
       if (!currentAccountId || !transactionId) return
       try {
+        // Handle 'null' string placeholder for business inventory transactions (projectId is null)
+        const actualProjectId = projectId === 'null' ? '' : (projectId || '')
         const [projectsData, transactionData] = await Promise.all([
           projectService.getProjects(currentAccountId),
-          transactionService.getTransaction(currentAccountId, projectId || '', transactionId)
+          transactionService.getTransaction(currentAccountId, actualProjectId, transactionId)
         ])
 
         setProjects(projectsData)
@@ -212,8 +214,8 @@ export default function EditBusinessInventoryTransaction() {
     setIsSubmitting(true)
 
     try {
-      // Determine project_id based on selection
-      const actualProjectId = formData.projectId === 'business-inventory' ? null : formData.projectId
+      // Business inventory transactions always have projectId set to null
+      const actualProjectId = null
 
       const updateData: Partial<Transaction> = {
         ...formData,
@@ -304,32 +306,6 @@ export default function EditBusinessInventoryTransaction() {
               </div>
             </div>
           )}
-
-          {/* Project Selection */}
-          <div>
-            <label htmlFor="projectId" className="block text-sm font-medium text-gray-700">
-              Project
-            </label>
-            <select
-              id="projectId"
-              value={formData.projectId}
-              onChange={(e) => handleInputChange('projectId', e.target.value)}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                formErrors.projectId ? 'border-red-300' : 'border-gray-300'
-              }`}
-            >
-              <option value="">Select a project...</option>
-              <option value="business-inventory">Business Inventory (No Project)</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} - {project.clientName}
-                </option>
-              ))}
-            </select>
-            {formErrors.projectId && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.projectId}</p>
-            )}
-          </div>
 
           {/* Source */}
           <div>

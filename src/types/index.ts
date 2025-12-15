@@ -293,6 +293,7 @@ export interface TransactionFormData {
 
 export interface TransactionItemFormData {
   id: string; // temporary id for form management
+  transactionId?: string;
   description: string;
   sku?: string;
   price?: string; // What we paid for the item (used in forms)

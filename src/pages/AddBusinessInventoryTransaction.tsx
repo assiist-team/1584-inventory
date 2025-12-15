@@ -186,9 +186,9 @@ export default function AddBusinessInventoryTransaction() {
     setIsSubmitting(true)
 
     try {
-      // Determine project_id and project_name based on selection
-      const projectId = formData.projectId === 'business-inventory' ? null : formData.projectId
-      const projectName = formData.projectId === 'business-inventory' ? null : projects.find(p => p.id === formData.projectId)?.name || ''
+      // Business inventory transactions always have projectId set to null
+      const projectId = null
+      const projectName = null
 
       if (!user?.id) {
         setFormErrors({ general: 'User must be authenticated to create transactions' })
@@ -255,32 +255,6 @@ export default function AddBusinessInventoryTransaction() {
               </div>
             </div>
           )}
-
-          {/* Project Selection */}
-          <div>
-            <label htmlFor="projectId" className="block text-sm font-medium text-gray-700">
-              Project
-            </label>
-            <select
-              id="projectId"
-              value={formData.projectId}
-              onChange={(e) => handleInputChange('projectId', e.target.value)}
-              className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                formErrors.projectId ? 'border-red-300' : 'border-gray-300'
-              }`}
-            >
-              <option value="">Select a project...</option>
-              <option value="business-inventory">Business Inventory (No Project)</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} - {project.clientName}
-                </option>
-              ))}
-            </select>
-            {formErrors.projectId && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.projectId}</p>
-            )}
-          </div>
 
           {/* Transaction Source */}
           <div>

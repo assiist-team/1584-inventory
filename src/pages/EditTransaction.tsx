@@ -132,7 +132,12 @@ export default function EditTransaction() {
   // Load transaction and project data
   useEffect(() => {
     const loadTransaction = async () => {
-      if (!projectId || !transactionId || !currentAccountId) return
+      // Guard against undefined projectId (business inventory transactions should use EditBusinessInventoryTransaction)
+      if (!projectId || projectId === 'undefined' || !transactionId || !currentAccountId) {
+        console.error('EditTransaction: projectId is required. Business inventory transactions should use EditBusinessInventoryTransaction.')
+        setIsLoading(false)
+        return
+      }
 
       try {
         const [transaction, project] = await Promise.all([
