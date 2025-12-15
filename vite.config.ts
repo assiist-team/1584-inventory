@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Quick build-time visibility into Vite env vars (removed after debugging)
+console.log('🔍 BUILD ENV:', {
+  url: process.env.VITE_SUPABASE_URL ? `${process.env.VITE_SUPABASE_URL.slice(0, 20)}…` : 'undefined',
+  key: process.env.VITE_SUPABASE_ANON_KEY ? `${process.env.VITE_SUPABASE_ANON_KEY.slice(0, 20)}…` : 'undefined'
+})
+
 // Generate a timestamp for cache busting
 const timestamp = Date.now()
 
