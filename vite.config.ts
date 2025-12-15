@@ -39,7 +39,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{ico,png,svg}'], // Only cache static assets, not app files
+        globPatterns: ['index.html', '**/*.{ico,png,svg}'], // Only cache static assets, precache shell
         // Don't cache app files in service worker - always fetch fresh versions
         cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
