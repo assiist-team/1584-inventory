@@ -1,17 +1,24 @@
 import { ArrowLeft, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import ImageGallery from '@/components/ui/ImageGallery'
 import { TransactionImagePreview } from '@/components/ui/ImagePreview'
-import { useMemo } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
-import { useEffect } from 'react'
-import { Transaction, Project, Item, TransactionItemFormData } from '@/types'
+import { useParams } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
+import ContextLink from '@/components/ContextLink'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { Transaction, Project, Item, TransactionItemFormData, TaxPreset } from '@/types'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import TransactionItemForm from '@/components/TransactionItemForm'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { getTaxPresets } from '@/services/taxPresetsService'
+import { useAccount } from '@/contexts/AccountContext'
+import type { ItemLineageEdge } from '@/types'
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+import TransactionAudit from '@/components/ui/TransactionAudit'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -32,11 +39,11 @@ const removeUnwantedIcons = () => {
 // Get canonical transaction title for display
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
-    return '1584 Inventory Sale'
+  if (transaction.transactionId?.startsWith('INV_SALE_')) {
+    return COMPANY_INVENTORY_SALE
   }
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
-    return '1584 Inventory Purchase'
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) {
+    return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
   return transaction.source
@@ -45,10 +52,28 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
 
 export default function TransactionDetail() {
   const { id: projectId, transactionId } = useParams<{ id?: string; transactionId: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
+  const { currentAccountId } = useAccount()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [project, setProject] = useState<Project | null>(null)
+  const [taxPresets, setTaxPresets] = useState<TaxPreset[]>([])
+
+  // Load tax presets on mount
+  useEffect(() => {
+    const loadPresets = async () => {
+      if (!currentAccountId) return
+      try {
+        const presets = await getTaxPresets(currentAccountId)
+        setTaxPresets(presets)
+      } catch (error) {
+        console.error('Error loading tax presets:', error)
+      }
+    }
+    loadPresets()
+  }, [currentAccountId])
   const [transactionItems, setTransactionItems] = useState<Item[]>([])
+  // Cache resolved project IDs for transactions referenced by items when item.projectId is missing
+  const [resolvedProjectByTx, setResolvedProjectByTx] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
   const [showGallery, setShowGallery] = useState(false)
@@ -67,10 +92,56 @@ export default function TransactionDetail() {
     return getBackDestination(`/project/${projectId}?tab=transactions`)
   }, [getBackDestination, projectId])
 
+  // Refresh transaction items
+  const refreshTransactionItems = async () => {
+    if (!currentAccountId || !transactionId) return
+    
+    const actualProjectId = projectId || transaction?.projectId
+    if (!actualProjectId) return
+
+    try {
+      const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId, transactionId)
+      const itemIds = transactionItems.map(item => item.itemId)
+      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
+      const items = await Promise.all(itemsPromises)
+      const validItems = items.filter(item => item !== null) as Item[]
+      
+      // Fetch edges that moved FROM this transaction to determine "moved out" items
+      const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+      const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+      
+      // Split items into "In this transaction" vs "Moved out"
+      const itemsInTransaction = validItems.filter(item => {
+        // Use latestTransactionId if available, fallback to transactionId for transitional period
+        const currentTransactionId = item.latestTransactionId ?? item.transactionId
+        const isInTransaction = currentTransactionId === transactionId
+        const hasMovedOut = movedOutItemIds.has(item.itemId)
+        // Item is "in" if it's currently in this transaction AND hasn't moved out
+        return isInTransaction && !hasMovedOut
+      })
+      
+      const itemsMovedOut = validItems.filter(item => {
+        const hasMovedOut = movedOutItemIds.has(item.itemId)
+        // Transitional fallback: also check previousProjectTransactionId
+        const transitionalMovedOut = !item.latestTransactionId && 
+          item.projectId == null && 
+          item.previousProjectTransactionId === transactionId
+        return hasMovedOut || transitionalMovedOut
+      })
+      
+      // Store both sets - we'll display them separately
+      const combined = [...itemsInTransaction, ...itemsMovedOut]
+      setTransactionItems(combined)
+      // Resolve any missing project IDs referenced by moved items (fire-and-forget)
+      resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
+    } catch (error) {
+      console.error('Error refreshing transaction items:', error)
+    }
+  }
 
   useEffect(() => {
     const loadTransaction = async () => {
-      if (!transactionId) return
+      if (!transactionId || !currentAccountId) return
 
       try {
         let actualProjectId = projectId
@@ -80,9 +151,9 @@ export default function TransactionDetail() {
         if (!actualProjectId) {
           // For business inventory transactions, we need to find the transaction across all projects
           console.log('TransactionDetail - No projectId provided, searching across all projects for business inventory transaction')
-          const result = await transactionService.getTransactionById(transactionId)
+          const result = await transactionService.getTransactionById(currentAccountId, transactionId)
 
-          if (!result.transaction || !result.projectId) {
+          if (!result.transaction) {
             console.error('TransactionDetail - Transaction not found in any project')
             setIsLoading(false)
             setIsLoadingItems(false)
@@ -92,27 +163,59 @@ export default function TransactionDetail() {
           transactionData = result.transaction
           actualProjectId = result.projectId
 
-          // Get project data for the found project
-          projectData = await projectService.getProject(actualProjectId)
+          // Get project data only if projectId exists (business inventory transactions have null projectId)
+          if (actualProjectId) {
+            projectData = await projectService.getProject(currentAccountId, actualProjectId)
+          }
         } else {
-          // Fetch transaction, project data, and transaction items for regular project transactions
-          const [fetchedTransactionData, fetchedProjectData, transactionItems] = await Promise.all([
-            transactionService.getTransaction(actualProjectId, transactionId),
-            projectService.getProject(actualProjectId),
-            unifiedItemsService.getItemsForTransaction(actualProjectId, transactionId)
+          // Fetch transaction and project data for regular project transactions.
+          // We intentionally do NOT rely on `getItemsForTransaction` here because moved/deallocated
+          // items may have been cleared from the `transaction_id` column. Instead, read
+          // `itemIds` from the transaction row and load each item by `item_id` so moved items
+          // are still discoverable and can be shown in the "Moved out" section.
+          const [fetchedTransactionData, fetchedProjectData] = await Promise.all([
+            transactionService.getTransaction(currentAccountId, actualProjectId, transactionId),
+            projectService.getProject(currentAccountId, actualProjectId)
           ])
 
           transactionData = fetchedTransactionData
           projectData = fetchedProjectData
 
-          // Fetch the actual item details for regular project transactions
-          if (transactionItems.length > 0 && actualProjectId) {
-            const itemIds = transactionItems.map(item => item.item_id)
-            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(itemId))
+          // Prefer item IDs stored on the transaction record
+          const itemIdsFromTransaction = Array.isArray(transactionData?.itemIds) ? transactionData.itemIds : []
+          if (itemIdsFromTransaction.length > 0 && actualProjectId) {
+            const itemsPromises = itemIdsFromTransaction.map((itemId: string) => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
-            console.log('TransactionDetail - fetched items:', validItems.length)
-            setTransactionItems(validItems)
+            console.log('TransactionDetail - fetched items (from transaction.itemIds):', validItems.length)
+
+            // Include items that were moved out of this transaction by consulting lineage edges.
+            try {
+              const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+              const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+
+              const itemsInTransaction = validItems.filter(item => {
+                const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                const isInTransaction = currentTransactionId === transactionId
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                return isInTransaction && !hasMovedOut
+              })
+
+              const itemsMovedOut = validItems.filter(item => {
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                const transitionalMovedOut = !item.latestTransactionId &&
+                  item.projectId == null &&
+                  item.previousProjectTransactionId === transactionId
+                return hasMovedOut || transitionalMovedOut
+              })
+
+              const combined = [...itemsInTransaction, ...itemsMovedOut]
+              setTransactionItems(combined)
+              resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
+            } catch (edgeErr) {
+              console.error('TransactionDetail - failed to fetch lineage edges:', edgeErr)
+              setTransactionItems(validItems)
+            }
           } else {
             setTransactionItems([])
           }
@@ -120,7 +223,7 @@ export default function TransactionDetail() {
 
         const convertedTransaction: Transaction = {
           ...transactionData,
-          transaction_images: Array.isArray(transactionData?.transaction_images) ? transactionData.transaction_images : []
+          transactionImages: Array.isArray(transactionData?.transactionImages) ? transactionData.transactionImages : []
         } as Transaction
 
         console.log('TransactionDetail - loaded transactionData:', transactionData)
@@ -129,17 +232,43 @@ export default function TransactionDetail() {
         setTransaction(convertedTransaction)
         setProject(projectData)
 
-        // Fetch transaction items for business inventory transactions
-        if (!projectId && actualProjectId) {
-          // For business inventory transactions, fetch items after we have the project ID
-          const transactionItems = await unifiedItemsService.getItemsForTransaction(actualProjectId!, transactionId)
-          if (transactionItems.length > 0) {
-            const itemIds = transactionItems.map(item => item.item_id)
-            const itemsPromises = itemIds.map(itemId => unifiedItemsService.getItemById(itemId))
+        // Fetch transaction items for business inventory transactions (when no projectId in URL)
+        if (!projectId) {
+          // For business inventory transactions, prefer item IDs stored on the transaction record
+          // so deallocated/moved items remain discoverable.
+          const transactionItemIds = Array.isArray(transactionData?.itemIds) ? transactionData.itemIds : []
+          if (transactionItemIds.length > 0) {
+            const itemsPromises = transactionItemIds.map((itemId: string) => unifiedItemsService.getItemById(currentAccountId, itemId))
             const items = await Promise.all(itemsPromises)
             const validItems = items.filter(item => item !== null) as Item[]
             console.log('TransactionDetail - fetched items for business inventory transaction:', validItems.length)
-            setTransactionItems(validItems)
+
+            try {
+              const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+              const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+
+              const itemsInTransaction = validItems.filter(item => {
+                const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                const isInTransaction = currentTransactionId === transactionId
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                return isInTransaction && !hasMovedOut
+              })
+
+              const itemsMovedOut = validItems.filter(item => {
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                const transitionalMovedOut = !item.latestTransactionId &&
+                  item.projectId == null &&
+                  item.previousProjectTransactionId === transactionId
+                return hasMovedOut || transitionalMovedOut
+              })
+
+              const combined = [...itemsInTransaction, ...itemsMovedOut]
+              setTransactionItems(combined)
+              resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
+            } catch (edgeErr) {
+              console.error('TransactionDetail - failed to fetch lineage edges (business inventory):', edgeErr)
+              setTransactionItems(validItems)
+            }
           } else {
             setTransactionItems([])
           }
@@ -155,14 +284,13 @@ export default function TransactionDetail() {
     }
 
     loadTransaction()
-  }, [projectId, transactionId])
+  }, [projectId, transactionId, currentAccountId])
 
   // Set up real-time subscription for transaction updates
   useEffect(() => {
     if (!transactionId || !transaction) return
-
     // Use the actual project ID (whether from URL params or discovered from transaction lookup)
-    const actualProjectId = projectId || transaction.project_id
+    const actualProjectId = projectId || transaction.projectId
 
     if (!actualProjectId) return
 
@@ -194,6 +322,23 @@ export default function TransactionDetail() {
     // }
   }, [projectId, transactionId, transaction])
 
+  // Subscribe to new lineage edges that moved items FROM this transaction and refresh items (strict realtime)
+  useEffect(() => {
+    if (!currentAccountId || !transactionId) return
+    const unsubscribe = lineageService.subscribeToEdgesFromTransaction(currentAccountId, transactionId, (edge) => {
+      try {
+        // If an edge's from_transaction_id matches this transaction, it indicates the item moved out
+        refreshTransactionItems()
+      } catch (err) {
+        console.debug('TransactionDetail - failed to refresh on lineage event', err)
+      }
+    })
+
+    return () => {
+      try { unsubscribe() } catch (err) { /* noop */ }
+    }
+  }, [currentAccountId, transactionId])
+
 
   // Clean up any unwanted icons from transaction type badges
   useEffect(() => {
@@ -210,11 +355,11 @@ export default function TransactionDetail() {
   }, [transaction])
 
   const handleDelete = async () => {
-    if (!projectId || !transactionId || !transaction) return
+    if (!projectId || !transactionId || !transaction || !currentAccountId) return
 
     if (window.confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
       try {
-        await transactionService.deleteTransaction(projectId, transactionId)
+        await transactionService.deleteTransaction(currentAccountId, projectId, transactionId)
         navigate(`/project/${projectId}?tab=transactions`)
       } catch (error) {
         console.error('Error deleting transaction:', error)
@@ -249,18 +394,19 @@ export default function TransactionDetail() {
       const newReceiptImages = ImageUploadService.convertFilesToReceiptImages(uploadResults)
 
       // Update transaction with new receipt images
-      const currentReceiptImages = transaction?.receipt_images || []
+      const currentReceiptImages = transaction?.receiptImages || []
       const updatedReceiptImages = [...currentReceiptImages, ...newReceiptImages]
 
-      const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
-        receipt_images: updatedReceiptImages,
-        transaction_images: updatedReceiptImages // Also update legacy field for compatibility
+      const updateProjectId = transaction?.projectId || projectId
+      if (!currentAccountId) return
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
+        receiptImages: updatedReceiptImages,
+        transactionImages: updatedReceiptImages // Also update legacy field for compatibility
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const refreshProjectId = transaction?.projectId || projectId
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Receipt images uploaded successfully')
@@ -289,17 +435,18 @@ export default function TransactionDetail() {
       const newOtherImages = ImageUploadService.convertFilesToOtherImages(uploadResults)
 
       // Update transaction with new other images
-      const currentOtherImages = transaction?.other_images || []
+      const currentOtherImages = transaction?.otherImages || []
       const updatedOtherImages = [...currentOtherImages, ...newOtherImages]
 
-      const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
-        other_images: updatedOtherImages
+      const updateProjectId = transaction?.projectId || projectId
+      if (!currentAccountId) return
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
+        otherImages: updatedOtherImages
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const refreshProjectId = transaction?.projectId || projectId
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Other images uploaded successfully')
@@ -312,22 +459,22 @@ export default function TransactionDetail() {
   }
 
   const handleDeleteReceiptImage = async (imageUrl: string) => {
-    if (!projectId || !transactionId || !transaction) return
+    if (!projectId || !transactionId || !transaction || !currentAccountId) return
 
     try {
       // Filter out the image to be deleted
-      const currentReceiptImages = transaction.receipt_images || []
+      const currentReceiptImages = transaction.receiptImages || []
       const updatedReceiptImages = currentReceiptImages.filter(img => img.url !== imageUrl)
 
-      const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
-        receipt_images: updatedReceiptImages,
-        transaction_images: updatedReceiptImages // Also update legacy field for compatibility
+      const updateProjectId = transaction?.projectId || projectId
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
+        receiptImages: updatedReceiptImages,
+        transactionImages: updatedReceiptImages // Also update legacy field for compatibility
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const refreshProjectId = transaction?.projectId || projectId
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Receipt image deleted successfully')
@@ -342,17 +489,18 @@ export default function TransactionDetail() {
 
     try {
       // Filter out the image to be deleted
-      const currentOtherImages = transaction.other_images || []
+      const currentOtherImages = transaction.otherImages || []
       const updatedOtherImages = currentOtherImages.filter(img => img.url !== imageUrl)
 
-      const updateProjectId = transaction?.project_id || projectId
-      await transactionService.updateTransaction(updateProjectId || '', transactionId, {
-        other_images: updatedOtherImages
+      const updateProjectId = transaction?.projectId || projectId
+      if (!currentAccountId) return
+      await transactionService.updateTransaction(currentAccountId, updateProjectId || '', transactionId, {
+        otherImages: updatedOtherImages
       })
 
       // Refresh transaction data (use actual project_id from transaction)
-      const refreshProjectId = transaction?.project_id || projectId
-      const updatedTransaction = await transactionService.getTransaction(refreshProjectId || '', transactionId)
+      const refreshProjectId = transaction?.projectId || projectId
+      const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
       showSuccess('Other image deleted successfully')
@@ -371,29 +519,29 @@ export default function TransactionDetail() {
   }
 
   const handleSaveItem = async (item: TransactionItemFormData) => {
-    if (!projectId || !transactionId || !transaction) return
+    if (!projectId || !transactionId || !transaction || !currentAccountId) return
 
     try {
       // Create the item linked to the existing transaction
       const itemData = {
         ...item,
-        project_id: projectId,
-        transaction_id: transactionId,
-        date_created: transaction.transaction_date || new Date().toISOString(),
+        projectId: projectId,
+        transactionId: transactionId,
+        dateCreated: transaction.transactionDate || new Date().toISOString(),
         source: transaction.source,
-        inventory_status: 'available' as const,
-        payment_method: 'Unknown',
-        qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        inventoryStatus: 'available' as const,
+        paymentMethod: 'Unknown',
+        qrKey: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         bookmark: false,
         sku: item.sku || '',
-        purchase_price: item.purchase_price || '',
-        project_price: item.project_price || '',
-        market_value: item.market_value || '',
+        purchasePrice: item.purchasePrice || '',
+        projectPrice: item.projectPrice || '',
+        marketValue: item.marketValue || '',
         notes: item.notes || '',
         space: item.space || '',
         disposition: 'keep'
       }
-      const itemId = await unifiedItemsService.createItem(itemData)
+      const itemId = await unifiedItemsService.createItem(currentAccountId, itemData)
 
       // Upload item images if any
       // Try to get files from the map first, then fall back to item.imageFiles
@@ -443,7 +591,7 @@ export default function TransactionDetail() {
 
           // Update the item with uploaded images
           if (validImages.length > 0) {
-            await unifiedItemsService.updateItem(itemId, { images: validImages })
+            await unifiedItemsService.updateItem(currentAccountId, itemId, { images: validImages })
           }
         } catch (error) {
           console.error('Error in image upload process:', error)
@@ -451,9 +599,9 @@ export default function TransactionDetail() {
       }
 
       // Refresh the transaction items list
-      const transactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
-      const itemIds = transactionItems.map(item => item.item_id)
-      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(id))
+      const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
+      const itemIds = transactionItems.map(item => item.itemId)
+      const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
       const items = await Promise.all(itemsPromises)
       const validItems = items.filter(item => item !== null) as Item[]
       setTransactionItems(validItems)
@@ -476,11 +624,11 @@ export default function TransactionDetail() {
 
   // Convert all transaction images (receipt and other) to ItemImage format for the gallery
   const allTransactionImages = [
-    ...(transaction?.receipt_images || []),
-    ...(transaction?.other_images || [])
+    ...(transaction?.receiptImages || []),
+    ...(transaction?.otherImages || [])
   ]
 
-  const itemImages = allTransactionImages.map((img, index) => ({
+    const itemImages = allTransactionImages.map((img, index) => ({
     url: img.url,
     alt: img.fileName,
     fileName: img.fileName,
@@ -489,6 +637,168 @@ export default function TransactionDetail() {
     mimeType: img.mimeType,
     isPrimary: index === 0 // First image is primary
   })) || []
+
+  // Resolve missing project IDs for transactions referenced by items.
+  // This avoids interpolating `undefined` into project routes when an item
+  // has had its `projectId` cleared but still references a `latestTransactionId`.
+  async function resolveMissingProjectIds(items: Item[]) {
+    if (!currentAccountId) return
+
+    // Collect unique transaction IDs that need resolution and aren't already cached.
+    const txIdsToResolve = Array.from(new Set(
+      items
+        .map(i => i.latestTransactionId ?? i.transactionId)
+        .filter(Boolean) as string[]
+    )).filter(txId => !resolvedProjectByTx[txId])
+
+    if (txIdsToResolve.length === 0) return
+
+    try {
+      const results = await Promise.all(
+        txIdsToResolve.map(async (txId) => {
+          try {
+            const res = await transactionService.getTransactionById(currentAccountId, txId)
+            return { txId, projectId: res.projectId || null }
+          } catch (err) {
+            console.debug('TransactionDetail - failed to fetch transaction for project resolution', { txId, err })
+            return { txId, projectId: null }
+          }
+        })
+      )
+
+      const newMap = { ...resolvedProjectByTx }
+      results.forEach(r => {
+        if (r.projectId) {
+          newMap[r.txId] = r.projectId
+        }
+      })
+
+      // Only update state if we found any new mappings
+      if (Object.keys(newMap).length > Object.keys(resolvedProjectByTx).length) {
+        setResolvedProjectByTx(newMap)
+      }
+    } catch (err) {
+      console.debug('TransactionDetail - resolveMissingProjectIds unexpected error', err)
+    }
+  }
+
+  // Helper function to render item card
+  function renderItemCard(item: Item, itemLink: string | null, isMovedOut: boolean) {
+    const cardClass = `block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative ${isMovedOut ? 'opacity-60' : ''}`
+
+    const cardInner = (
+      <>
+        {/* Moved badge for moved out items */}
+        {isMovedOut && (
+          <div className="absolute top-1 right-1 z-10">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+              Moved
+            </span>
+          </div>
+        )}
+
+        {/* Disposition badge in upper right corner (if not moved) */}
+        {!isMovedOut && item.disposition && (
+          <div className="absolute top-1 right-1 z-10">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+              item.disposition === 'keep'
+                ? 'bg-green-100 text-green-800'
+                : item.disposition === 'to return'
+                ? 'bg-red-100 text-red-700'
+                : item.disposition === 'returned'
+                ? 'bg-red-800 text-red-100'
+                : item.disposition === 'inventory'
+                ? 'bg-primary-100 text-primary-600'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
+            </span>
+          </div>
+        )}
+
+        {/* Image and Description row - side by side like inventory list */}
+        <div className="flex items-center gap-3 py-3">
+          <div className="flex-shrink-0">
+            {item.images && item.images.length > 0 ? (
+              // Show primary image thumbnail or first image if no primary
+              (() => {
+                const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
+                return (
+                  <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                    <img
+                      src={primaryImage.url}
+                      alt={primaryImage.alt || 'Item image'}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )
+              })()
+            ) : (
+              // Show placeholder when no images
+              <div className="w-16 h-16 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-400 bg-gray-100">
+                <Package className="h-6 w-6" />
+              </div>
+            )}
+          </div>
+
+          {/* Item description - matching inventory list styling */}
+          <div className="flex-1 min-w-0 flex items-center">
+            <div>
+              <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
+                {item.description}
+              </h3>
+              {/* Space field - if available */}
+              {item.space && (
+                <p className="text-sm text-gray-600 mt-1">
+                  {item.space}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+          {(item.projectPrice || item.purchasePrice) && (
+            <span className="font-medium text-gray-700">{formatCurrency(item.projectPrice || item.purchasePrice || '0')}</span>
+          )}
+          {item.source && (
+            <>
+              {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
+              <span className="font-medium text-gray-700">{item.source}</span>
+            </>
+          )}
+          {item.sku && (
+            <>
+              {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
+              <span className="font-medium text-gray-700">{item.sku}</span>
+            </>
+          )}
+        </div>
+      </>
+    )
+
+    // If we couldn't resolve a safe link, render as non-clickable card and log for debugging
+    if (!itemLink) {
+      console.debug('TransactionDetail - rendering moved item without link', {
+        itemId: item.itemId,
+        latestTransactionId: item.latestTransactionId ?? item.transactionId,
+        projectId: item.projectId,
+      })
+
+      return (
+        <div key={item.itemId} className={cardClass}>
+          {cardInner}
+        </div>
+      )
+    }
+
+    return (
+      <ContextLink key={item.itemId} to={itemLink} className={cardClass}>
+        {cardInner}
+      </ContextLink>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -508,13 +818,13 @@ export default function TransactionDetail() {
         <h3 className="mt-2 text-sm font-medium text-gray-900">Transaction not found</h3>
         <p className="mt-1 text-sm text-gray-500">The transaction you're looking for doesn't exist.</p>
         <div className="mt-6">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )
@@ -525,22 +835,28 @@ export default function TransactionDetail() {
       {/* Header */}
       <div className="space-y-4">
         {/* Back button row */}
-        <div className="flex items-center justify-between">
-          <Link
-            to={backDestination}
+          <div className="flex items-center justify-between">
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
           <div className="flex space-x-3">
-            <Link
-              to={`/project/${projectId}/transaction/${transactionId}/edit`}
+            <ContextLink
+              to={buildContextUrl(
+                // Use project route if projectId exists in URL and transaction has a projectId
+                // Otherwise use business inventory route (projectId can be empty string for business inventory transactions)
+                projectId && transaction?.projectId
+                  ? `/project/${projectId}/transaction/${transactionId}/edit`
+                  : `/business-inventory/transaction/${transaction?.projectId || 'null'}/${transactionId}/edit`
+              )}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Transaction"
             >
               <Edit className="h-4 w-4" />
-            </Link>
+            </ContextLink>
           </div>
         </div>
       </div>
@@ -567,24 +883,24 @@ export default function TransactionDetail() {
             <div>
               <dt className="text-sm font-medium text-gray-500">Budget Category</dt>
               <dd className="mt-1">
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                  transaction.budget_category === 'Design Fee'
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                  transaction.budgetCategory === 'Design Fee'
                     ? 'bg-amber-100 text-amber-800'
-                    : transaction.budget_category === 'Furnishings'
+                    : transaction.budgetCategory === 'Furnishings'
                     ? 'bg-yellow-100 text-yellow-800'
-                    : transaction.budget_category === 'Property Management'
+                    : transaction.budgetCategory === 'Property Management'
                     ? 'bg-orange-100 text-orange-800'
-                    : transaction.budget_category === 'Kitchen'
+                    : transaction.budgetCategory === 'Kitchen'
                     ? 'bg-amber-200 text-amber-900'
-                    : transaction.budget_category === 'Install'
+                    : transaction.budgetCategory === 'Install'
                     ? 'bg-yellow-200 text-yellow-900'
-                    : transaction.budget_category === 'Storage & Receiving'
+                    : transaction.budgetCategory === 'Storage & Receiving'
                     ? 'bg-orange-200 text-orange-900'
-                    : transaction.budget_category === 'Fuel'
+                    : transaction.budgetCategory === 'Fuel'
                     ? 'bg-amber-300 text-amber-900'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {transaction.budget_category || 'Not specified'}
+                  {transaction.budgetCategory || 'Not specified'}
                 </span>
               </dd>
             </div>
@@ -593,15 +909,15 @@ export default function TransactionDetail() {
               <dt className="text-sm font-medium text-gray-500">Transaction Type</dt>
               <dd className="mt-1">
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
-                  transaction.transaction_type === 'Purchase'
+                  transaction.transactionType === 'Purchase'
                     ? 'bg-green-100 text-green-800'
-                    : transaction.transaction_type === 'Return'
+                    : transaction.transactionType === 'Return'
                     ? 'bg-red-100 text-red-800'
-                    : transaction.transaction_type === 'To Inventory'
+                    : transaction.transactionType === 'To Inventory'
                     ? 'bg-primary-100 text-primary-800'
                     : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {transaction.transaction_type}
+                  {transaction.transactionType}
                 </span>
               </dd>
             </div>
@@ -611,16 +927,45 @@ export default function TransactionDetail() {
               <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.amount)}</dd>
             </div>
 
+            {transaction.taxRatePreset && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Tax Rate Preset</dt>
+                <dd className="mt-1 text-sm text-gray-900">
+                  {transaction.taxRatePreset === 'Other' 
+                    ? 'Custom'
+                    : (() => {
+                        const preset = taxPresets.find(p => p.id === transaction.taxRatePreset)
+                        return preset ? `${preset.name} (${preset.rate.toFixed(2)}%)` : transaction.taxRatePreset
+                      })()
+                  }
+                </dd>
+              </div>
+            )}
+
+            {transaction.subtotal && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Subtotal</dt>
+                <dd className="mt-1 text-sm text-gray-900">{formatCurrency(transaction.subtotal)}</dd>
+              </div>
+            )}
+
+            {transaction.taxRatePct !== undefined && (
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Tax Rate</dt>
+                <dd className="mt-1 text-sm text-gray-900">{Number(transaction.taxRatePct).toFixed(2)}%</dd>
+              </div>
+            )}
+
             <div>
               <dt className="text-sm font-medium text-gray-500">Transaction Date</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {transaction.transaction_date ? formatDate(transaction.transaction_date) : 'No date'}
+                {transaction.transactionDate ? formatDate(transaction.transactionDate) : 'No date'}
               </dd>
             </div>
 
             <div>
               <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
-              <dd className="mt-1 text-sm text-gray-900">{transaction.payment_method}</dd>
+              <dd className="mt-1 text-sm text-gray-900">{transaction.paymentMethod}</dd>
             </div>
 
             <div>
@@ -630,16 +975,16 @@ export default function TransactionDetail() {
               </dd>
             </div>
 
-            {transaction.reimbursement_type && (transaction.reimbursement_type as string) !== '' && (
+            {transaction.reimbursementType && (transaction.reimbursementType as string) !== '' && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">Reimbursement Type</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {transaction.reimbursement_type === 'Client Owes' ? 'Client Owes' : 'We Owe'}
+                  {transaction.reimbursementType === CLIENT_OWES_COMPANY ? CLIENT_OWES_COMPANY : COMPANY_OWES_CLIENT}
                 </dd>
               </div>
             )}
 
-            {transaction.receipt_emailed && (
+            {transaction.receiptEmailed && (
               <div>
                 <dt className="text-sm font-medium text-gray-500">
                   Receipt Emailed
@@ -668,7 +1013,7 @@ export default function TransactionDetail() {
               <ImageIcon className="h-5 w-5 mr-2" />
               Receipt Images
             </h3>
-            {transaction.receipt_images && transaction.receipt_images.length > 0 && (
+                {transaction.receiptImages && transaction.receiptImages.length > 0 && (
               <button
                 onClick={() => {
                   // Trigger file input click programmatically
@@ -692,9 +1037,9 @@ export default function TransactionDetail() {
               </button>
             )}
           </div>
-          {transaction.receipt_images && transaction.receipt_images.length > 0 ? (
+          {transaction.receiptImages && transaction.receiptImages.length > 0 ? (
             <TransactionImagePreview
-              images={transaction.receipt_images}
+              images={transaction.receiptImages}
               onRemoveImage={handleDeleteReceiptImage}
               onImageClick={handleImageClick}
               maxImages={5}
@@ -732,7 +1077,7 @@ export default function TransactionDetail() {
         </div>
 
         {/* Other Images - Only show if there are other images */}
-        {transaction.other_images && transaction.other_images.length > 0 && (
+            {transaction.otherImages && transaction.otherImages.length > 0 && (
           <div className="px-6 py-6 border-t border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900 flex items-center">
@@ -762,12 +1107,12 @@ export default function TransactionDetail() {
               </button>
             </div>
             <TransactionImagePreview
-              images={transaction.other_images}
+              images={transaction.otherImages}
               onRemoveImage={handleDeleteOtherImage}
               onImageClick={(index) => {
                 // Find the correct index in the combined array for gallery navigation
-                const receiptCount = transaction.receipt_images?.length || 0
-                const legacyCount = transaction.transaction_images?.length || 0
+                const receiptCount = transaction.receiptImages?.length || 0
+                const legacyCount = transaction.transactionImages?.length || 0
                 const galleryIndex = receiptCount + legacyCount + index
                 handleImageClick(galleryIndex)
               }}
@@ -806,138 +1151,131 @@ export default function TransactionDetail() {
               <span className="ml-2 text-sm text-gray-600">Loading items...</span>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Existing Items Display */}
-              {transactionItems.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {transactionItems.map((item) => {
-                    // Check if item has been deallocated to inventory (project_id is null)
-                    const isDeallocated = item.project_id === null
-                    const itemLink = isDeallocated
-                      ? buildContextUrl(`/business-inventory/${item.item_id}`, { from: 'business-inventory-item' })
-                      : buildContextUrl(`/project/${projectId}/item/${item.item_id}`, { from: 'transaction' })
-
-                    return (
-                      <Link
-                        key={item.item_id}
-                        to={itemLink}
-                        className="block p-4 border border-gray-200 rounded-lg bg-white hover:border-primary-300 hover:shadow-sm transition-all duration-200 group relative"
-                      >
-                      {/* Disposition badge in upper right corner */}
-                      {item.disposition && (
-                        <div className="absolute top-1 right-1 z-10">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            item.disposition === 'keep'
-                              ? 'bg-green-100 text-green-800'
-                              : item.disposition === 'to return'
-                              ? 'bg-red-100 text-red-700'
-                              : item.disposition === 'return' // Backward compatibility
-                              ? 'bg-red-100 text-red-700'
-                              : item.disposition === 'returned'
-                              ? 'bg-red-800 text-red-100'
-                              : item.disposition === 'inventory'
-                              ? 'bg-primary-100 text-primary-600'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Image and Description row - side by side like inventory list */}
-                      <div className="flex items-center gap-3 py-3">
-                        <div className="flex-shrink-0">
-                          {item.images && item.images.length > 0 ? (
-                            // Show primary image thumbnail or first image if no primary
-                            (() => {
-                              const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
-                              return (
-                                <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
-                                  <img
-                                    src={primaryImage.url}
-                                    alt={primaryImage.alt || 'Item image'}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                              )
-                            })()
-                          ) : (
-                            // Show placeholder when no images
-                            <div className="w-16 h-16 rounded-lg border-2 border-gray-200 flex items-center justify-center text-gray-400 bg-gray-100">
-                              <Package className="h-6 w-6" />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Item description - matching inventory list styling */}
-                        <div className="flex-1 min-w-0 flex items-center">
-                          <div>
-                            <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
-                              {item.description}
-                            </h3>
-                            {/* Space field - if available */}
-                            {item.space && (
-                              <p className="text-sm text-gray-600 mt-1">
-                                {item.space}
-                              </p>
-                            )}
-                          </div>
+            <div className="space-y-6">
+              {/* Items In This Transaction */}
+              {(() => {
+                // Split items into "In this transaction" vs "Moved out"
+                const itemsInTransaction = transactionItems.filter(item => {
+                  const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                  return currentTransactionId === transactionId
+                })
+                
+                const itemsMovedOut = transactionItems.filter(item => {
+                  const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                  const hasMovedOut = currentTransactionId !== transactionId
+                  // Transitional fallback
+                  const transitionalMovedOut = !item.latestTransactionId && 
+                    item.projectId == null && 
+                    item.previousProjectTransactionId === transactionId
+                  return hasMovedOut || transitionalMovedOut
+                })
+                
+                return (
+                  <>
+                    {/* Section A: In this project */}
+                    {itemsInTransaction.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">In this project</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {itemsInTransaction.map((item) => {
+                            const isDeallocated = item.projectId == null
+                            const originProjectId = projectId || transaction?.projectId || ''
+                            const itemLink = isDeallocated
+                              ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                              : buildContextUrl(`/project/${originProjectId}/item/${item.itemId}`, { from: 'transaction', project: originProjectId, transactionId: transactionId || '' })
+                            
+                            return renderItemCard(item, itemLink, false)
+                          })}
                         </div>
                       </div>
+                    )}
+                    
+                    {/* Section B: Moved to inventory */}
+                    {itemsMovedOut.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-3">Moved</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {itemsMovedOut.map((item) => {
+                            const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                            const isInInventory = !currentTransactionId
 
-                      {/* Bottom row: Price, Source, SKU - exactly like inventory list */}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                        {item.purchase_price && (
-                          <span className="font-medium text-gray-700">{formatCurrency(item.purchase_price)}</span>
-                        )}
-                        {item.source && (
-                          <>
-                            {(item.purchase_price) && <span className="hidden sm:inline">•</span>}
-                            <span className="font-medium text-gray-700">{item.source}</span>
-                          </>
-                        )}
-                        {item.sku && (
-                          <>
-                            {(item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
-                            <span className="font-medium text-gray-700">{item.sku}</span>
-                          </>
-                        )}
+                            // Default to no link (defensive) and build a deterministic link below
+                            let itemLink: string | null = null
+
+                            if (isInInventory) {
+                              itemLink = buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                            } else if (item.projectId) {
+                              // Item still carries a projectId - use it
+                              itemLink = buildContextUrl(`/project/${item.projectId}/item/${item.itemId}`, { from: 'transaction' })
+                            } else if (currentTransactionId?.startsWith('INV_SALE_') || currentTransactionId?.startsWith('INV_PURCHASE_')) {
+                              // Canonical inventory transaction - treat as company/business inventory for now
+                              itemLink = buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
+                            } else {
+                              // Try resolved cache (populated asynchronously). If present, use it; otherwise leave null.
+                              const resolvedProjectId = currentTransactionId ? resolvedProjectByTx[currentTransactionId] : undefined
+                              if (resolvedProjectId) {
+                                itemLink = buildContextUrl(`/project/${resolvedProjectId}/item/${item.itemId}`, { from: 'transaction', project: resolvedProjectId, transactionId: transactionId || '' })
+                              } else {
+                                // Log debug info - will render as non-link until resolution completes
+                                console.debug('TransactionDetail - unresolved moved item link', {
+                                  itemId: item.itemId,
+                                  currentTransactionId,
+                                  itemProjectId: item.projectId,
+                                  resolvedProjectId: resolvedProjectByTx[currentTransactionId || '']
+                                })
+                                itemLink = null
+                              }
+                            }
+
+                            return renderItemCard(item, itemLink, true)
+                          })}
+                        </div>
                       </div>
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
+                    )}
+                    
+                    {itemsInTransaction.length === 0 && itemsMovedOut.length === 0 && !isAddingItem && (
+                      <div className="text-center py-8">
+                        <Package className="mx-auto h-8 w-8 text-gray-400" />
+                        <h3 className="mt-2 text-sm font-medium text-gray-900">No items added</h3>
+                        <button
+                          onClick={() => setIsAddingItem(true)}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
+                          title="Add new item"
+                        >
+                          <Package className="h-3 w-3 mr-1" />
+                          Add Item
+                        </button>
+                      </div>
+                    )}
 
-              {/* In-line Item Addition */}
-              {isAddingItem && (
-                <TransactionItemForm
-                  onSave={handleSaveItem}
-                  onCancel={handleCancelAddItem}
-                  projectId={projectId}
-                  projectName={project ? project.name : ''}
-                  onImageFilesChange={handleImageFilesChange}
-                />
-              )}
+                    {isAddingItem && (
+                      <TransactionItemForm
+                        onSave={handleSaveItem}
+                        onCancel={handleCancelAddItem}
+                        projectId={projectId}
+                        projectName={project ? project.name : ''}
+                        onImageFilesChange={handleImageFilesChange}
+                      />
+                    )}
+                  </>
+                )
+              })()}
 
-              {/* Empty State - Only show when no items exist and not adding */}
-              {transactionItems.length === 0 && !isAddingItem && (
-                <div className="text-center py-8">
-                  <Package className="mx-auto h-8 w-8 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No items added</h3>
-                  <button
-                    onClick={() => setIsAddingItem(true)}
-                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3"
-                    title="Add new item"
-                  >
-                    <Package className="h-3 w-3 mr-1" />
-                    Add Item
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
+
+        {/* Transaction Audit */}
+        {transaction && (projectId || transaction.projectId) && getCanonicalTransactionTitle(transaction) !== COMPANY_INVENTORY_SALE && getCanonicalTransactionTitle(transaction) !== COMPANY_INVENTORY_PURCHASE && (
+          <div className="px-6 py-6 border-t border-gray-200">
+            <TransactionAudit
+              transaction={transaction}
+              projectId={projectId || transaction.projectId || ''}
+              transactionItems={transactionItems}
+              onItemsUpdated={refreshTransactionItems}
+            />
+          </div>
+        )}
 
         {/* Metadata */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
@@ -945,12 +1283,12 @@ export default function TransactionDetail() {
             <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
               <div>
                 <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
-                <dd className="mt-1 text-sm text-gray-900">{project?.name || transaction.project_name}</dd>
+                <dd className="mt-1 text-sm text-gray-900">{project?.name || transaction.projectName}</dd>
               </div>
               <div>
                 <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
                 <dd className="mt-1 text-sm text-gray-900">
-                  {formatDate(transaction.created_at)}
+                  {formatDate(transaction.createdAt)}
                 </dd>
               </div>
             </dl>

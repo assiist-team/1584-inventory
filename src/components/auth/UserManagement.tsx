@@ -1,59 +1,88 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAccount } from '../../contexts/AccountContext'
 import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
-import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore'
-import { db, createUserInvitation } from '../../services/firebase'
+import { createUserInvitation, getPendingInvitations } from '../../services/supabase'
+import { accountService } from '../../services/accountService'
 import { User, UserRole } from '../../types'
-import { Mail, Shield, Users, Crown, Edit } from 'lucide-react'
+import { Mail, Shield, Users, Crown, Copy, Check } from 'lucide-react'
 
 interface UserManagementProps {
   className?: string
 }
 
 export default function UserManagement({ className }: UserManagementProps) {
-  const { user: currentUser, hasRole } = useAuth()
+  const { user: currentUser, isOwner, loading: authLoading, userLoading } = useAuth()
+  const { currentAccountId, isAdmin, loading: accountLoading } = useAccount()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.VIEWER)
+  const [inviteRole, setInviteRole] = useState<UserRole>(UserRole.USER)
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState('')
+  const [pendingInvitations, setPendingInvitations] = useState<Array<{
+    id: string;
+    email: string;
+    role: 'admin' | 'user';
+    token: string;
+    createdAt: string;
+    expiresAt: string;
+  }>>([])
+  const [copiedToken, setCopiedToken] = useState<string | null>(null)
 
-  // Check if current user can manage users (admin or owner)
-  const canManageUsers = hasRole(UserRole.ADMIN)
+  // Admins and owners can manage users
+  const canManageUsers = isAdmin || isOwner()
 
-  useEffect(() => {
-    if (canManageUsers) {
-      loadUsers()
+  const loadPendingInvitations = useCallback(async () => {
+    if (!currentAccountId) return
+    try {
+      const invitations = await getPendingInvitations(currentAccountId)
+      setPendingInvitations(invitations)
+    } catch (err) {
+      console.error('Error loading pending invitations:', err)
     }
-  }, [canManageUsers])
+  }, [currentAccountId])
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true)
-      const usersQuery = query(collection(db, 'users'))
-      const querySnapshot = await getDocs(usersQuery)
-      const usersData = querySnapshot.docs.map(doc => doc.data() as User)
-      setUsers(usersData)
+      // Load users for the current account
+      if (!currentAccountId) {
+        setUsers([])
+        setLoading(false)
+        return
+      }
+
+      const usersData = await accountService.getAccountUsers(currentAccountId)
+      
+      setUsers(usersData.map(user => ({
+        ...user,
+        // Map role correctly: owner -> OWNER, admin -> ADMIN, user -> USER
+        role: user.role === 'owner' ? UserRole.OWNER 
+          : user.role === 'admin' ? UserRole.ADMIN 
+          : UserRole.USER
+      })))
     } catch (err) {
       console.error('Error loading users:', err)
       setError('Failed to load users')
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentAccountId])
 
-  const updateUserRole = async (userId: string, newRole: UserRole) => {
-    try {
-      const userDocRef = doc(db, 'users', userId)
-      await updateDoc(userDocRef, { role: newRole })
-      await loadUsers() // Refresh the list
-    } catch (err) {
-      console.error('Error updating user role:', err)
-      setError('Failed to update user role')
+  useEffect(() => {
+    if (authLoading || userLoading || accountLoading) {
+      setLoading(true)
+      return
     }
-  }
+    if (canManageUsers && currentAccountId) {
+      loadUsers()
+      loadPendingInvitations()
+    } else {
+      setLoading(false)
+    }
+  }, [canManageUsers, currentAccountId, authLoading, userLoading, accountLoading, loadUsers, loadPendingInvitations])
 
   const inviteUser = async () => {
     if (!inviteEmail.trim()) return
@@ -62,20 +91,46 @@ export default function UserManagement({ className }: UserManagementProps) {
       setInviting(true)
       setError('')
 
-      // Create invitation in Firestore
-      await createUserInvitation(inviteEmail.trim(), inviteRole, currentUser?.id || '')
+      // Create invitation in Supabase
+      if (!currentAccountId) {
+        setError('Account ID is required')
+        return
+      }
+      if (!currentUser?.id) {
+        setError('User ID is required')
+        return
+      }
+      
+      const invitationLink = await createUserInvitation(
+        inviteEmail.trim(), 
+        inviteRole, 
+        currentUser.id, 
+        currentAccountId
+      )
 
-      // Show success message
-      alert(`Invitation sent to ${inviteEmail} with ${inviteRole} role. They can now sign up with Google and will be automatically assigned the ${inviteRole} role.`)
+      // Reload invitations to show the new one
+      await loadPendingInvitations()
+
+      // Copy link to clipboard
+      await navigator.clipboard.writeText(invitationLink)
+      setCopiedToken(invitationLink)
+      setTimeout(() => setCopiedToken(null), 2000)
 
       setInviteEmail('')
-      setInviteRole(UserRole.VIEWER)
+      setInviteRole(UserRole.USER)
     } catch (err) {
       console.error('Error inviting user:', err)
-      setError('Failed to send invitation')
+      setError('Failed to create invitation')
     } finally {
       setInviting(false)
     }
+  }
+
+  const copyInvitationLink = async (token: string) => {
+    const link = `${window.location.origin}/invite/${token}`
+    await navigator.clipboard.writeText(link)
+    setCopiedToken(token)
+    setTimeout(() => setCopiedToken(null), 2000)
   }
 
   const getRoleIcon = (role: UserRole) => {
@@ -84,8 +139,8 @@ export default function UserManagement({ className }: UserManagementProps) {
         return <Crown className="h-4 w-4 text-yellow-500" />
       case UserRole.ADMIN:
         return <Shield className="h-4 w-4 text-blue-500" />
-      case UserRole.DESIGNER:
-        return <Edit className="h-4 w-4 text-green-500" />
+      case UserRole.USER:
+        return <Users className="h-4 w-4 text-gray-500" />
       default:
         return <Users className="h-4 w-4 text-gray-500" />
     }
@@ -97,8 +152,8 @@ export default function UserManagement({ className }: UserManagementProps) {
         return 'bg-yellow-100 text-yellow-800'
       case UserRole.ADMIN:
         return 'bg-blue-100 text-blue-800'
-      case UserRole.DESIGNER:
-        return 'bg-green-100 text-green-800'
+      case UserRole.USER:
+        return 'bg-gray-100 text-gray-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
@@ -159,10 +214,7 @@ export default function UserManagement({ className }: UserManagementProps) {
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value as UserRole)}
             >
-              <option value={UserRole.VIEWER}>Viewer</option>
-              <option value={UserRole.DESIGNER}>Designer</option>
-              <option value={UserRole.ADMIN}>Admin</option>
-              <option value={UserRole.OWNER}>Owner</option>
+              <option value={UserRole.USER}>User</option>
             </Select>
             <Button
               onClick={inviteUser}
@@ -170,13 +222,48 @@ export default function UserManagement({ className }: UserManagementProps) {
               className="w-full flex items-center justify-center space-x-2"
             >
               <Mail className="h-4 w-4" />
-              <span>{inviting ? 'Sending...' : 'Send Invitation'}</span>
+              <span>{inviting ? 'Creating...' : 'Create Invitation Link'}</span>
             </Button>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Invited users can sign up with Google and will be automatically assigned the selected role.
+            An invitation link will be generated and copied to your clipboard. Share it with the user to invite them.
           </p>
         </div>
+
+        {/* Pending Invitations */}
+        {pendingInvitations.length > 0 && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Pending Invitations</h3>
+            <div className="space-y-2">
+              {pendingInvitations.map((invitation) => {
+                const link = `${window.location.origin}/invite/${invitation.token}`
+                const isCopied = copiedToken === invitation.token
+                return (
+                  <div key={invitation.id} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{invitation.email}</div>
+                      <div className="text-xs text-gray-500">
+                        Role: {invitation.role} • Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
+                      </div>
+                      <div className="text-xs text-gray-400 font-mono truncate mt-1">{link}</div>
+                    </div>
+                    <button
+                      onClick={() => copyInvitationLink(invitation.token)}
+                      className="ml-3 flex-shrink-0 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+                      title="Copy invitation link"
+                    >
+                      {isCopied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Users List */}
         <div>
@@ -187,34 +274,25 @@ export default function UserManagement({ className }: UserManagementProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {users.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    {getRoleIcon(user.role)}
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{user.displayName}</div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
+              {users.map((user) => {
+                const userRole = user.role || UserRole.USER
+                return (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      {getRoleIcon(userRole)}
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
+                        <div className="text-sm text-gray-500">{user.email}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(userRole)}`}>
+                        {userRole}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
-                      {user.role}
-                    </span>
-                    {user.id !== currentUser?.id && (
-                      <Select
-                        size="sm"
-                        value={user.role}
-                        onChange={(e) => updateUserRole(user.id, e.target.value as UserRole)}
-                      >
-                        <option value={UserRole.VIEWER}>Viewer</option>
-                        <option value={UserRole.DESIGNER}>Designer</option>
-                        <option value={UserRole.ADMIN}>Admin</option>
-                        <option value={UserRole.OWNER}>Owner</option>
-                      </Select>
-                    )}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

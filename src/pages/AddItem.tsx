@@ -1,26 +1,33 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, FormEvent, useEffect, useRef } from 'react'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
-import { TRANSACTION_SOURCES, TransactionSource } from '@/constants/transactionSources'
+import { TransactionSource } from '@/constants/transactionSources'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { Transaction, ItemImage } from '@/types'
 import { Select } from '@/components/ui/Select'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { useAuth } from '../contexts/AuthContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, COMPANY_NAME } from '@/constants/company'
+
 // Get canonical transaction title for display
 const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   // Check if this is a canonical inventory transaction
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) {
-    return '1584 Inventory Sale'
+  if (transaction.transactionId?.startsWith('INV_SALE_')) {
+    return COMPANY_INVENTORY_SALE
   }
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) {
-    return '1584 Inventory Purchase'
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) {
+    return COMPANY_INVENTORY_PURCHASE
   }
   // Return the original source for non-canonical transactions
   return transaction.source
@@ -28,14 +35,16 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
 
 export default function AddItem() {
   const { id: projectId } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
+  const { getBackDestination } = useNavigationContext()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
   const { showError } = useToast()
 
   const [projectName, setProjectName] = useState<string>('')
 
-  // Check if user has permission to add items (DESIGNER role or higher)
-  if (!hasRole(UserRole.DESIGNER)) {
+  // Check if user has permission to add items (USER role or higher)
+  if (!hasRole(UserRole.USER)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full space-y-8 text-center">
@@ -46,12 +55,12 @@ export default function AddItem() {
           <p className="text-gray-600">
             You don't have permission to add items. Please contact an administrator if you need access.
           </p>
-          <Link
-            to={`/project/${projectId}`}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}`)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )
@@ -61,10 +70,10 @@ export default function AddItem() {
     description: string
     source: string
     sku: string
-    purchase_price: string
-    project_price: string
-    market_value: string
-    payment_method: string
+    purchasePrice: string
+    projectPrice: string
+    marketValue: string
+    paymentMethod: string
     space: string
     notes: string
     disposition: string
@@ -73,10 +82,10 @@ export default function AddItem() {
     description: '',
     source: '',
     sku: '',
-    purchase_price: '',
-    project_price: '',
-    market_value: '',
-    payment_method: '',
+    purchasePrice: '',
+    projectPrice: '',
+    marketValue: '',
+    paymentMethod: '',
     space: '',
     notes: '',
     disposition: 'keep',
@@ -84,6 +93,7 @@ export default function AddItem() {
   })
 
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [images, setImages] = useState<ItemImage[]>([])
@@ -99,17 +109,17 @@ export default function AddItem() {
   // Fetch project name and transactions when component mounts
   useEffect(() => {
     const fetchProjectAndTransactions = async () => {
-      if (projectId) {
+      if (projectId && currentAccountId) {
         setLoadingTransactions(true)
         try {
           // Fetch project name for image uploads
-          const project = await projectService.getProject(projectId)
+          const project = await projectService.getProject(currentAccountId, projectId)
           if (project) {
             setProjectName(project.name)
           }
 
           // Fetch transactions
-          const fetchedTransactions = await transactionService.getTransactions(projectId)
+          const fetchedTransactions = await transactionService.getTransactions(currentAccountId, projectId)
           setTransactions(fetchedTransactions)
         } catch (error) {
           console.error('Error fetching project and transactions:', error)
@@ -120,24 +130,34 @@ export default function AddItem() {
     }
 
     fetchProjectAndTransactions()
-  }, [projectId])
+  }, [projectId, currentAccountId])
+
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
 
   // Initialize custom states based on initial form data
   useEffect(() => {
-    const predefinedSources = TRANSACTION_SOURCES
-    if (formData.source && !predefinedSources.includes(formData.source as TransactionSource)) {
+    if (formData.source && !availableVendors.includes(formData.source)) {
       setIsCustomSource(true)
-    } else if (formData.source && predefinedSources.includes(formData.source as TransactionSource)) {
+    } else if (formData.source && availableVendors.includes(formData.source)) {
       setIsCustomSource(false)
     }
-  }, [formData.source])
+  }, [formData.source, availableVendors])
 
-  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
-  useEffect(() => {
-    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
-    }
-  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+  // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
+  // purchasePrice should happen only when the user saves the item.
 
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -165,17 +185,23 @@ export default function AddItem() {
     try {
       const itemData = {
         ...formData,
-        project_id: projectId,
-        qr_key: `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        projectId: projectId,
+        qrKey: `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         bookmark: false,
-        transaction_id: formData.selectedTransactionId || '', // Use selected transaction or empty string
-        date_created: new Date().toISOString(),
-        last_updated: new Date().toISOString(),
-        disposition: formData.disposition || 'keep', // Default to 'keep' if not set
+        // Default projectPrice to purchasePrice at save time when left blank
+        projectPrice: formData.projectPrice || formData.purchasePrice,
+        transactionId: formData.selectedTransactionId || '', // Use selected transaction or empty string
+        dateCreated: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+        disposition: formData.disposition || 'keep',
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
-      await unifiedItemsService.createItem(itemData)
+      if (!currentAccountId) {
+        showError('Account ID is required')
+        return
+      }
+      await unifiedItemsService.createItem(currentAccountId, itemData)
       navigate(`/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Error creating item:', error)
@@ -189,7 +215,7 @@ export default function AddItem() {
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Mark project_price as manually edited if user is editing it
-    if (field === 'project_price') {
+    if (field === 'projectPrice') {
       projectPriceEditedRef.current = true
     }
 
@@ -200,19 +226,19 @@ export default function AddItem() {
   }
 
   const handleTransactionChange = (transactionId: string) => {
-    const selectedTransaction = transactions.find(t => t.transaction_id === transactionId)
+    const selectedTransaction = transactions.find(t => t.transactionId === transactionId)
 
     setFormData(prev => ({
       ...prev,
       selectedTransactionId: transactionId,
       // Pre-fill source and payment method from selected transaction
       source: selectedTransaction?.source || '',
-      payment_method: selectedTransaction?.payment_method || ''
+      paymentMethod: selectedTransaction?.paymentMethod || ''
     }))
 
     // Update custom state based on pre-filled values
     if (selectedTransaction?.source) {
-      const isPredefinedSource = TRANSACTION_SOURCES.includes(selectedTransaction.source as TransactionSource)
+      const isPredefinedSource = availableVendors.includes(selectedTransaction.source as TransactionSource)
       setIsCustomSource(!isPredefinedSource)
     }
 
@@ -320,13 +346,13 @@ export default function AddItem() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={`/project/${projectId}?tab=inventory`}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=inventory`)}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
 
       </div>
@@ -422,8 +448,8 @@ export default function AddItem() {
               <option disabled>Loading transactions...</option>
             ) : (
               transactions.map((transaction) => (
-                <option key={transaction.transaction_id} value={transaction.transaction_id}>
-                  {new Date(transaction.transaction_date).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
+                <option key={transaction.transactionId} value={transaction.transactionId}>
+                  {new Date(transaction.transactionDate).toLocaleDateString()} - {getCanonicalTransactionTitle(transaction)} - ${transaction.amount}
                 </option>
               ))
             )}
@@ -437,7 +463,7 @@ export default function AddItem() {
             <div className="mt-2 p-3 bg-primary-50 border border-primary-100 rounded-md">
               <p className="text-sm text-primary-700">
                 <strong>Source:</strong> {formData.source} |
-                <strong> Payment Method:</strong> {formData.payment_method}
+                <strong> Payment Method:</strong> {formData.paymentMethod}
               </p>
               <p className="text-xs text-primary-600 mt-1">
                 These values are automatically filled from the selected transaction
@@ -452,7 +478,7 @@ export default function AddItem() {
               Source
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"
@@ -514,16 +540,16 @@ export default function AddItem() {
               Payment Method
             </label>
             <div className="flex items-center space-x-6 mb-3">
-              {['Client Card', '1584 Design'].map((method) => (
+              {['Client Card', COMPANY_NAME].map((method) => (
                 <div key={method} className="flex items-center">
                   <input
                     type="radio"
                     id={`payment_${method.toLowerCase().replace(/\s+/g, '_')}`}
-                    name="payment_method"
+                    name="paymentMethod"
                     value={method}
-                    checked={formData.payment_method === method}
+                    checked={formData.paymentMethod === method}
                     onChange={(e) => {
-                      handleInputChange('payment_method', e.target.value)
+                      handleInputChange('paymentMethod', e.target.value)
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                   />
@@ -533,8 +559,8 @@ export default function AddItem() {
                 </div>
               ))}
             </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            {errors.paymentMethod && (
+              <p className="mt-1 text-sm text-red-600">{errors.paymentMethod}</p>
             )}
           </div>
           )}
@@ -556,7 +582,7 @@ export default function AddItem() {
 
           {/* Purchase Price */}
           <div>
-            <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-700">
               Purchase Price
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
@@ -566,23 +592,23 @@ export default function AddItem() {
               </div>
               <input
                 type="text"
-                id="purchase_price"
-                value={formData.purchase_price}
-                onChange={(e) => handleInputChange('purchase_price', e.target.value)}
+                id="purchasePrice"
+                value={formData.purchasePrice}
+                onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.purchase_price ? 'border-red-300' : 'border-gray-300'
+                  errors.purchasePrice ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.purchase_price && (
-              <p className="mt-1 text-sm text-red-600">{errors.purchase_price}</p>
+            {errors.purchasePrice && (
+              <p className="mt-1 text-sm text-red-600">{errors.purchasePrice}</p>
             )}
           </div>
 
           {/* Project Price */}
           <div>
-            <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="projectPrice" className="block text-sm font-medium text-gray-700">
               Project Price
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
@@ -592,23 +618,23 @@ export default function AddItem() {
               </div>
               <input
                 type="text"
-                id="project_price"
-                value={formData.project_price}
-                onChange={(e) => handleInputChange('project_price', e.target.value)}
+                id="projectPrice"
+                value={formData.projectPrice}
+                onChange={(e) => handleInputChange('projectPrice', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.project_price ? 'border-red-300' : 'border-gray-300'
+                  errors.projectPrice ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.project_price && (
-              <p className="mt-1 text-sm text-red-600">{errors.project_price}</p>
+            {errors.projectPrice && (
+              <p className="mt-1 text-sm text-red-600">{errors.projectPrice}</p>
             )}
           </div>
 
           {/* Market Value */}
           <div>
-            <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="marketValue" className="block text-sm font-medium text-gray-700">
               Market Value
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
@@ -618,17 +644,17 @@ export default function AddItem() {
               </div>
               <input
                 type="text"
-                id="market_value"
-                value={formData.market_value}
-                onChange={(e) => handleInputChange('market_value', e.target.value)}
+                id="marketValue"
+                value={formData.marketValue}
+                onChange={(e) => handleInputChange('marketValue', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.market_value ? 'border-red-300' : 'border-gray-300'
+                  errors.marketValue ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {errors.market_value && (
-              <p className="mt-1 text-sm text-red-600">{errors.market_value}</p>
+            {errors.marketValue && (
+              <p className="mt-1 text-sm text-red-600">{errors.marketValue}</p>
             )}
           </div>
 
@@ -663,10 +689,9 @@ export default function AddItem() {
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="keep">Keep</option>
-                <option value="return">Return to Client</option>
-                <option value="donate">Donate</option>
-                <option value="sell">Sell</option>
-                <option value="dispose">Dispose</option>
+                <option value="to return">To Return</option>
+                <option value="returned">Returned</option>
+                <option value="inventory">Inventory</option>
               </select>
             </div>
           </div>
@@ -696,13 +721,13 @@ export default function AddItem() {
 
           {/* Form Actions - Normal on desktop, hidden on mobile (replaced by sticky bar) */}
           <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
-            <Link
-              to={`/project/${projectId}?tab=inventory`}
-              className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Link>
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=inventory`)}
+            className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+          >
+            <X className="h-4 w-4 mr-2" />
+            Cancel
+          </ContextBackLink>
             <button
               type="submit"
               disabled={isSubmitting}
@@ -718,13 +743,13 @@ export default function AddItem() {
       {/* Sticky mobile action bar */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
         <div className="flex space-x-3">
-          <Link
-            to={`/project/${projectId}?tab=inventory`}
+          <ContextBackLink
+            fallback={getBackDestination(`/project/${projectId}?tab=inventory`)}
             className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <X className="h-4 w-4 mr-2" />
             Cancel
-          </Link>
+          </ContextBackLink>
           <button
             type="submit"
             disabled={isSubmitting}

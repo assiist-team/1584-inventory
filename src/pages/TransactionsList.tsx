@@ -1,14 +1,18 @@
 import { Plus, Search, Filter } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, useEffect, useMemo } from 'react'
-import { Transaction } from '@/types'
+import { Transaction, TransactionCompleteness } from '@/types'
 import { transactionService } from '@/services/inventoryService'
 import type { Transaction as TransactionType } from '@/types'
+import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+import { useAccount } from '@/contexts/AccountContext'
 
 // Canonical transaction title for display only
 const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
-  if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
-  if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+  if (transaction.transactionId?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+  if (transaction.transactionId?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
   return transaction.source
 }
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
@@ -29,14 +33,18 @@ const removeUnwantedIcons = () => {
 
 interface TransactionsListProps {
   projectId?: string
+  transactions?: Transaction[]
 }
 
-export default function TransactionsList({ projectId: propProjectId }: TransactionsListProps) {
+export default function TransactionsList({ projectId: propProjectId, transactions: propTransactions }: TransactionsListProps) {
   const { id: routeProjectId } = useParams<{ id: string }>()
+  const { currentAccountId } = useAccount()
   // Use prop if provided, otherwise fall back to route param
   const projectId = propProjectId || routeProjectId
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { buildContextUrl } = useNavigationContext()
+  const [transactions, setTransactions] = useState<Transaction[]>(propTransactions || [])
+  const [isLoading, setIsLoading] = useState(!propTransactions)
+  const [completenessById, setCompletenessById] = useState<Record<string, TransactionCompleteness | null>>({})
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
@@ -44,36 +52,89 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
   const [filterMode, setFilterMode] = useState<'all' | 'we-owe' | 'client-owes'>('all')
 
   useEffect(() => {
+    // If transactions are passed as a prop, just update the state
+    if (propTransactions) {
+      setTransactions(propTransactions)
+      return
+    }
+
+    // If no transactions prop, fetch them
+    let unsubscribe: (() => void) | undefined
+
+    const setupSubscription = (initialTransactions: Transaction[]) => {
+      if (!projectId || !currentAccountId) return
+      unsubscribe = transactionService.subscribeToTransactions(
+        currentAccountId,
+        projectId,
+        (updatedTransactions) => {
+          setTransactions(updatedTransactions)
+        },
+        initialTransactions
+      )
+    }
+
     const loadTransactions = async () => {
-      if (!projectId) {
+      if (!projectId || !currentAccountId) {
         setIsLoading(false)
         return
       }
 
-      try {
-        const data = await transactionService.getTransactions(projectId)
-        setTransactions(data)
-      } catch (error) {
-        console.error('Error loading transactions:', error)
-        setTransactions([])
-      } finally {
-        setIsLoading(false)
+      // Only load if transactions were not passed in props
+      if (!propTransactions) {
+        try {
+          const data = await transactionService.getTransactions(currentAccountId, projectId)
+          setTransactions(data)
+          setupSubscription(data)
+        } catch (error) {
+          console.error('Error loading transactions:', error)
+          setTransactions([])
+        } finally {
+          setIsLoading(false)
+        }
       }
     }
 
     loadTransactions()
-  }, [projectId])
 
-  // Subscribe to real-time updates
+    return () => {
+      if (unsubscribe) {
+        unsubscribe()
+      }
+    }
+  }, [projectId, currentAccountId, propTransactions])
+
+  // Load completeness metrics for each transaction to show "Missing items" badge
   useEffect(() => {
-    if (!projectId) return
+    let mounted = true
+    const loadCompletenessForTransactions = async () => {
+      if (!projectId || !currentAccountId || transactions.length === 0) return
+      try {
+        // If the backend surfaces `needsReview` on the transaction, we can skip
+        // the per-transaction completeness fetch for the list view to improve perf.
+        const txsToFetch = transactions.filter(t => t.needsReview === undefined)
+        const promises = txsToFetch.map(t =>
+          transactionService.getTransactionCompleteness(currentAccountId, projectId, t.transactionId)
+            .catch(err => {
+              console.debug('Failed to load completeness for', t.transactionId, err)
+              return null
+            })
+        )
+        const results = await Promise.all(promises)
+        if (!mounted) return
+        const map: Record<string, TransactionCompleteness | null> = {}
+        // Populate map only for transactions we fetched
+        txsToFetch.forEach((t, idx) => {
+          map[t.transactionId] = results[idx]
+        })
+        setCompletenessById(map)
+      } catch (err) {
+        console.error('Error loading transaction completeness:', err)
+      }
+    }
 
-    const unsubscribe = transactionService.subscribeToTransactions(projectId, (updatedTransactions) => {
-      setTransactions(updatedTransactions)
-    })
-
-    return unsubscribe
-  }, [projectId])
+    loadCompletenessForTransactions()
+    return () => { mounted = false }
+  }, [transactions, projectId, currentAccountId])
 
   // Filter transactions based on search and filter mode
   const filteredTransactions = useMemo(() => {
@@ -82,9 +143,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     // Apply reimbursement type filter based on filter mode
     if (filterMode !== 'all') {
       if (filterMode === 'we-owe') {
-        filtered = filtered.filter(t => t.reimbursement_type === 'We Owe')
+        filtered = filtered.filter(t => t.reimbursementType === COMPANY_OWES_CLIENT)
       } else if (filterMode === 'client-owes') {
-        filtered = filtered.filter(t => t.reimbursement_type === 'Client Owes')
+        filtered = filtered.filter(t => t.reimbursementType === CLIENT_OWES_COMPANY)
       }
     }
 
@@ -93,7 +154,7 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(t =>
         t.source?.toLowerCase().includes(query) ||
-        t.transaction_type?.toLowerCase().includes(query) ||
+        t.transactionType?.toLowerCase().includes(query) ||
         t.notes?.toLowerCase().includes(query)
       )
     }
@@ -142,13 +203,13 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
     <div className="space-y-4">
       {/* Header - Add Transaction button */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-        <Link
-          to={`/project/${projectId}/transaction/add`}
+        <ContextLink
+          to={buildContextUrl(`/project/${projectId}/transaction/add`, { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Transaction
-        </Link>
+        </ContextLink>
       </div>
 
       {/* Search and Controls - Sticky Container */}
@@ -247,9 +308,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <ul className="divide-y divide-gray-200">
             {filteredTransactions.map((transaction) => (
-              <li key={transaction.transaction_id} className="relative">
-                <Link
-                  to={`/project/${projectId}/transaction/${transaction.transaction_id}`}
+              <li key={transaction.transactionId} className="relative">
+                <ContextLink
+                  to={buildContextUrl(`/project/${projectId}/transaction/${transaction.transactionId}`, { project: projectId, transactionId: transaction.transactionId })}
                   className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
                   <div className="px-4 py-4 sm:px-6">
@@ -260,41 +321,6 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                           {getCanonicalTransactionTitle(transaction)}
                         </h3>
                       </div>
-                      <div className="flex items-center flex-wrap gap-2">
-                        {transaction.budget_category && (
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                            transaction.budget_category === 'Design Fee'
-                              ? 'bg-amber-100 text-amber-800'
-                              : transaction.budget_category === 'Furnishings'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : transaction.budget_category === 'Property Management'
-                              ? 'bg-orange-100 text-orange-800'
-                              : transaction.budget_category === 'Kitchen'
-                              ? 'bg-amber-200 text-amber-900'
-                              : transaction.budget_category === 'Install'
-                              ? 'bg-yellow-200 text-yellow-900'
-                              : transaction.budget_category === 'Storage & Receiving'
-                              ? 'bg-orange-200 text-orange-900'
-                              : transaction.budget_category === 'Fuel'
-                              ? 'bg-amber-300 text-amber-900'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {transaction.budget_category}
-                          </span>
-                        )}
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
-                          transaction.transaction_type === 'Purchase'
-                            ? 'bg-green-100 text-green-800'
-                            : transaction.transaction_type === 'Return'
-                            ? 'bg-red-100 text-red-800'
-                            : transaction.transaction_type === 'To Inventory'
-                            ? 'bg-primary-100 text-primary-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {transaction.transaction_type}
-                        </span>
-
-                      </div>
                     </div>
 
                     {/* Bottom row: Details */}
@@ -303,9 +329,9 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                       <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                         <span className="font-medium text-gray-700">{formatCurrency(transaction.amount)}</span>
                         <span className="hidden sm:inline">•</span>
-                        <span className="font-medium text-gray-700 capitalize">{transaction.payment_method}</span>
+                        <span className="font-medium text-gray-700 capitalize">{transaction.paymentMethod}</span>
                         <span className="hidden sm:inline">•</span>
-                        <span className="font-medium text-gray-700">{formatDate(transaction.transaction_date)}</span>
+                        <span className="font-medium text-gray-700">{formatDate(transaction.transactionDate)}</span>
                       </div>
 
                       {/* Notes */}
@@ -315,9 +341,55 @@ export default function TransactionsList({ projectId: propProjectId }: Transacti
                         </p>
                       )}
                     </div>
+                    {/* Badges moved to bottom of preview container */}
+                    <div className="mt-3 flex items-center flex-wrap gap-2">
+                      {transaction.budgetCategory && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          transaction.budgetCategory === 'Design Fee'
+                            ? 'bg-amber-100 text-amber-800'
+                            : transaction.budgetCategory === 'Furnishings'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : transaction.budgetCategory === 'Property Management'
+                            ? 'bg-orange-100 text-orange-800'
+                            : transaction.budgetCategory === 'Kitchen'
+                            ? 'bg-amber-200 text-amber-900'
+                            : transaction.budgetCategory === 'Install'
+                            ? 'bg-yellow-200 text-yellow-900'
+                            : transaction.budgetCategory === 'Storage & Receiving'
+                            ? 'bg-orange-200 text-orange-900'
+                            : transaction.budgetCategory === 'Fuel'
+                            ? 'bg-amber-300 text-amber-900'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {transaction.budgetCategory}
+                        </span>
+                      )}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium no-icon ${
+                        transaction.transactionType === 'Purchase'
+                          ? 'bg-green-100 text-green-800'
+                          : transaction.transactionType === 'Return'
+                          ? 'bg-red-100 text-red-800'
+                          : transaction.transactionType === 'To Inventory'
+                          ? 'bg-primary-100 text-primary-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {transaction.transactionType}
+                      </span>
+                      {transaction.needsReview === true ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          Needs Review
+                        </span>
+                      ) : (
+                        completenessById[transaction.transactionId] && completenessById[transaction.transactionId]?.completenessStatus !== 'complete' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            Missing Items
+                          </span>
+                        )
+                      )}
+                    </div>
 
                   </div>
-                </Link>
+                </ContextLink>
               </li>
             ))}
           </ul>

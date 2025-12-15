@@ -1,383 +1,199 @@
-# Navigation Normalization - Dynamic Back Button Implementation
+# Navigation Normalization — Developer Guide
 
-## Overview
+This document is a concise, actionable guide for a junior developer to finish normalizing navigation to the stack-based pattern (NavigationStack + ContextLink) and to eliminate render-time side-effects that cause back-button loops (e.g., Transaction ↔ Item toggles).
 
-This document provides a complete guide for implementing dynamic back navigation across the 1584 Design inventory management application. The current system has hard-coded back buttons that don't work correctly when users navigate through complex flows, causing poor user experience.
+Goal
+- Ensure in-app Back controls return users to the most intuitive previous screen (mimic native back) while preserving sensible URL fallbacks for deep links.
+- Remove render-time mutations of the nav stack and make pushes happen at click-time or immediately before programmatic navigations.
 
-## Problem Statement
+Background (short)
+- The app uses a small navigation stack mirrored to `sessionStorage` to preserve Back across reloads in the same tab.
+- Two helpers are used:
+  - `useNavigationContext()` — builds context-aware URLs (`buildContextUrl`) and computes back targets (`getBackDestination`).
+  - `NavigationStack` provider (in `src/contexts/NavigationStackContext.tsx`) — exposes `push`, `pop`, `peek`, etc.
+- Problem: some code still calls `navigationStack.push(...)` during render (or `buildContextUrl()` has side-effects). Render-time pushes produce duplicate/out-of-order stack entries that cause `pop()` to return the wrong entry and produce toggle loops.
 
-### Current Issue
-When users navigate through the application using this flow:
-```
-Business Inventory → Business Inventory Item Detail → Project → Back
-```
+Quick rules (follow these always)
+1. Never mutate navigation stack during render. `buildContextUrl()` must be pure.
+2. Use `ContextLink` (click-time push) for link-based navigations that should be recorded to the stack.
+3. Use `useStackedNavigate()` for programmatic navigations — but make it defensive (don’t push when calling `navigate(-1)` or when using `replace`).
+4. For Back/Cancel buttons in forms prefer calling `navigate(backDestination)` where `backDestination` comes from `useNavigationContext().getBackDestination(defaultPath)` or render `ContextBackLink` which `pop()`s the stack.
 
-The back button in `BusinessInventoryItemDetail` always goes to `/business-inventory` (main list) instead of going back to the specific item detail page, which is where users expect to return.
+Step-by-step tasks (ordered, with code)
 
-### Root Cause
-All back buttons throughout the application use hard-coded `Link` components with fixed `to` props, making them unable to adapt to different navigation contexts.
+Phase 0 — Audit (5–15m)
+- Search for remaining direct calls that mutate the stack at render-time:
+  - `navigationStack.push(`
+  - `to={buildContextUrl(` used directly in JSX (we want `ContextLink to={buildContextUrl(...)} or Link to={buildContextUrl(...)}` but ensure buildContextUrl is pure)
+  - `navigate(-1)` usages
 
-## Existing Solution Pattern
+Example grep commands:
 
-### ✅ Working Pattern (ItemDetail.tsx)
-The application already has a proven pattern for dynamic back navigation in `ItemDetail.tsx`:
-
-```typescript
-// Check navigation source from URL parameters
-const searchParams = new URLSearchParams(location.search)
-const fromTransaction = searchParams.get('from') === 'transaction'
-
-// Calculate appropriate back destination
-const backDestination = useMemo(() => {
-  if (fromTransaction && item.transaction_id && projectId) {
-    return `/project/${projectId}/transaction/${item.transaction_id}`
-  }
-  return `/project/${projectId}?tab=inventory` // Default destination
-}, [item, projectId, fromTransaction])
-
-// Use in Link component
-<Link to={backDestination}>Back</Link>
+```bash
+rg "navigationStack.push\(|buildContextUrl\(|navigate\(-1\)" src/ -n
 ```
 
-## Complete Audit of Navigation Issues
+Make a short list of files where these appear.
 
-### 🔴 Critical Issues (Must Fix)
+Phase 1 — Make `buildContextUrl` pure (20–40m)
+- Edit `src/hooks/useNavigationContext.ts` so `buildContextUrl` only composes a URL and sets query params (`from`, `returnTo`) but DOES NOT call `navigationStack.push(...)` or otherwise mutate state.
 
-#### 1. Business Inventory Item Detail
-**Files:** `src/pages/BusinessInventoryItemDetail.tsx`
-- **Lines 294 & 277:** Hard-coded back buttons to `/business-inventory`
-- **Problem:** When coming from project links, should return to item detail, not main list
+Example implementation (pure):
 
-#### 2. Project Links in Business Inventory
-**Files:** `src/pages/BusinessInventoryItemDetail.tsx`
-- **Lines 460 & 474:** Project links need to pass navigation context
-- **Problem:** Links to projects don't indicate where user came from
-
-#### 3. Business Inventory Transaction Forms
-**Files:** `src/pages/AddBusinessInventoryTransaction.tsx`, `src/pages/EditBusinessInventoryTransaction.tsx`
-- **Lines 112 & 159:** Hard-coded back buttons to `/business-inventory`
-- **Problem:** Should be context-aware for proper navigation
-
-### ✅ Already Working Correctly
-
-#### 1. Project Flow (ProjectDetail.tsx)
-- **Pattern:** Always goes to `/projects` (correct behavior)
-- **Status:** No changes needed
-
-#### 2. Item Management Flow (ItemDetail.tsx, EditItem.tsx)
-- **Pattern:** Uses dynamic navigation with `projectId` and `?tab=inventory`
-- **Status:** Already implemented correctly
-
-#### 3. Transaction Management Flow (TransactionDetail.tsx, EditTransaction.tsx)
-- **Pattern:** Uses `?tab=transactions` parameter
-- **Status:** Already implemented correctly
-
-## Implementation Plan
-
-### Phase 1: Fix Business Inventory Item Detail (Primary Issue)
-
-#### 1.1 Update BusinessInventoryItemDetail.tsx
-
-**Current (Broken) Code:**
-```typescript
-// Hard-coded back button - always goes to main inventory list
-<Link to="/business-inventory" className="...">Back</Link>
-```
-
-**Fixed Implementation:**
-```typescript
-import { useMemo } from 'react'
-import { useLocation, Link } from 'react-router-dom'
-
-// Add to component
-const location = useLocation()
-const searchParams = new URLSearchParams(location.search)
-const fromProject = searchParams.get('from') === 'project'
-
-const backDestination = useMemo(() => {
-  if (fromProject) {
-    return `/business-inventory/${id}` // Go back to item detail
-  }
-  return '/business-inventory' // Default to main list
-}, [fromProject, id])
-
-// Replace hard-coded Link
-<Link to={backDestination} className="...">
-  <ArrowLeft className="h-4 w-4 mr-1" />
-  Back
-</Link>
-```
-
-#### 1.2 Update Project Links to Pass Context
-
-**Current (Broken) Links:**
-```typescript
-// Links that don't pass navigation context
-to={`/project/${item.current_project_id}`}
-to={`/project/${item.current_project_id}/transaction/${item.pending_transaction_id}`}
-```
-
-**Fixed Links:**
-```typescript
-// Links that pass navigation context
-to={`/project/${item.current_project_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
-to={`/project/${item.current_project_id}/transaction/${item.pending_transaction_id}?from=business-inventory-item&returnTo=/business-inventory/${id}`}
-```
-
-### Phase 2: Fix Business Inventory Transaction Forms
-
-#### 2.1 Update AddBusinessInventoryTransaction.tsx
-
-**Current (Broken) Code:**
-```typescript
-// Hard-coded back button
-<Link to="/business-inventory" className="...">Back to Business Inventory</Link>
-```
-
-**Fixed Implementation:**
-```typescript
-import { useLocation, useNavigate } from 'react-router-dom'
-
-// Add to component
-const location = useLocation()
-const navigate = useNavigate()
-
-// For forms, we need to determine the appropriate back destination
-const getBackDestination = () => {
-  // Check if we have a returnTo parameter
-  const searchParams = new URLSearchParams(location.search)
-  const returnTo = searchParams.get('returnTo')
-  if (returnTo) return returnTo
-
-  // Default fallback
-  return '/business-inventory'
+```ts
+// src/hooks/useNavigationContext.ts (inside buildContextUrl)
+const url = new URL(targetPath, window.location.origin)
+const currentParams = new URLSearchParams(location.search)
+const from = currentParams.get('from')
+if (from) url.searchParams.set('from', from)
+// Set returnTo only if not present so we preserve explicit returnTo if caller provided
+if (!currentParams.get('returnTo')) {
+  url.searchParams.set('returnTo', location.pathname + location.search)
 }
-
-// Use navigate for programmatic navigation in forms
-const handleCancel = () => {
-  navigate(getBackDestination())
-}
+// add any additional params
+if (additionalParams) Object.entries(additionalParams).forEach(([k, v]) => url.searchParams.set(k, v))
+return url.pathname + url.search
 ```
 
-#### 2.2 Update EditBusinessInventoryTransaction.tsx
+- Commit this change. The `buildContextUrl` should not call `push()` anymore.
 
-Apply the same pattern as AddBusinessInventoryTransaction.tsx.
+Phase 2 — Add `ContextLink` (10–20m)
+- Create `src/components/ContextLink.tsx` (if not present). This wrapper calls `navigationStack.push(currentPath)` in its `onClick` handler and then delegates to `react-router` `Link`.
 
-### Phase 3: Create Reusable Navigation Hook (Future-proofing)
+Example `ContextLink`:
 
-#### 3.1 Create `src/hooks/useNavigationContext.ts`
+```tsx
+// src/components/ContextLink.tsx
+import React from 'react'
+import { Link, LinkProps, useLocation } from 'react-router-dom'
+import { useNavigationStack } from '@/contexts/NavigationStackContext'
 
-```typescript
-import { useLocation } from 'react-router-dom'
-
-export interface NavigationContext {
-  getBackDestination: (defaultPath: string) => string
-  getNavigationSource: () => string | null
-  buildContextUrl: (targetPath: string, additionalParams?: Record<string, string>) => string
-}
-
-export function useNavigationContext(): NavigationContext {
+export default function ContextLink(props: LinkProps) {
+  const { onClick, ...rest } = props as any
   const location = useLocation()
-  const searchParams = new URLSearchParams(location.search)
+  const navigationStack = useNavigationStack()
 
-  return {
-    getBackDestination: (defaultPath: string) => {
-      // Check for returnTo parameter first (highest priority)
-      const returnTo = searchParams.get('returnTo')
-      if (returnTo) return returnTo
-
-      // Check for from parameter and handle accordingly
-      const from = searchParams.get('from')
-      switch (from) {
-        case 'business-inventory-item':
-          // If we're on a project page and came from business inventory item
-          if (location.pathname.startsWith('/project/')) {
-            return returnTo || '/business-inventory'
-          }
-          break
-        case 'transaction':
-          // If we're on an item page and came from transaction
-          if (location.pathname.startsWith('/item/')) {
-            const projectId = searchParams.get('project')
-            const transactionId = searchParams.get('transactionId')
-            if (projectId && transactionId) {
-              return `/project/${projectId}/transaction/${transactionId}`
-            }
-          }
-          break
-      }
-
-      return defaultPath
-    },
-
-    getNavigationSource: () => {
-      return searchParams.get('from')
-    },
-
-    buildContextUrl: (targetPath: string, additionalParams?: Record<string, string>) => {
-      const url = new URL(targetPath, window.location.origin)
-      const currentParams = new URLSearchParams(location.search)
-
-      // Preserve navigation context
-      const from = currentParams.get('from')
-      if (from) url.searchParams.set('from', from)
-
-      // Add current path as returnTo for back navigation
-      if (!currentParams.get('returnTo')) {
-        url.searchParams.set('returnTo', location.pathname)
-      }
-
-      // Add any additional parameters
-      if (additionalParams) {
-        Object.entries(additionalParams).forEach(([key, value]) => {
-          url.searchParams.set(key, value)
-        })
-      }
-
-      return url.pathname + url.search
-    }
+  const handleClick = (e: React.MouseEvent) => {
+    try { navigationStack.push(location.pathname + location.search) } catch { /* noop */ }
+    if (typeof onClick === 'function') onClick(e)
   }
+
+  return <Link {...(rest as LinkProps)} onClick={handleClick} />
 }
 ```
 
-## Testing Requirements
+- Commit this file.
 
-### Manual Testing Checklist
+Phase 3 — Migrate forward links to `ContextLink` (20–60m)
+- Replace render-time `to={buildContextUrl(...)}` inside `<Link ...>` usage that should push to the stack with `<ContextLink to={buildContextUrl(...)}>`.
+- Priority files to migrate:
+  - `src/pages/TransactionDetail.tsx` — item cards/links
+  - `src/pages/InventoryList.tsx` (or similar) — item links
+  - `src/pages/BusinessInventoryItemDetail.tsx` — project/transaction links
+  - `src/components/ui/ItemLineageBreadcrumb.tsx`
 
-#### Business Inventory Flow Tests
-- [ ] **Basic Navigation**: Business Inventory → Item Detail → Back (should return to main list)
-- [ ] **Project Link Flow**: Business Inventory → Item Detail → Project Link → Back (should return to item detail)
-- [ ] **Transaction Link Flow**: Business Inventory → Item Detail → Transaction Link → Back (should return to item detail)
+Example replacement:
 
-#### Transaction Form Tests
-- [ ] **Add Form Navigation**: Navigate to add form → Cancel → Should return to appropriate location
-- [ ] **Edit Form Navigation**: Navigate to edit form → Cancel → Should return to appropriate location
-- [ ] **Form Context**: Forms should remember where user came from and return there
+```diff
+- <Link to={buildContextUrl(`/project/${projectId}/item/${item.itemId}`)}>
++ <ContextLink to={buildContextUrl(`/project/${projectId}/item/${item.itemId}`)}>
+```
 
-#### Edge Cases
-- [ ] **Direct URL Access**: Navigate directly to pages → Back buttons should have sensible defaults
-- [ ] **Browser Back Button**: Should still work correctly with browser navigation
-- [ ] **Multiple Navigation**: Complex navigation patterns should maintain correct back behavior
+- After migration, those links will push the previous path at click-time instead of render-time.
 
-### Automated Testing
+Phase 4 — Fix programmatic navigation patterns (forms & buttons) (15–40m)
+- Use `useStackedNavigate()` for programmatic navigations. But update `useStackedNavigate` to be defensive: do NOT push the current location when `to` is a numeric delta (e.g. `-1`) or when `options?.replace === true`.
 
-#### Unit Tests
-```typescript
-// Test the navigation hook
-describe('useNavigationContext', () => {
-  it('should return correct back destination for business inventory item', () => {
-    // Mock location with from=business-inventory-item
-    const { result } = renderHook(() => useNavigationContext(), {
-      wrapper: ({ children }) => (
-        <MemoryRouter initialEntries={['/project/123?from=business-inventory-item&returnTo=/business-inventory/456']}>
-          {children}
-        </MemoryRouter>
-      )
-    })
+Example change:
 
-    expect(result.current.getBackDestination('/default')).toBe('/business-inventory/456')
+```ts
+// src/hooks/useStackedNavigate.ts
+const stackedNavigate = useCallback((to: To, options?: NavigateOptions) => {
+  try {
+    // Only push when navigating to a path string, not when going back or replacing
+    if (typeof to !== 'number' && !(options && (options as any).replace)) {
+      navigationStack.push(location.pathname + location.search)
+    }
+  } catch { }
+  navigate(to, options)
+}, [navigate, navigationStack, location.pathname, location.search])
+```
+
+- Commit this change.
+
+Phase 5 — Replace `navigate(-1)` back usages (15–30m)
+- Audit files with `navigate(-1)` and change them to compute a `backDestination` using `useNavigationContext().getBackDestination(default)` or render `ContextBackLink`.
+- Priority files:
+  - `src/pages/EditTransaction.tsx` — change `onClick={() => navigate(-1)}` to `onClick={() => navigate(backDestination)}` or render `<ContextBackLink fallback={backDestination} />`.
+  - `src/pages/EditBusinessInventoryTransaction.tsx` — same pattern.
+
+Example `EditTransaction` update:
+
+```tsx
+const { getBackDestination } = useNavigationContext()
+const backDestination = useMemo(() => getBackDestination(`/project/${projectId}?tab=transactions`), [getBackDestination, projectId])
+
+// Use this in the Cancel handler
+<button onClick={() => navigate(backDestination)}>Cancel</button>
+// or use ContextBackLink
+<ContextBackLink fallback={backDestination}>Back</ContextBackLink>
+```
+
+Phase 6 — `ContextBackLink` behavior (read-only check)
+- `ContextBackLink` should `pop()` the navigation stack and navigate to the popped target, falling back to the `fallback` prop if nothing available. Confirm this implementation exists in `src/components/ContextBackLink.tsx` and is used on detail pages.
+
+Phase 7 — Tests & manual verification (30–90m)
+- Manual test scenarios (walk through each):
+  - Transaction → Item → Back should return to Transaction exactly once and stop (no toggles).
+  - Project → Transaction → Edit → Cancel should return to Transaction or Project depending on context.
+  - Business Inventory → Item → Project link → Back should return to Item.
+  - Direct URL access to Item/Transaction should fall back to sensible defaults.
+
+- Add unit tests for `useNavigationContext` and `NavigationStack` push/pop/dedupe/hydration.
+- Add an integration/E2E test (Cypress or Playwright) for Transaction → Item → Back.
+
+Recommended jest test skeleton for `useNavigationContext`:
+
+```ts
+// src/hooks/__tests__/useNavigationContext.test.tsx
+it('returns returnTo when present', () => {
+  const { result } = renderHook(() => useNavigationContext(), {
+    wrapper: ({ children }) => <MemoryRouter initialEntries={["/project/1/item/2?returnTo=/project/1/transaction/3"]}>{children}</MemoryRouter>
   })
+  expect(result.current.getBackDestination('/default')).toBe('/project/1/transaction/3')
 })
 ```
 
-## Success Criteria
+Phase 8 — Rollout
+- Merge changes to `supabase` branch (or your feature branch), deploy to staging, run manual smoke tests above, then promote to production.
 
-### ✅ Implementation Complete When:
+Troubleshooting (common mistakes to watch for)
+- Accidentally leaving `navigationStack.push` in `buildContextUrl()` — this is the primary cause of loops. Double-check `buildContextUrl` is pure.
+- Using `Link to={buildContextUrl(...)}` without migrating to `ContextLink` for links that should be recorded — `buildContextUrl` is pure; you must use `ContextLink` to push on click.
+- Leaving `navigate(-1)` calls without fixing `useStackedNavigate` — if you keep `navigate(-1)` you must ensure `useStackedNavigate` does not push before going back.
 
-#### Functional Requirements
-- [ ] **Business Inventory Item Detail** back buttons work correctly in all contexts
-- [ ] **Project links** pass proper navigation context
-- [ ] **Transaction forms** return to appropriate locations when cancelled
-- [ ] **All existing functionality** continues to work unchanged
+Files to edit (task list for the jr dev)
+- [ ] `src/hooks/useNavigationContext.ts` — make `buildContextUrl` pure (no push side-effects).
+- [ ] `src/components/ContextLink.tsx` — create click-time push wrapper.
+- [ ] `src/hooks/useStackedNavigate.ts` — make push conditional (skip for numeric `to` or `replace`).
+- [ ] `src/components/ContextBackLink.tsx` — confirm `pop()` behavior and `fallback` usage.
+- [ ] Migrate links in:
+  - `src/pages/TransactionDetail.tsx`
+  - `src/pages/InventoryList.tsx` (or app-specific list pages)
+  - `src/pages/BusinessInventoryItemDetail.tsx`
+  - `src/components/ui/ItemLineageBreadcrumb.tsx`
+- [ ] Replace-programmatic `navigate(-1)` usages in edit/form pages with `getBackDestination` or `ContextBackLink`.
+- [ ] Add unit and integration tests.
 
-#### Code Quality Requirements
-- [ ] **Consistent patterns** used across all components
-- [ ] **Proper error handling** for edge cases
-- [ ] **TypeScript types** properly defined
-- [ ] **Reusable hook** available for future use
+Acceptance checklist
+- [ ] `buildContextUrl` contains no `navigationStack.push` calls
+- [ ] All link navigations that should be recorded use `ContextLink`
+- [ ] All form cancel/back handlers use `getBackDestination` or `ContextBackLink`
+- [ ] `useStackedNavigate` does not push on numeric deltas
+- [ ] No reproduced Transaction ↔ Item toggle loop in staging
 
-#### User Experience Requirements
-- [ ] **Intuitive navigation** - back buttons go where users expect
-- [ ] **No broken flows** - all existing navigation continues to work
-- [ ] **Consistent behavior** - same navigation patterns throughout app
+If you want, I can implement the code edits now (small steps):
+1. Make `buildContextUrl` pure and create `ContextLink` (I can do both in one PR).
+2. Migrate `TransactionDetail` item links to `ContextLink` and update `EditTransaction` to use `getBackDestination`.
 
-## Files to Modify
-
-### Primary Files (Must Change)
-1. `src/pages/BusinessInventoryItemDetail.tsx` - Fix back button logic and project links
-2. `src/pages/AddBusinessInventoryTransaction.tsx` - Fix cancel navigation
-3. `src/pages/EditBusinessInventoryTransaction.tsx` - Fix cancel navigation
-
-### Supporting Files (Create New)
-4. `src/hooks/useNavigationContext.ts` - Reusable navigation hook
-
-### Optional Enhancements
-5. `src/components/ui/NavigationBreadcrumb.tsx` - Visual breadcrumb component
-6. `src/types/navigation.ts` - Navigation-specific TypeScript types
-
-## Rollout Strategy
-
-### 1. Development Implementation
-- Implement fixes in development environment
-- Test all navigation flows thoroughly
-- Ensure no existing functionality is broken
-
-### 2. Staging Testing
-- Deploy to staging environment
-- Test with real data and multiple users
-- Verify all edge cases work correctly
-
-### 3. Production Deployment
-- Deploy to production
-- Monitor for any navigation-related issues
-- Be prepared to rollback if needed
-
-## Future Enhancements
-
-### Potential Improvements
-1. **Visual Breadcrumbs** - Show navigation path to users
-2. **Navigation History** - Track complete user journey
-3. **Keyboard Shortcuts** - Alt+Left for back navigation
-4. **Mobile Gestures** - Swipe gestures for navigation
-
-### Maintenance Considerations
-1. **Consistent Patterns** - Use the established pattern for all new navigation
-2. **Documentation** - Update this document when new navigation contexts are added
-3. **Testing** - Add tests for new navigation flows
-
-## Troubleshooting
-
-### Common Issues
-
-#### 1. Back Button Goes to Wrong Place
-**Cause**: Missing or incorrect navigation context parameters
-**Solution**: Check that `from` and `returnTo` parameters are properly set in links
-
-#### 2. Form Cancel Doesn't Work
-**Cause**: Form components may not have access to navigation context
-**Solution**: Pass navigation context through props or use the navigation hook
-
-#### 3. Direct URL Access Breaks Navigation
-**Cause**: Direct navigation bypasses context parameters
-**Solution**: Implement sensible defaults in `getBackDestination`
-
-### Debug Tools
-```typescript
-// Add to any component for debugging
-const debugNavigation = () => {
-  console.log('Current location:', location)
-  console.log('Search params:', Object.fromEntries(searchParams))
-  console.log('Back destination:', getBackDestination('/default'))
-  console.log('Navigation source:', getNavigationSource())
-}
-```
-
-## Conclusion
-
-This implementation will provide users with intuitive, context-aware back navigation throughout the application. The solution leverages existing proven patterns and extends them consistently across all navigation contexts, ensuring a smooth user experience without breaking existing functionality.
-
-**Key Benefits:**
-- ✅ **User-Friendly**: Back buttons work as users expect
-- ✅ **Consistent**: Same patterns used throughout the app
-- ✅ **Maintainable**: Reusable hook for future development
-- ✅ **Backwards Compatible**: No existing functionality broken
+Which part would you like me to implement first? If you'd like the doc shortened or expanded with more step-by-step commands, tell me which sections to adjust.

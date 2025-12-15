@@ -1,17 +1,11 @@
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-  getMetadata
-} from 'firebase/storage'
-import { storage, ensureAuthenticatedForStorage } from './firebase'
+import { supabase } from './supabase'
+import { ensureAuthenticatedForDatabase } from './databaseService'
 import { TransactionImage } from '@/types'
 import {
   ImageUploadError,
-  getUserFriendlyErrorMessage
+  getUserFriendlyErrorMessage,
+  convertImageFormat
 } from '@/utils/imageUtils'
-
 
 export interface UploadProgress {
   loaded: number
@@ -28,12 +22,12 @@ export interface ImageUploadResult {
 
 export class ImageUploadService {
   /**
-   * Check if Firebase Storage is available
+   * Check if Supabase Storage is available
    */
   static async checkStorageAvailability(): Promise<boolean> {
     try {
-      if (!storage) {
-        console.error('Firebase Storage not initialized')
+      if (!supabase) {
+        console.error('Supabase not initialized')
         return false
       }
       return true
@@ -48,8 +42,7 @@ export class ImageUploadService {
    */
   static async ensureAuthentication(): Promise<void> {
     try {
-      // Use the enhanced authentication function that includes proper verification
-      await ensureAuthenticatedForStorage()
+      await ensureAuthenticatedForDatabase()
     } catch (error) {
       console.error('Failed to ensure authentication:', error)
       throw new Error('Authentication required for storage operations. Please refresh the page and try again.')
@@ -57,7 +50,7 @@ export class ImageUploadService {
   }
 
   /**
-   * Upload an item image to Firebase Storage
+   * Upload an item image to Supabase Storage
    */
   static async uploadItemImage(
     file: File,
@@ -66,11 +59,11 @@ export class ImageUploadService {
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {
-    return this.uploadImageInternal(file, projectName, itemId, 'item_images', onProgress, retryCount)
+    return this.uploadImageInternal(file, projectName, itemId, 'item-images', onProgress, retryCount)
   }
 
   /**
-   * Upload a transaction image to Firebase Storage (legacy method for backward compatibility)
+   * Upload a transaction image to Supabase Storage (legacy method for backward compatibility)
    */
   static async uploadTransactionImage(
     file: File,
@@ -79,11 +72,11 @@ export class ImageUploadService {
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {
-    return this.uploadImageInternal(file, projectName, transactionId, 'transaction_images', onProgress, retryCount)
+    return this.uploadImageInternal(file, projectName, transactionId, 'transaction-images', onProgress, retryCount)
   }
 
   /**
-   * Upload a receipt image to Firebase Storage
+   * Upload a receipt image to Supabase Storage
    */
   static async uploadReceiptImage(
     file: File,
@@ -92,11 +85,11 @@ export class ImageUploadService {
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {
-    return this.uploadImageInternal(file, projectName, transactionId, 'receipt_images', onProgress, retryCount)
+    return this.uploadImageInternal(file, projectName, transactionId, 'receipt-images', onProgress, retryCount)
   }
 
   /**
-   * Upload an other image to Firebase Storage
+   * Upload an other image to Supabase Storage
    */
   static async uploadOtherImage(
     file: File,
@@ -105,17 +98,15 @@ export class ImageUploadService {
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {
-    return this.uploadImageInternal(file, projectName, transactionId, 'other_images', onProgress, retryCount)
+    return this.uploadImageInternal(file, projectName, transactionId, 'other-images', onProgress, retryCount)
   }
 
   /**
-   * Internal upload method with the new storage structure
+   * Upload business logo to Supabase Storage
    */
-  private static async uploadImageInternal(
+  static async uploadBusinessLogo(
+    accountId: string,
     file: File,
-    projectName: string,
-    id: string,
-    imageType: 'item_images' | 'transaction_images' | 'receipt_images' | 'other_images',
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {
@@ -123,108 +114,183 @@ export class ImageUploadService {
 
     console.log(`Upload attempt ${retryCount + 1}/${MAX_RETRIES + 1}`)
 
-    // Ensure authentication is established before storage operations
     await this.ensureAuthentication()
 
-    // Check storage availability
     const isStorageAvailable = await this.checkStorageAvailability()
     if (!isStorageAvailable) {
       throw new Error('Storage service is not available. Please check your connection and try again.')
     }
 
-    // Validate and potentially compress file for mobile
-    let processedFile = file
-    if (this.shouldCompressForMobile(file)) {
-      console.log('Compressing file for mobile upload...')
-      processedFile = await this.compressForMobile(file)
-    }
+    const processedFile = await this._prepareImageForUpload(file)
 
     if (!this.validateImageFile(processedFile)) {
-      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP) under 10MB.')
+      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP, HEIC/HEIF) under 10MB.')
     }
 
-    // Generate unique filename with datetime-based structure: {projectName}/{imageType}/{dateTime}/{timestamp}_{sanitizedFileName}
     const timestamp = Date.now()
     const sanitizedFileName = processedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const sanitizedProjectName = projectName.replace(/[^a-zA-Z0-9-]/g, '_')
-    const dateTime = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -1) // YYYY-MM-DDTHH-MM-SS format
-    const fileName = `${sanitizedProjectName}/${imageType}/${dateTime}/${timestamp}_${sanitizedFileName}`
+    const fileName = `accounts/${accountId}/business_profile/logo/${timestamp}_${sanitizedFileName}`
 
     console.log('Uploading to path:', fileName, 'Size:', processedFile.size, 'Type:', processedFile.type)
 
-    // Create storage reference
-    const storageRef = ref(storage, fileName)
-
     try {
-      // Upload with progress tracking using uploadBytesResumable
-      const uploadTask = uploadBytesResumable(storageRef, processedFile);
+      const { data, error } = await supabase.storage
+        .from('business-logos')
+        .upload(fileName, processedFile, {
+          cacheControl: '3600',
+          upsert: false
+        })
 
+      if (error) throw error
+
+      // Use the path returned from Supabase (may differ from generated fileName)
+      const uploadedPath = data?.path || fileName
+
+      // Simulate progress if callback provided
       if (onProgress) {
-        uploadTask.on('state_changed',
-          (snapshot) => {
-            const progress = {
-              loaded: snapshot.bytesTransferred,
-              total: snapshot.totalBytes,
-              percentage: (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            }
-            onProgress(progress)
-          },
-          (error) => {
-            console.error('Upload error:', error)
-            if (error.code === 'storage/retry-limit-exceeded' && retryCount < MAX_RETRIES) {
-              console.log(`Retrying upload (${retryCount + 1}/${MAX_RETRIES})...`)
-              // Retry with exponential backoff
-              setTimeout(() => {
-                this.uploadImageInternal(processedFile, projectName, id, imageType, onProgress, retryCount + 1)
-              }, Math.pow(2, retryCount) * 1000)
-            } else {
-              throw new Error('Failed to upload image. Please try again.')
-            }
-          }
-        )
+        onProgress({ loaded: processedFile.size, total: processedFile.size, percentage: 100 })
       }
 
-      // Wait for upload to complete with timeout
-      const snapshot = await Promise.race([
-        uploadTask,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Upload timeout after 60 seconds')), 60000)
-        )
-      ]) as any
+      // Get public URL using the actual uploaded path
+      const { data: urlData } = supabase.storage
+        .from('business-logos')
+        .getPublicUrl(uploadedPath)
 
-      // Get download URL for authenticated users
-      const downloadURL = await getDownloadURL(snapshot.ref)
-
-      console.log('Upload successful:', downloadURL)
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get public URL for uploaded file')
+      }
 
       return {
-        url: downloadURL,
-        fileName: processedFile.name,
+        url: urlData.publicUrl,
+        fileName: uploadedPath,
         size: processedFile.size,
         mimeType: processedFile.type
       }
     } catch (error: any) {
-      console.error('Error uploading image:', error)
-
-      // Handle specific Firebase errors
-      if (error.code === 'storage/retry-limit-exceeded' && retryCount < MAX_RETRIES) {
-        console.log(`Retrying upload due to retry limit exceeded (${retryCount + 1}/${MAX_RETRIES})...`)
-        // Wait a bit longer for retry
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 2000))
-        return this.uploadImageInternal(processedFile, projectName, id, imageType, onProgress, retryCount + 1)
+      if (retryCount < MAX_RETRIES) {
+        console.log(`Retrying upload (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
+        return this.uploadBusinessLogo(accountId, file, onProgress, retryCount + 1)
       }
 
-      if (error.message?.includes('timeout') || error.message?.includes('Upload timeout')) {
-        if (retryCount < MAX_RETRIES) {
-          console.log('Upload timed out, retrying with smaller file...')
-          const compressedFile = await this.compressForMobile(processedFile)
-          return this.uploadImageInternal(compressedFile, projectName, id, imageType, onProgress, retryCount + 1)
-        } else {
-          throw new Error('Upload timed out. Please try again with a smaller image or check your connection.')
-        }
+      const friendlyMessage = getUserFriendlyErrorMessage(error)
+      throw new ImageUploadError(friendlyMessage, error.code, error)
+    }
+  }
+
+  /**
+   * Pre-processes an image file for upload (compression, conversion)
+   */
+  private static async _prepareImageForUpload(file: File): Promise<File> {
+    let processedFile = file
+
+    // Compress images on mobile devices to save bandwidth
+    if (this.shouldCompressForMobile(processedFile)) {
+      console.log('Compressing file for mobile upload...')
+      processedFile = await this.compressForMobile(processedFile)
+    }
+
+    // If the file is HEIC/HEIF, attempt to convert it to JPEG for wider compatibility
+    const lowerName = processedFile.name.toLowerCase()
+    const isHeic =
+      (processedFile.type && (processedFile.type.toLowerCase().includes('heic') || processedFile.type.toLowerCase().includes('heif'))) ||
+      /\.(heic|heif)$/i.test(lowerName)
+
+    if (isHeic) {
+      try {
+        console.log('Converting HEIC/HEIF to JPEG before upload...')
+        processedFile = await convertImageFormat(processedFile, 'jpeg', 0.9)
+      } catch (err) {
+        console.warn('HEIC conversion failed:', err)
+        // Throw a user-friendly error if conversion fails
+        throw new ImageUploadError(
+          'Upload failed: Could not convert HEIC/HEIF image. Please convert it to JPEG or PNG and try again.',
+          undefined,
+          err
+        )
+      }
+    }
+    
+    return processedFile
+  }
+
+  /**
+   * Internal upload method
+   */
+  private static async uploadImageInternal(
+    file: File,
+    projectName: string,
+    id: string,
+    imageType: 'item-images' | 'transaction-images' | 'receipt-images' | 'other-images',
+    onProgress?: (progress: UploadProgress) => void,
+    retryCount: number = 0
+  ): Promise<ImageUploadResult> {
+    const MAX_RETRIES = 3
+
+    console.log(`Upload attempt ${retryCount + 1}/${MAX_RETRIES + 1}`)
+
+    await this.ensureAuthentication()
+
+    const isStorageAvailable = await this.checkStorageAvailability()
+    if (!isStorageAvailable) {
+      throw new Error('Storage service is not available. Please check your connection and try again.')
+    }
+
+    const processedFile = await this._prepareImageForUpload(file)
+
+    if (!this.validateImageFile(processedFile)) {
+      throw new Error('Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP, HEIC/HEIF) under 10MB.')
+    }
+
+    const timestamp = Date.now()
+    const sanitizedFileName = processedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const sanitizedProjectName = projectName.replace(/[^a-zA-Z0-9-]/g, '_')
+    const dateTime = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -1)
+    const fileName = `${sanitizedProjectName}/${imageType}/${dateTime}/${timestamp}_${sanitizedFileName}`
+
+    console.log('Uploading to path:', fileName, 'Size:', processedFile.size, 'Type:', processedFile.type)
+
+    try {
+      // Supabase Storage upload with progress simulation
+      const { data, error } = await supabase.storage
+        .from(imageType)
+        .upload(fileName, processedFile, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (error) throw error
+
+      // Use the path returned from Supabase (may differ from generated fileName)
+      const uploadedPath = data?.path || fileName
+
+      // Simulate progress if callback provided
+      if (onProgress) {
+        onProgress({ loaded: processedFile.size, total: processedFile.size, percentage: 100 })
       }
 
-      // Use enhanced error handling
+      // Get public URL using the actual uploaded path
+      const { data: urlData } = supabase.storage
+        .from(imageType)
+        .getPublicUrl(uploadedPath)
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get public URL for uploaded file')
+      }
+
+      return {
+        url: urlData.publicUrl,
+        fileName: uploadedPath,
+        size: processedFile.size,
+        mimeType: processedFile.type
+      }
+    } catch (error: any) {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`Retrying upload (attempt ${retryCount + 2}/${MAX_RETRIES + 1})...`)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
+        return this.uploadImageInternal(file, projectName, id, imageType, onProgress, retryCount + 1)
+      }
+
       const friendlyMessage = getUserFriendlyErrorMessage(error)
       throw new ImageUploadError(friendlyMessage, error.code, error)
     }
@@ -335,15 +401,19 @@ export class ImageUploadService {
   }
 
   /**
-   * Delete an image from Firebase Storage
+   * Delete an image from Supabase Storage
+   * Note: Changed signature to accept bucket and fileName instead of imageUrl
+   * for better compatibility with Supabase Storage API
    */
-  static async deleteImage(imageUrl: string): Promise<void> {
+  static async deleteImage(bucket: string, fileName: string): Promise<void> {
     try {
-      // Ensure authentication is established before storage operations
       await this.ensureAuthentication()
 
-      const imageRef = ref(storage, imageUrl)
-      await deleteObject(imageRef)
+      const { error } = await supabase.storage
+        .from(bucket)
+        .remove([fileName])
+
+      if (error) throw error
     } catch (error) {
       console.error('Error deleting image:', error)
       throw new Error('Failed to delete image')
@@ -352,9 +422,10 @@ export class ImageUploadService {
 
   /**
    * Delete multiple images
+   * Note: Changed to accept array of {bucket, fileName} objects
    */
-  static async deleteMultipleImages(imageUrls: string[]): Promise<void> {
-    const deletePromises = imageUrls.map(url => this.deleteImage(url))
+  static async deleteMultipleImages(images: Array<{ bucket: string; fileName: string }>): Promise<void> {
+    const deletePromises = images.map(({ bucket, fileName }) => this.deleteImage(bucket, fileName))
     await Promise.all(deletePromises)
   }
 
@@ -401,31 +472,53 @@ export class ImageUploadService {
    * Validate image file
    */
   static validateImageFile(file: File): boolean {
-    // Check file type
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      return false
+    // Check file type (allow common web image types plus HEIC/HEIF)
+    const allowedTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/heic',
+      'image/heif'
+    ]
+
+    // If the browser provides a MIME type, prefer that check
+    if (file.type && allowedTypes.includes(file.type.toLowerCase())) {
+      // Check file size (10MB limit)
+      const maxSize = 10 * 1024 * 1024 // 10MB
+      return file.size <= maxSize
     }
+
+    // Fallback: check file extension if MIME type is missing or unrecognized
+    const lowerName = file.name.toLowerCase()
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif']
+    const hasAllowedExtension = allowedExtensions.some(ext => lowerName.endsWith(ext))
+    if (!hasAllowedExtension) return false
 
     // Check file size (10MB limit)
     const maxSize = 10 * 1024 * 1024 // 10MB
-    if (file.size > maxSize) {
-      return false
-    }
-
-    return true
+    return file.size <= maxSize
   }
 
   /**
    * Get image metadata
+   * Note: Supabase Storage provides basic metadata through the file API
+   * This method returns basic info based on URL
    */
   static async getImageMetadata(imageUrl: string): Promise<any> {
     try {
-      // Ensure authentication is established before storage operations
       await this.ensureAuthentication()
-
-      const imageRef = ref(storage, imageUrl)
-      return await getMetadata(imageRef)
+      
+      // Supabase Storage provides metadata through the file API
+      return {
+        name: imageUrl.split('/').pop() || '',
+        fullPath: imageUrl,
+        size: null,
+        contentType: null,
+        timeCreated: null,
+        updated: null
+      }
     } catch (error) {
       console.error('Error getting image metadata:', error)
       return null
@@ -553,6 +646,9 @@ export class ImageUploadService {
    * Create a preview URL for a file
    */
   static createPreviewUrl(file: File): string {
+    if (typeof URL === 'undefined' || !URL.createObjectURL) {
+      throw new Error('URL.createObjectURL is not available in this environment')
+    }
     return URL.createObjectURL(file)
   }
 

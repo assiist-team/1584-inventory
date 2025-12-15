@@ -1,19 +1,28 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Bookmark, QrCode, Trash2, Edit, FileText, ImagePlus, ChevronDown, Copy } from 'lucide-react'
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
+import ContextBackLink from '@/components/ContextBackLink'
 import { Item, ItemImage } from '@/types'
-import { formatDate } from '@/utils/dateUtils'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { unifiedItemsService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
 import ImagePreview from '@/components/ui/ImagePreview'
+import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
+import { lineageService } from '@/services/lineageService'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { useAccount } from '@/contexts/AccountContext'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 
 export default function ItemDetail() {
   const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
-  const navigate = useNavigate()
+  const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
+  const navigate = useStackedNavigate()
+  const { currentAccountId } = useAccount()
   const [searchParams] = useSearchParams()
   const [item, setItem] = useState<Item | null>(null)
   const [projectName, setProjectName] = useState<string>('')
@@ -45,7 +54,8 @@ export default function ItemDetail() {
         setItem(items[0])
       }
     },
-    projectId
+    projectId,
+    accountId: currentAccountId || undefined
   })
 
   // Determine back navigation destination using navigation context
@@ -67,12 +77,14 @@ export default function ItemDetail() {
 
       if (actualItemId) {
         try {
+          if (!currentAccountId) return
+          
           if (isBusinessInventoryItem) {
             console.log('📦 Fetching business inventory item (no project context)...')
-            const fetchedItem = await unifiedItemsService.getItemById(actualItemId)
+            const fetchedItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
 
             if (fetchedItem) {
-              console.log('✅ Business inventory item loaded successfully:', fetchedItem.item_id)
+              console.log('✅ Business inventory item loaded successfully:', fetchedItem.itemId)
               setItem(fetchedItem)
               setProjectName('Business Inventory') // Set a default project name for UI display
             } else {
@@ -82,12 +94,12 @@ export default function ItemDetail() {
           } else if (projectId) {
             console.log('📡 Fetching item and project data...')
             const [fetchedItem, project] = await Promise.all([
-              unifiedItemsService.getItemById(actualItemId),
-              projectService.getProject(projectId)
+              unifiedItemsService.getItemById(currentAccountId, actualItemId),
+              projectService.getProject(currentAccountId, projectId)
             ])
 
             if (fetchedItem) {
-              console.log('✅ Item loaded successfully:', fetchedItem.item_id)
+              console.log('✅ Item loaded successfully:', fetchedItem.itemId)
               setItem(fetchedItem)
             } else {
               console.error('❌ Item not found in project:', projectId, 'with ID:', actualItemId)
@@ -113,20 +125,21 @@ export default function ItemDetail() {
     }
 
     fetchItem()
-  }, [actualItemId, id, searchParams])
+  }, [actualItemId, id, searchParams, currentAccountId])
 
   // Set up real-time listener for item updates
   useEffect(() => {
     const currentProjectId = id || searchParams.get('project')
-    if (!currentProjectId || !actualItemId) return
+    if (!currentProjectId || !actualItemId || !currentAccountId) return
 
     console.log('Setting up real-time listener for item:', actualItemId)
 
-    const unsubscribe = unifiedItemsService.subscribeToItemsByProject(
+    const unsubscribe = unifiedItemsService.subscribeToProjectItems(
+      currentAccountId,
       currentProjectId,
-      (items) => {
+      (items: Item[]) => {
         console.log('Real-time items update:', items.length, 'items')
-        const updatedItem = items.find(item => item.item_id === actualItemId)
+        const updatedItem = items.find((item: Item) => item.itemId === actualItemId)
         if (updatedItem) {
           console.log('Found updated item with', updatedItem.images?.length || 0, 'images')
           setItem(updatedItem)
@@ -138,7 +151,27 @@ export default function ItemDetail() {
       console.log('Cleaning up real-time listener for item:', actualItemId)
       unsubscribe()
     }
-  }, [searchParams, actualItemId, id])
+  }, [searchParams, actualItemId, id, currentAccountId])
+
+  // Subscribe to item-lineage edges for this item and refetch the item when an edge arrives
+  useEffect(() => {
+    if (!actualItemId || !currentAccountId) return
+
+    const unsubscribe = lineageService.subscribeToItemLineageForItem(currentAccountId, actualItemId, async () => {
+      try {
+        const updatedItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
+        if (updatedItem) {
+          setItem(updatedItem)
+        }
+      } catch (err) {
+        console.debug('ItemDetail - failed to refetch item on lineage event', err)
+      }
+    })
+
+    return () => {
+      try { unsubscribe() } catch (err) { /* noop */ }
+    }
+  }, [actualItemId, currentAccountId])
 
   // Close disposition menu when clicking outside
   useEffect(() => {
@@ -176,10 +209,10 @@ export default function ItemDetail() {
   }, [])
 
   const toggleBookmark = async () => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     try {
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         bookmark: !item.bookmark
       })
       setItem({ ...item, bookmark: !item.bookmark })
@@ -189,9 +222,9 @@ export default function ItemDetail() {
   }
 
   const updateDisposition = async (newDisposition: string) => {
-    console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.item_id)
+    console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.itemId)
 
-    if (!item) {
+    if (!item || !currentAccountId) {
       console.error('❌ No item available for disposition update')
       return
     }
@@ -200,7 +233,7 @@ export default function ItemDetail() {
 
     try {
       // Update the disposition in the database first
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         disposition: newDisposition
       })
       console.log('💾 Database updated successfully')
@@ -211,23 +244,24 @@ export default function ItemDetail() {
 
       // If disposition is set to 'inventory', trigger deallocation process
       if (newDisposition === 'inventory') {
-        console.log('🚀 Starting deallocation process for item:', item.item_id)
+        console.log('🚀 Starting deallocation process for item:', item.itemId)
         try {
           await integrationService.handleItemDeallocation(
-            item.item_id,
-            item.project_id || '',
+            currentAccountId,
+            item.itemId,
+            item.projectId || '',
             newDisposition
           )
           console.log('✅ Deallocation completed successfully')
           // Refresh the item data after deallocation
-          const updatedItem = await unifiedItemsService.getItemById(item.item_id)
+          const updatedItem = await unifiedItemsService.getItemById(currentAccountId, item.itemId)
           if (updatedItem) {
             setItem(updatedItem)
           }
         } catch (deallocationError) {
           console.error('❌ Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
-          await unifiedItemsService.updateItem(item.item_id, {
+          await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
             disposition: item.disposition // Revert to previous disposition
           })
           setItem({ ...item, disposition: item.disposition })
@@ -241,18 +275,18 @@ export default function ItemDetail() {
   }
 
   const toggleDispositionMenu = () => {
-    console.log('🖱️ toggleDispositionMenu called, current state:', openDispositionMenu, 'item:', item?.item_id)
+    console.log('🖱️ toggleDispositionMenu called, current state:', openDispositionMenu, 'item:', item?.itemId)
     setOpenDispositionMenu(!openDispositionMenu)
   }
 
   const getDispositionBadgeClasses = (disposition: string) => {
     const baseClasses = 'inline-flex items-center px-3 py-2 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
 
-    switch (disposition) {
+    switch (d) {
       case 'keep':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
-      case 'return': // Backward compatibility for old disposition
         return `${baseClasses} bg-red-100 text-red-700`
       case 'returned':
         return `${baseClasses} bg-red-800 text-red-100`
@@ -264,14 +298,14 @@ export default function ItemDetail() {
   }
 
   const handleDeleteItem = async () => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     if (!confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
       return
     }
 
     try {
-      await unifiedItemsService.deleteItem(item.item_id)
+      await unifiedItemsService.deleteItem(currentAccountId, item.itemId)
       navigate(isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`)
     } catch (error) {
       console.error('Failed to delete item:', error)
@@ -294,7 +328,7 @@ export default function ItemDetail() {
       const uploadResults = await ImageUploadService.uploadMultipleItemImages(
         files,
         projectName || 'Business Inventory',
-        item.item_id,
+        item.itemId,
         (fileIndex, progress) => {
           // Show progress for current file being uploaded
           const overallProgress = Math.round(((fileIndex + progress.percentage / 100) / files.length) * 100)
@@ -325,9 +359,9 @@ export default function ItemDetail() {
       console.log('After update - updatedImages length:', updatedImages.length)
       console.log('New images URLs:', newImages.map(img => img.url))
 
-      if (projectId) {
+      if (projectId && currentAccountId) {
         console.log('Updating item in database with multiple new images')
-        await unifiedItemsService.updateItem(item.item_id, { images: updatedImages })
+        await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
       }
 
       // Update local state
@@ -380,11 +414,11 @@ export default function ItemDetail() {
 
 
   const handleRemoveImage = async (imageUrl: string) => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     try {
       // Remove from database
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         images: item.images?.filter(img => img.url !== imageUrl) || []
       })
 
@@ -400,11 +434,11 @@ export default function ItemDetail() {
   }
 
   const handleSetPrimaryImage = async (imageUrl: string) => {
-    if (!item) return
+    if (!item || !currentAccountId) return
 
     try {
       // Update in database
-      await unifiedItemsService.updateItem(item.item_id, {
+      await unifiedItemsService.updateItem(currentAccountId, item.itemId, {
         images: item.images?.map(img => ({
           ...img,
           isPrimary: img.url === imageUrl
@@ -428,14 +462,14 @@ export default function ItemDetail() {
   if (!item) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center space-x-4">
-          <Link
-            to={backDestination}
+      <div className="flex items-center space-x-4">
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
         <div className="bg-white shadow rounded-lg">
           <div className="px-4 py-5 sm:p-6">
@@ -457,13 +491,13 @@ export default function ItemDetail() {
       >
         {/* Back button and controls row */}
         <div className="flex items-center justify-between gap-4">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
 
           <div className="flex flex-wrap gap-2 sm:space-x-2">
             <button
@@ -478,32 +512,34 @@ export default function ItemDetail() {
               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
             </button>
 
-            <Link
+            <ContextLink
               to={isBusinessInventoryItem
-                ? `/business-inventory/${item.item_id}/edit?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
-                : `/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
+                ? buildContextUrl(`/business-inventory/${item.itemId}/edit`)
+              : buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId || '' })
               }
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
             >
               <Edit className="h-4 w-4" />
-            </Link>
+            </ContextLink>
 
             <button
-              onClick={() => duplicateItem(item.item_id)}
+              onClick={() => duplicateItem(item.itemId)}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Duplicate Item"
             >
               <Copy className="h-4 w-4" />
             </button>
 
-            <button
-              className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              onClick={() => window.open(`/qr-image/${item.qr_key}`, '_blank')}
-              title="View QR Code"
-            >
-              <QrCode className="h-4 w-4" />
-            </button>
+            {ENABLE_QR && (
+              <button
+                className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                onClick={() => window.open(`/qr-image/${item.qrKey}`, '_blank')}
+                title="View QR Code"
+              >
+                <QrCode className="h-4 w-4" />
+              </button>
+            )}
 
 
             <div className="relative">
@@ -511,7 +547,7 @@ export default function ItemDetail() {
                 onClick={toggleDispositionMenu}
                 className={`disposition-badge ${getDispositionBadgeClasses(item.disposition || 'keep')}`}
               >
-                {item.disposition === 'to return' ? 'To Return' : (item.disposition || 'keep').charAt(0).toUpperCase() + (item.disposition || 'keep').slice(1)}
+                {displayDispositionLabel(item.disposition)}
                 <ChevronDown className="h-3 w-3 ml-1" />
               </span>
 
@@ -524,9 +560,7 @@ export default function ItemDetail() {
                         key={disposition}
                         onClick={() => updateDisposition(disposition)}
                         className={`block w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
-                          (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'text-gray-700'
+                          dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
                         }`}
                       >
                         {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
@@ -610,34 +644,54 @@ export default function ItemDetail() {
                 </div>
               )}
 
-              {item.purchase_price && (
+              {item.space && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Space</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{item.space}</dd>
+                </div>
+              )}
+
+              {item.purchasePrice && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Purchase Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the item was purchased for</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.purchase_price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(item.purchasePrice)}</dd>
+                  {item.taxAmountPurchasePrice !== undefined && (
+                    <p className="mt-1 text-sm text-gray-600">Tax on purchase: {formatCurrency(item.taxAmountPurchasePrice)}</p>
+                  )}
                 </div>
               )}
 
-              {item.project_price && (
+              {item.projectPrice && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Project Price</dt>
                   <p className="text-xs text-gray-500 mt-1">What the client is charged</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.project_price}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{formatCurrency(item.projectPrice)}</dd>
+                  {item.taxAmountProjectPrice !== undefined && (
+                    <p className="mt-1 text-sm text-gray-600">Tax on project: {formatCurrency(item.taxAmountProjectPrice)}</p>
+                  )}
                 </div>
               )}
 
-              {item.market_value && (
+              {item.marketValue && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Market Value</dt>
                   <p className="text-xs text-gray-500 mt-1">The fair market value of the item</p>
-                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.market_value}</dd>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">${item.marketValue}</dd>
+                </div>
+              )}
+              {item.taxRatePct !== undefined && (
+                <div>
+                  <dt className="text-sm font-medium text-gray-500">Tax Rate</dt>
+                  <p className="text-xs text-gray-500 mt-1">Applied tax rate for this item</p>
+                  <dd className="mt-1 text-sm text-gray-900 font-medium">{item.taxRatePct}%</dd>
                 </div>
               )}
 
-              {item.payment_method && (
+              {item.paymentMethod && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Payment Method</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{item.payment_method}</dd>
+                  <dd className="mt-1 text-sm text-gray-900">{item.paymentMethod}</dd>
                 </div>
               )}
 
@@ -660,23 +714,33 @@ export default function ItemDetail() {
                   <dd className="mt-1 text-sm text-gray-900">{projectName}</dd>
                 </div>
                 <div>
+                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
+                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.dateCreated)}</dd>
+                </div>
+                <div>
                   <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transaction</dt>
                   <dd className="mt-1 text-sm text-gray-900">
-                    <Link
+                    <ContextLink
                       to={isBusinessInventoryItem
-                        ? buildContextUrl(`/business-inventory/transaction/${item.transaction_id}`)
-                        : buildContextUrl(`/project/${projectId}/transaction/${item.transaction_id}`)
+                        ? buildContextUrl(`/business-inventory/transaction/${item.transactionId}`)
+                        : buildContextUrl(`/project/${projectId}/transaction/${item.transactionId}`)
                       }
                       className="text-primary-600 hover:text-primary-800 underline"
                     >
-                      {item.transaction_id}
-                    </Link>
+                      {item.transactionId
+                        ? item.transactionId.startsWith('INV_PURCHASE')
+                          ? 'INV_PURCHASE...'
+                          : (item.transactionId.length > 12 ? `${item.transactionId.slice(0, 12)}...` : item.transactionId)
+                        : ''}
+                    </ContextLink>
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Created</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatDate(item.date_created)}</dd>
+              {/* Lineage breadcrumb (compact) */}
+              {item.itemId && (
+                <div className="sm:col-span-3 mt-2">
+                  <ItemLineageBreadcrumb itemId={item.itemId} />
                 </div>
+              )}
               </dl>
 
               {/* Delete button in lower right corner */}

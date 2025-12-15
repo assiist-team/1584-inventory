@@ -7,17 +7,9 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, loading, user } = useAuth()
+  const { isAuthenticated, loading, userLoading, user, timedOutWithoutAuth } = useAuth()
 
-  console.log('🛡️ ProtectedRoute:', {
-    isAuthenticated,
-    loading,
-    hasUser: !!user,
-    userEmail: user?.email || 'none'
-  })
-
-  if (loading) {
-    console.log('⏳ ProtectedRoute: Still loading...')
+  if (loading || userLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -25,18 +17,18 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     )
   }
 
-  if (!isAuthenticated) {
-    console.log('🚫 ProtectedRoute: Not authenticated, showing login')
+  // If auth timed out without establishing authentication, show login
+  if (timedOutWithoutAuth || !isAuthenticated || !user) {
+    if (import.meta.env.DEV) {
+      // Minimal gating telemetry (no PII)
+      console.log('[ProtectedRoute] Redirecting to <Login />', {
+        timedOutWithoutAuth,
+        isAuthenticated,
+        hasUser: !!user
+      })
+    }
     return <Login />
   }
 
-  // Check if user has proper authentication
-  // We check for user.email instead of just firebaseUser to ensure we have complete user data
-  if (!user?.email) {
-    console.log('🚫 ProtectedRoute: No user email, showing login')
-    return <Login />
-  }
-
-  console.log('✅ ProtectedRoute: Access granted')
   return <>{children}</>
 }

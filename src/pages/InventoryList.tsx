@@ -1,83 +1,88 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
-import { ItemImage } from '@/types'
+import { Item, ItemImage } from '@/types'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
-
-interface InventoryListItem {
-  item_id: string
-  description: string
-  source: string
-  sku: string
-  purchase_price?: string
-  project_price?: string
-  market_value?: string
-  payment_method: string
-  notes?: string
-  space?: string
-  qr_key: string
-  bookmark: boolean
-  disposition?: string
-  date_created: string
-  last_updated: string
-  transaction_id: string
-  project_id?: string | null
-  images?: ItemImage[]
-}
+import { useAccount } from '@/contexts/AccountContext'
 
 interface InventoryListProps {
   projectId: string
   projectName: string
+  items: Item[]
 }
 
-export default function InventoryList({ projectId, projectName }: InventoryListProps) {
+export default function InventoryList({ projectId, projectName, items: propItems }: InventoryListProps) {
+  const { currentAccountId, loading: accountLoading } = useAccount()
+  const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
-  const [items, setItems] = useState<InventoryListItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<Item[]>(propItems || [])
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Show loading spinner only if account is loading - items come from props (parent handles that loading)
+  const isLoading = accountLoading
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const { showSuccess, showError } = useToast()
 
-  // Fetch real inventory data from Firestore
+  // Debug logging
   useEffect(() => {
-    const fetchItems = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        console.log('Fetching items for project:', projectId)
-        const realItems = await unifiedItemsService.getItemsByProject(projectId)
-        console.log('Fetched items:', realItems.length, realItems)
-        setItems(realItems)
-      } catch (error) {
-        console.error('Failed to fetch items:', error)
-        setError('Failed to load inventory items. Please try again.')
-      } finally {
-        setLoading(false)
-      }
+    console.log('🔍 InventoryList - accountLoading:', accountLoading, 'propItems length:', propItems?.length || 0, 'isLoading:', isLoading)
+  }, [accountLoading, propItems, isLoading])
+
+  useEffect(() => {
+    console.log('🔍 InventoryList - propItems changed:', propItems?.length || 0)
+    setItems(propItems || [])
+  }, [propItems])
+
+  // Per-visible-item lineage subscriptions: when an item has a lineage edge, refetch that item and update/remove as needed
+  useEffect(() => {
+    if (!currentAccountId || items.length === 0) return
+
+    const unsubMap = new Map<string, () => void>()
+    try {
+      items.forEach(item => {
+        if (!item?.itemId) return
+        const unsub = lineageService.subscribeToItemLineageForItem(currentAccountId, item.itemId, async () => {
+          try {
+            const updated = await unifiedItemsService.getItemById(currentAccountId, item.itemId)
+            if (updated) {
+              // If updated item still belongs to this project, update it; otherwise remove it from the list
+              if (updated.projectId === projectId) {
+                setItems(prev => prev.map(i => i.itemId === updated.itemId ? updated : i))
+              } else {
+                setItems(prev => prev.filter(i => i.itemId !== updated.itemId))
+              }
+            }
+          } catch (err) {
+            console.debug('InventoryList - failed to refetch item on lineage event', err)
+          }
+        })
+        unsubMap.set(item.itemId, unsub)
+      })
+    } catch (err) {
+      console.debug('InventoryList - failed to setup per-item lineage subscriptions', err)
     }
 
-    fetchItems()
-
-    // Subscribe to real-time updates
-    const unsubscribe = unifiedItemsService.subscribeToItemsByProject(projectId, (updatedItems) => {
-      console.log('Real-time items update:', updatedItems.length, updatedItems)
-      setItems(updatedItems)
-    })
-
-    // Cleanup subscription on unmount
     return () => {
-      unsubscribe()
+      unsubMap.forEach(u => {
+        try { u() } catch (e) { /* noop */ }
+      })
     }
-  }, [projectId])
+  }, [items.map(i => i.itemId).join(','), currentAccountId, projectId])
+
+ 
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
@@ -108,7 +113,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedItems(new Set(items.map(item => item.item_id)))
+      setSelectedItems(new Set(items.map(item => item.itemId)))
     } else {
       setSelectedItems(new Set())
     }
@@ -125,10 +130,13 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
   }
 
   // Use centralized bookmark hook
-  const { toggleBookmark } = useBookmark<InventoryListItem>({
+  const { toggleBookmark } = useBookmark<Item>({
     items,
     setItems,
-    updateItemService: (itemId, updates) => unifiedItemsService.updateItem(itemId, updates),
+    updateItemService: (itemId, updates) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
+      return unifiedItemsService.updateItem(currentAccountId, itemId, updates)
+    },
     projectId
   })
 
@@ -146,7 +154,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     console.log('🎯 InventoryList updateDisposition called:', itemId, newDisposition)
 
     try {
-      const item = items.find((item: InventoryListItem) => item.item_id === itemId)
+      const item = items.find((item: Item) => item.itemId === itemId)
       if (!item) {
         console.error('❌ Item not found for disposition update:', itemId)
         return
@@ -154,8 +162,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
       console.log('📝 Updating disposition from', item.disposition, 'to', newDisposition)
 
-      // Update in Firestore
-      await unifiedItemsService.updateItem(itemId, { disposition: newDisposition })
+      // Update in Supabase
+      if (!currentAccountId) throw new Error('Account ID is required')
+      await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: newDisposition })
       console.log('💾 Database updated successfully')
 
       // If disposition is set to 'inventory', trigger deallocation process
@@ -163,8 +172,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         console.log('🚀 Starting deallocation process for item:', itemId)
         try {
           await integrationService.handleItemDeallocation(
+            currentAccountId,
             itemId,
-            item.project_id || '',
+            item.projectId || '',
             newDisposition
           )
           console.log('✅ Deallocation completed successfully')
@@ -173,7 +183,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
         } catch (deallocationError) {
           console.error('❌ Failed to handle deallocation:', deallocationError)
           // Revert the disposition change if deallocation fails
-          await unifiedItemsService.updateItem(itemId, {
+          await unifiedItemsService.updateItem(currentAccountId, itemId, {
             disposition: item.disposition // Revert to previous disposition
           })
           setError('Failed to move item to inventory. Please try again.')
@@ -182,7 +192,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       } else {
         // For non-inventory dispositions, update local state optimistically
         setItems(items.map(item =>
-          item.item_id === itemId
+          item.itemId === itemId
             ? { ...item, disposition: newDisposition }
             : item
         ))
@@ -202,12 +212,12 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
 
   const getDispositionBadgeClasses = (disposition?: string) => {
     const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
 
-    switch (disposition) {
+    switch (d) {
       case 'keep':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
-      case 'return': // Backward compatibility for old disposition
         return `${baseClasses} bg-red-100 text-red-700`
       case 'returned':
         return `${baseClasses} bg-red-800 text-red-100`
@@ -270,7 +280,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     }
 
     // Update the item with the new image
-    await unifiedItemsService.updateItem(itemId, { images: [newImage] })
+    if (!currentAccountId) throw new Error('Account ID is required')
+    await unifiedItemsService.updateItem(currentAccountId, itemId, { images: [newImage] })
     // The real-time listener will handle the UI update
 
     // Show success notification on the last file
@@ -289,9 +300,13 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       return
     }
 
+    if (!currentAccountId) {
+      setError('Account ID is required')
+      return
+    }
     try {
       const deletePromises = Array.from(selectedItems).map(itemId =>
-        unifiedItemsService.deleteItem(itemId)
+        unifiedItemsService.deleteItem(currentAccountId, itemId)
       )
 
       await Promise.all(deletePromises)
@@ -307,8 +322,8 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     // Apply search filter
     const matchesSearch = item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.source.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.payment_method.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.paymentMethod?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.space && item.space.toLowerCase().includes(searchQuery.toLowerCase()))
 
     // Apply filter based on filterMode
@@ -337,13 +352,13 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
-        <Link
-          to={`/project/${projectId}/item/add`}
+        <ContextLink
+          to={buildContextUrl(`/project/${projectId}/item/add`, { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Item
-        </Link>
+        </ContextLink>
       </div>
 
       {/* Search and Controls - Sticky Container */}
@@ -454,13 +469,15 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                 )}
               </div>
 
-              <button
-                className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
-                disabled={selectedItems.size === 0}
-                title="Generate QR Codes"
-              >
-                <QrCode className="h-4 w-4" />
-              </button>
+              {ENABLE_QR && (
+                <button
+                  className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
+                  disabled={selectedItems.size === 0}
+                  title="Generate QR Codes"
+                >
+                  <QrCode className="h-4 w-4" />
+                </button>
+              )}
 
               <button
                 onClick={handleBulkDelete}
@@ -477,7 +494,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {isLoading && (
         <div className="text-center py-12 px-4">
           <div className="mx-auto h-16 w-16 text-gray-400 animate-spin mb-4">
             <svg fill="none" viewBox="0 0 24 24">
@@ -507,7 +524,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
       )}
 
       {/* Items List */}
-      {!loading && !error && filteredItems.length === 0 ? (
+      {!isLoading && !error && filteredItems.length === 0 ? (
         <div className="text-center py-12 px-4">
           <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">📦</div>
           <h3 className="text-lg font-medium text-gray-900 mb-1">
@@ -515,19 +532,19 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
           </h3>
         </div>
       ) : (
-        !loading && !error && (
+        !isLoading && !error && (
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
               {filteredItems.map((item) => (
-                <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
+                <li key={item.itemId} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                   {/* Top row: Controls - stays outside Link */}
                   <div className="flex items-center justify-between mb-0 px-4 py-3">
                     <div className="flex items-center">
                       <input
                         type="checkbox"
                         className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4 flex-shrink-0"
-                        checked={selectedItems.has(item.item_id)}
-                        onChange={(e) => handleSelectItem(item.item_id, e.target.checked)}
+                        checked={selectedItems.has(item.itemId)}
+                        onChange={(e) => handleSelectItem(item.itemId, e.target.checked)}
                       />
                     </div>
 
@@ -537,7 +554,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          toggleBookmark(item.item_id)
+                          toggleBookmark(item.itemId)
                         }}
                         className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md transition-colors ${
                           item.bookmark
@@ -548,19 +565,19 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                       >
                         <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
-                      <Link
-                        to={`/project/${projectId}/edit-item/${item.item_id}?project=${projectId}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+                      <ContextLink
+                        to={buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId })}
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Edit item"
                       >
                         <Edit className="h-4 w-4" />
-                      </Link>
+                      </ContextLink>
                       <button
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          duplicateItem(item.item_id)
+                          duplicateItem(item.itemId)
                         }}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Duplicate item"
@@ -572,16 +589,16 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              toggleDispositionMenu(item.item_id)
+                              toggleDispositionMenu(item.itemId)
                             }}
                           className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
                         >
-                          {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
+                          {displayDispositionLabel(item.disposition) || 'Not Set'}
                             <ChevronDown className="h-3 w-3 ml-1" />
                           </span>
 
                           {/* Dropdown menu */}
-                          {openDispositionMenu === item.item_id && (
+                          {openDispositionMenu === item.itemId && (
                             <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                               <div className="py-1">
                                 {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
@@ -590,12 +607,10 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                                     onClick={(e) => {
                                       e.preventDefault()
                                       e.stopPropagation()
-                                      updateDisposition(item.item_id, disposition)
+                                      updateDisposition(item.itemId, disposition)
                                     }}
                                     className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
-                                      (item.disposition === disposition) || (disposition === 'to return' && item.disposition === 'return')
-                                        ? 'bg-gray-100 text-gray-900'
-                                        : 'text-gray-700'
+                                      dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
                                     }`}
                                     disabled={!item.disposition}
                                   >
@@ -610,7 +625,7 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                   </div>
 
                   {/* Main tappable content - wrapped in Link */}
-                  <Link to={buildContextUrl(`/item/${item.item_id}`, { project: projectId })}>
+                  <ContextLink to={buildContextUrl(`/item/${item.itemId}`, { project: projectId })}>
                     <div className="block bg-transparent">
                       <div className="px-4 pb-3 sm:px-6">
                         {/* Middle row: Thumbnail and Description - now tappable */}
@@ -636,9 +651,9 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
-                                  handleAddImage(item.item_id)
+                                  handleAddImage(item.itemId)
                                 }}
-                                disabled={uploadingImages.has(item.item_id)}
+                                disabled={uploadingImages.has(item.itemId)}
                                 className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
                                 title="Add image (camera or gallery)"
                               >
@@ -667,18 +682,18 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         <div className="space-y-2">
                           {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                            {(item.project_price || item.purchase_price) && (
-                              <span className="font-medium text-gray-700">${item.project_price || item.purchase_price}</span>
+                            {(item.projectPrice || item.purchasePrice) && (
+                              <span className="font-medium text-gray-700">${item.projectPrice || item.purchasePrice}</span>
                             )}
                             {item.source && (
                               <>
-                                {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                                {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.source}</span>
                               </>
                             )}
                             {item.sku && (
                               <>
-                                {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                                {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
                                 <span className="font-medium text-gray-700">{item.sku}</span>
                               </>
                             )}
@@ -686,10 +701,11 @@ export default function InventoryList({ projectId, projectName }: InventoryListP
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </ContextLink>
                 </li>
               ))}
             </ul>
+            
           </div>
         )
       )}

@@ -1,12 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { ArrowLeft, Save, X } from 'lucide-react'
 import { Item } from '@/types'
 import { unifiedItemsService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
 
 export default function EditBusinessInventoryItem() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
+  const location = useLocation()
+  const { currentAccountId } = useAccount()
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [item, setItem] = useState<Item | null>(null)
@@ -14,18 +19,30 @@ export default function EditBusinessInventoryItem() {
   // Track if user has manually edited project_price
   const projectPriceEditedRef = useRef(false)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    description: string;
+    source: string;
+    sku: string;
+    purchasePrice: string;
+    projectPrice: string;
+    marketValue: string;
+    disposition: string;
+    notes: string;
+    bookmark: boolean;
+    businessInventoryLocation: string;
+    inventoryStatus: 'available' | 'allocated' | 'sold' | undefined;
+  }>({
     description: '',
     source: '',
     sku: '',
-    purchase_price: '',
-    project_price: '',
-    market_value: '',
-    disposition: 'keep',
+    purchasePrice: '',
+    projectPrice: '',
+    marketValue: '',
+    disposition: 'inventory',
     notes: '',
     bookmark: false,
-    business_inventory_location: '',
-    inventory_status: 'available' as 'available' | 'pending' | 'sold' | undefined
+    businessInventoryLocation: '',
+    inventoryStatus: 'available' as 'available' | 'allocated' | 'sold' | undefined
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -41,37 +58,33 @@ export default function EditBusinessInventoryItem() {
   }, [location.search])
 
   useEffect(() => {
-    if (id) {
+    if (id && currentAccountId) {
       loadItem()
     }
-  }, [id])
+  }, [id, currentAccountId])
 
-  // Auto-fill project_price when purchase_price is set and project_price is empty and hasn't been manually edited
-  useEffect(() => {
-    if (formData.purchase_price && !formData.project_price && !projectPriceEditedRef.current) {
-      setFormData(prev => ({ ...prev, project_price: formData.purchase_price }))
-    }
-  }, [formData.purchase_price]) // Only depend on purchase_price, not project_price
+  // NOTE: Do not auto-fill projectPrice while the user is typing. Defaulting to
+  // purchasePrice should happen only when the user saves the item.
 
   const loadItem = async () => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
     try {
-      const itemData = await unifiedItemsService.getItemById(id)
+      const itemData = await unifiedItemsService.getItemById(currentAccountId, id)
       if (itemData) {
         setItem(itemData)
         setFormData({
           description: itemData.description,
           source: itemData.source,
           sku: itemData.sku,
-          purchase_price: itemData.purchase_price || '',
-          project_price: itemData.project_price || '',
-          market_value: itemData.market_value || '',
-          disposition: itemData.disposition || 'keep',
+          purchasePrice: itemData.purchasePrice || '',
+          projectPrice: itemData.projectPrice || '',
+          marketValue: itemData.marketValue || '',
+          disposition: itemData.disposition === 'keep' ? 'inventory' : (itemData.disposition || 'inventory'),
           notes: itemData.notes || '',
           bookmark: itemData.bookmark,
-          business_inventory_location: itemData.business_inventory_location || '',
-          inventory_status: itemData.inventory_status
+          businessInventoryLocation: itemData.businessInventoryLocation || '',
+          inventoryStatus: itemData.inventoryStatus
         })
       }
     } catch (error) {
@@ -84,8 +97,8 @@ export default function EditBusinessInventoryItem() {
   const handleInputChange = (field: keyof typeof formData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
-    // Mark project_price as manually edited if user is editing it
-    if (field === 'project_price') {
+    // Mark projectPrice as manually edited if user is editing it
+    if (field === 'projectPrice') {
       projectPriceEditedRef.current = true
     }
 
@@ -109,14 +122,21 @@ export default function EditBusinessInventoryItem() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!id || !validateForm()) {
+    if (!id || !validateForm() || !currentAccountId) {
       return
     }
 
     setIsSubmitting(true)
 
     try {
-      await unifiedItemsService.updateItem(id, formData)
+      // Default projectPrice to purchasePrice only at save time when projectPrice
+      // was left blank by the user.
+      const payload = { ...formData }
+      if (!payload.projectPrice && payload.purchasePrice) {
+        payload.projectPrice = payload.purchasePrice
+      }
+
+      await unifiedItemsService.updateItem(currentAccountId, id, payload)
       navigate(`/business-inventory/${id}`)
     } catch (error) {
       console.error('Error updating item:', error)
@@ -137,7 +157,7 @@ export default function EditBusinessInventoryItem() {
 
   if (!item) {
     return (
-      <div className="text-center py-12 px-4">
+        <div className="text-center py-12 px-4">
         <div className="mx-auto h-16 w-16 text-gray-400 -mb-1">📦</div>
         <h3 className="text-lg font-medium text-gray-900 mb-1">
           Item not found
@@ -145,12 +165,12 @@ export default function EditBusinessInventoryItem() {
         <p className="text-sm text-gray-500 mb-4">
           The item you're looking for doesn't exist or has been deleted.
         </p>
-        <Link
-            to={backDestination}
+        <ContextBackLink
+            fallback={backDestination}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
         >
           Back to Inventory
-        </Link>
+        </ContextBackLink>
       </div>
     )
   }
@@ -161,13 +181,13 @@ export default function EditBusinessInventoryItem() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
 
@@ -234,7 +254,7 @@ export default function EditBusinessInventoryItem() {
 
             {/* Purchase Price */}
             <div>
-              <label htmlFor="purchase_price" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-700">
                 Purchase Price
               </label>
               <p className="text-xs text-gray-500 mt-1 mb-2">What the item was purchased for</p>
@@ -245,23 +265,23 @@ export default function EditBusinessInventoryItem() {
                 <input
                   type="number"
                   step="0.01"
-                  id="purchase_price"
-                  value={formData.purchase_price}
-                  onChange={(e) => handleInputChange('purchase_price', e.target.value)}
+                  id="purchasePrice"
+                  value={formData.purchasePrice}
+                  onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
                   placeholder="0.00"
                   className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    formErrors.purchase_price ? 'border-red-300' : 'border-gray-300'
+                    formErrors.purchasePrice ? 'border-red-300' : 'border-gray-300'
                   }`}
                 />
               </div>
-              {formErrors.purchase_price && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.purchase_price}</p>
+              {formErrors.purchasePrice && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.purchasePrice}</p>
               )}
             </div>
 
           {/* Project Price */}
           <div>
-            <label htmlFor="project_price" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="projectPrice" className="block text-sm font-medium text-gray-700">
               Project Price
             </label>
             <p className="text-xs text-gray-500 mt-1 mb-2">What the client is charged (defaults to purchase price)</p>
@@ -272,23 +292,23 @@ export default function EditBusinessInventoryItem() {
               <input
                 type="number"
                 step="0.01"
-                id="project_price"
-                value={formData.project_price}
-                onChange={(e) => handleInputChange('project_price', e.target.value)}
+                id="projectPrice"
+                value={formData.projectPrice}
+                onChange={(e) => handleInputChange('projectPrice', e.target.value)}
                 placeholder="0.00"
                 className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  formErrors.project_price ? 'border-red-300' : 'border-gray-300'
+                  formErrors.projectPrice ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
             </div>
-            {formErrors.project_price && (
-              <p className="mt-1 text-sm text-red-600">{formErrors.project_price}</p>
+            {formErrors.projectPrice && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.projectPrice}</p>
             )}
           </div>
 
             {/* Market Value */}
             <div>
-              <label htmlFor="market_value" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="marketValue" className="block text-sm font-medium text-gray-700">
                 Market Value
               </label>
               <p className="text-xs text-gray-500 mt-1 mb-2">The fair market value of the item</p>
@@ -299,9 +319,9 @@ export default function EditBusinessInventoryItem() {
                 <input
                   type="number"
                   step="0.01"
-                  id="market_value"
-                  value={formData.market_value}
-                  onChange={(e) => handleInputChange('market_value', e.target.value)}
+                  id="marketValue"
+                  value={formData.marketValue}
+                  onChange={(e) => handleInputChange('marketValue', e.target.value)}
                   placeholder="0.00"
                   className="mt-1 block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 />
@@ -310,22 +330,42 @@ export default function EditBusinessInventoryItem() {
 
             {/* Storage Location */}
             <div>
-              <label htmlFor="business_inventory_location" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="businessInventoryLocation" className="block text-sm font-medium text-gray-700">
                 Storage Location
               </label>
               <input
                 type="text"
-                id="business_inventory_location"
-                value={formData.business_inventory_location}
-                onChange={(e) => handleInputChange('business_inventory_location', e.target.value)}
+                id="businessInventoryLocation"
+                value={formData.businessInventoryLocation}
+                onChange={(e) => handleInputChange('businessInventoryLocation', e.target.value)}
                 placeholder="e.g., Warehouse A - Section 3 - Shelf 5"
                 className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                  formErrors.business_inventory_location ? 'border-red-300' : 'border-gray-300'
+                  formErrors.businessInventoryLocation ? 'border-red-300' : 'border-gray-300'
                 }`}
               />
-              {formErrors.business_inventory_location && (
-                <p className="mt-1 text-sm text-red-600">{formErrors.business_inventory_location}</p>
+              {formErrors.businessInventoryLocation && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.businessInventoryLocation}</p>
               )}
+            </div>
+ 
+            {/* Disposition */}
+            <div>
+              <label htmlFor="disposition" className="block text-sm font-medium text-gray-700">
+                Disposition
+              </label>
+              <p className="text-xs text-gray-500 mt-1 mb-2">What should happen to this item in business inventory</p>
+              <div className="mt-1">
+                <select
+                  id="disposition"
+                  value={formData.disposition}
+                  onChange={(e) => handleInputChange('disposition', e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="to return">To Return</option>
+                  <option value="returned">Returned</option>
+                  <option value="inventory">Inventory</option>
+                </select>
+              </div>
             </div>
 
             {/* Notes */}
@@ -345,23 +385,23 @@ export default function EditBusinessInventoryItem() {
 
             {/* Inventory Status */}
             <div>
-              <label htmlFor="inventory_status" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="inventoryStatus" className="block text-sm font-medium text-gray-700">
                 Inventory Status
               </label>
-              <select
-                id="inventory_status"
-                value={formData.inventory_status}
-                onChange={(e) => handleInputChange('inventory_status', e.target.value)}
+            <select
+                id="inventoryStatus"
+                value={formData.inventoryStatus}
+                onChange={(e) => handleInputChange('inventoryStatus', e.target.value)}
                 className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               >
                 <option value="available">Available</option>
-                <option value="pending">Allocated</option>
+                <option value="allocated">Allocated</option>
                 <option value="sold">Sold</option>
               </select>
-              {item.project_id && (
+              {item.projectId && (
                 <div className="mt-4 p-4 bg-yellow-50 rounded-md">
                   <p className="text-sm text-yellow-800">
-                    <strong>Note:</strong> This item is currently allocated to project {item.project_id}.
+                    <strong>Note:</strong> This item is currently allocated to project {item.projectId}.
                     Changing the status may affect the pending transaction.
                   </p>
                 </div>
@@ -391,13 +431,13 @@ export default function EditBusinessInventoryItem() {
 
             {/* Form Actions - Desktop */}
             <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
-              <Link
-                to={backDestination}
-                className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Link>
+            <ContextBackLink
+              fallback={backDestination}
+              className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </ContextBackLink>
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -413,13 +453,13 @@ export default function EditBusinessInventoryItem() {
         {/* Sticky mobile action bar */}
         <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
           <div className="flex space-x-3">
-            <Link
-              to={backDestination}
+            <ContextBackLink
+              fallback={backDestination}
               className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <X className="h-4 w-4 mr-2" />
               Cancel
-            </Link>
+            </ContextBackLink>
             <button
               type="submit"
               disabled={isSubmitting}

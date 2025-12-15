@@ -10,24 +10,24 @@ export const toDate = (value: DateValue): Date | null => {
     return value
   }
 
-  // Handle Firestore Timestamp objects
+  // Handle various date formats including legacy timestamp objects
   if (typeof value === 'object' && value) {
-    // Check if it's a Firestore Timestamp with toDate method
+    // Check if it's a legacy timestamp object with toDate method
     if ('toDate' in value && typeof (value as any).toDate === 'function') {
       try {
         return (value as any).toDate()
       } catch (error) {
-        console.warn('Failed to convert Firestore Timestamp to Date:', error)
+        console.warn('Failed to convert timestamp to Date:', error)
         return null
       }
     }
 
-    // Check if it's a Firestore Timestamp with seconds/nanoseconds
+    // Check if it's a legacy timestamp object with seconds/nanoseconds
     if ('seconds' in value && 'nanoseconds' in value) {
       try {
         return new Date((value as any).seconds * 1000 + (value as any).nanoseconds / 1000000)
       } catch (error) {
-        console.warn('Failed to convert Firestore Timestamp to Date:', error)
+        console.warn('Failed to convert timestamp to Date:', error)
         return null
       }
     }
@@ -71,16 +71,23 @@ export const toDate = (value: DateValue): Date | null => {
 /**
  * Safely formats a date value to a localized string
  */
-export const formatDate = (value: DateValue, fallback: string = 'Unknown'): string => {
+export const formatDate = (
+  value: DateValue,
+  fallback: string = 'Unknown',
+  options?: Intl.DateTimeFormatOptions
+): string => {
   const date = toDate(value)
   if (!date) return fallback
 
   try {
-    return date.toLocaleDateString('en-US', {
+    const defaultOptions: Intl.DateTimeFormatOptions = {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
-    })
+    }
+
+    const mergedOptions = { ...defaultOptions, ...options }
+    return date.toLocaleDateString('en-US', mergedOptions)
   } catch (error) {
     console.warn('Failed to format date:', value, error)
     return fallback

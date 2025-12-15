@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Quick build-time visibility into Vite env vars (removed after debugging)
+console.log('🔍 BUILD ENV:', {
+  url: process.env.VITE_SUPABASE_URL ? `${process.env.VITE_SUPABASE_URL.slice(0, 20)}…` : 'undefined',
+  key: process.env.VITE_SUPABASE_ANON_KEY ? `${process.env.VITE_SUPABASE_ANON_KEY.slice(0, 20)}…` : 'undefined'
+})
+
 // Generate a timestamp for cache busting
 const timestamp = Date.now()
 
@@ -12,7 +18,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: process.env.NODE_ENV === 'production' ? 'autoUpdate' : null,
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'index.html'],
       manifest: {
         name: '1584 Design Inventory & Transactions',
         short_name: '1584 Design Projects',
@@ -39,15 +45,15 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{ico,png,svg}'], // Only cache static assets, not app files
+        globPatterns: ['index.html', '**/*.{ico,png,svg}'], // Only cache static assets, precache shell
         // Don't cache app files in service worker - always fetch fresh versions
         cacheId: `1584-inventory-${timestamp}`,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
+            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: `firebase-storage-cache-${timestamp}`,
+              cacheName: `supabase-storage-cache-${timestamp}`,
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 // 24 hours for images is fine
@@ -81,7 +87,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          firebase: ['firebase/app', 'firebase/firestore', 'firebase/auth', 'firebase/storage'],
+          supabase: ['@supabase/supabase-js'],
           router: ['react-router-dom'],
           ui: ['lucide-react', 'clsx']
         },

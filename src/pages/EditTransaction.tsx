@@ -1,23 +1,35 @@
 import { ArrowLeft, Save, X } from 'lucide-react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
-import { useState, useEffect, FormEvent } from 'react'
-import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData } from '@/types'
-import { TRANSACTION_SOURCES } from '@/constants/transactionSources'
+import { useParams, useLocation } from 'react-router-dom'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { useNavigationStack } from '@/contexts/NavigationStackContext'
+import { useState, useEffect, useRef, FormEvent } from 'react'
+import { TransactionFormData, TransactionValidationErrors, TransactionImage, TransactionItemFormData, TaxPreset } from '@/types'
+import { COMPANY_NAME, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService, UploadProgress } from '@/services/imageService'
 import ImageUpload from '@/components/ui/ImageUpload'
 import { useAuth } from '../contexts/AuthContext'
+import ContextLink from '@/components/ContextLink'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { toDateOnlyString } from '@/utils/dateUtils'
+import { getTaxPresets } from '@/services/taxPresetsService'
+import { getAvailableVendors } from '@/services/vendorDefaultsService'
+import CategorySelect from '@/components/CategorySelect'
 
 export default function EditTransaction() {
   const { id: projectId, transactionId } = useParams<{ id: string; transactionId: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
+  const navigationStack = useNavigationStack()
+  const location = useLocation()
   const { hasRole } = useAuth()
+  const { currentAccountId } = useAccount()
+  const { buildContextUrl } = useNavigationContext()
 
-  // Check if user has permission to edit transactions (DESIGNER role or higher)
-  if (!hasRole(UserRole.DESIGNER)) {
+  // Check if user has permission to edit transactions (USER role or higher)
+  if (!hasRole(UserRole.USER)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full space-y-8 text-center">
@@ -28,12 +40,12 @@ export default function EditTransaction() {
           <p className="text-gray-600">
             You don't have permission to edit transactions. Please contact an administrator if you need access.
           </p>
-          <Link
-            to={`/project/${projectId}`}
+          <ContextLink
+            to={buildContextUrl(`/project/${projectId}`)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
-          </Link>
+          </ContextLink>
         </div>
       </div>
     )
@@ -42,20 +54,26 @@ export default function EditTransaction() {
   const [projectName, setProjectName] = useState<string>('')
 
   const [formData, setFormData] = useState<TransactionFormData>({
-    transaction_date: '',
+    transactionDate: '',
     source: '',
-    transaction_type: 'Purchase',
-    payment_method: '',
+    transactionType: 'Purchase',
+    paymentMethod: '',
     amount: '',
-    budget_category: 'Furnishings',
+    categoryId: '',
     notes: '',
     status: 'completed',
-    reimbursement_type: 'Client Owes',
-    trigger_event: 'Manual',
-    receipt_images: [],
-    other_images: [],
-    receipt_emailed: false
+    reimbursementType: '',
+    triggerEvent: 'Manual',
+    receiptImages: [],
+    otherImages: [],
+    receiptEmailed: false
   })
+
+  // Tax form state
+  const [taxRatePreset, setTaxRatePreset] = useState<string | undefined>(undefined)
+  const [subtotal, setSubtotal] = useState<string>('')
+  const [taxPresets, setTaxPresets] = useState<TaxPreset[]>([])
+  const [selectedPresetRate, setSelectedPresetRate] = useState<number | undefined>(undefined)
 
   const [errors, setErrors] = useState<TransactionValidationErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -65,55 +83,108 @@ export default function EditTransaction() {
 
   // Transaction items state
   const [items, setItems] = useState<TransactionItemFormData[]>([])
+  const initialItemsRef = useRef<TransactionItemFormData[] | null>(null)
 
   // Custom source state
   const [isCustomSource, setIsCustomSource] = useState(false)
+  const [availableVendors, setAvailableVendors] = useState<string[]>([])
+
+  // Load vendor defaults on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      if (!currentAccountId) return
+      try {
+        const vendors = await getAvailableVendors(currentAccountId)
+        setAvailableVendors(vendors)
+      } catch (error) {
+        console.error('Error loading vendor defaults:', error)
+        // Fallback to empty array - will show only "Other" option
+        setAvailableVendors([])
+      }
+    }
+    loadVendors()
+  }, [currentAccountId])
+
+  // Load tax presets on mount
+  useEffect(() => {
+    const loadPresets = async () => {
+      if (!currentAccountId) return
+      try {
+        const presets = await getTaxPresets(currentAccountId)
+        setTaxPresets(presets)
+      } catch (error) {
+        console.error('Error loading tax presets:', error)
+      }
+    }
+    loadPresets()
+  }, [currentAccountId])
+
+  // Update selected preset rate when preset changes
+  useEffect(() => {
+    if (taxRatePreset && taxRatePreset !== 'Other') {
+      const preset = taxPresets.find(p => p.id === taxRatePreset)
+      setSelectedPresetRate(preset?.rate)
+    } else {
+      setSelectedPresetRate(undefined)
+    }
+  }, [taxRatePreset, taxPresets])
 
   // Load transaction and project data
   useEffect(() => {
     const loadTransaction = async () => {
-      if (!projectId || !transactionId) return
+      // Guard against undefined projectId (business inventory transactions should use EditBusinessInventoryTransaction)
+      if (!projectId || projectId === 'undefined' || !transactionId || !currentAccountId) {
+        console.error('EditTransaction: projectId is required. Business inventory transactions should use EditBusinessInventoryTransaction.')
+        setIsLoading(false)
+        return
+      }
 
       try {
         const [transaction, project] = await Promise.all([
-          transactionService.getTransaction(projectId, transactionId),
-          projectService.getProject(projectId)
+          transactionService.getTransaction(currentAccountId, projectId, transactionId),
+          projectService.getProject(currentAccountId, projectId)
         ])
 
         if (project) {
           setProjectName(project.name)
         }
         if (transaction) {
-          // Determine the source to display: if Firestore saved 'Other' (legacy), use project name
+          // Determine the source to display: if database saved 'Other' (legacy), use project name
           const legacyOther = transaction.source === 'Other' || transaction.source === ''
           const resolvedSource = legacyOther && project ? project.name : transaction.source
 
           // Check if source is custom (not in predefined list)
-          const sourceIsCustom = Boolean(resolvedSource && !TRANSACTION_SOURCES.includes(resolvedSource as any))
+          const sourceIsCustom = Boolean(resolvedSource && !availableVendors.includes(resolvedSource))
 
           // Use the transaction date directly for date input (convert Date object to YYYY-MM-DD string)
           setFormData({
-            transaction_date: toDateOnlyString(transaction.transaction_date) || '',
+            transactionDate: toDateOnlyString(transaction.transactionDate) || '',
             source: resolvedSource,
-            transaction_type: transaction.transaction_type,
-            payment_method: transaction.payment_method,
+            transactionType: transaction.transactionType,
+            paymentMethod: transaction.paymentMethod,
             amount: transaction.amount,
-            budget_category: transaction.budget_category || 'Furnishings',
+            categoryId: transaction.categoryId || '',
             notes: transaction.notes || '',
             status: transaction.status || 'completed',
-            reimbursement_type: transaction.reimbursement_type || 'Client Owes',
-            trigger_event: transaction.trigger_event || 'Manual',
-            receipt_images: [],
-            other_images: [],
-            receipt_emailed: transaction.receipt_emailed
+            reimbursementType: transaction.reimbursementType || '',
+            triggerEvent: transaction.triggerEvent || 'Manual',
+            receiptImages: [],
+            otherImages: [],
+            receiptEmailed: transaction.receiptEmailed
           })
+
+          // Populate tax fields if present
+          if (transaction.taxRatePreset) {
+            setTaxRatePreset(transaction.taxRatePreset)
+          }
+          setSubtotal(transaction.subtotal || '')
 
           setIsCustomSource(sourceIsCustom)
 
-          // If legacy 'Other' was stored, immediately correct Firestore to the project name
-          if (legacyOther && project && projectId && transactionId) {
+          // If legacy 'Other' was stored, immediately correct database to the project name
+          if (legacyOther && project && projectId && transactionId && currentAccountId) {
             try {
-              await transactionService.updateTransaction(projectId, transactionId, { source: project.name })
+              await transactionService.updateTransaction(currentAccountId, projectId, transactionId, { source: project.name })
             } catch (e) {
               console.warn('Failed to auto-correct source to project name:', e)
             }
@@ -122,31 +193,31 @@ export default function EditTransaction() {
           // Handle legacy and new image fields for loading transaction data
           // Note: Legacy transaction_images is loaded but not stored in local state, receipt_images is the current field
 
-          const otherImages = transaction.other_images || []
+          const otherImages = transaction.otherImages || []
           setExistingOtherImages(Array.isArray(otherImages) ? otherImages : [])
 
           // Load transaction items
           try {
-            const transactionItems = await unifiedItemsService.getItemsForTransaction(projectId, transactionId)
+            const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
             console.log('Loaded transaction items:', transactionItems)
 
-            const transactionItemIds = transactionItems.map(item => item.item_id)
+            const transactionItemIds = transactionItems.map(item => item.itemId)
             console.log('Transaction item IDs:', transactionItemIds)
 
             const itemsWithDetails = await Promise.all(
               transactionItems.map(async (item) => {
-                console.log(`Loaded item ${item.item_id}:`, {
-                  id: item.item_id,
+                console.log(`Loaded item ${item.itemId}:`, {
+                  id: item.itemId,
                   description: item?.description || '',
-                  hasValidFormat: item.item_id.startsWith('I-') && item.item_id.length > 10
+                  hasValidFormat: item.itemId.startsWith('I-') && item.itemId.length > 10
                 })
 
                 return {
-                  id: item.item_id,
+                  id: item.itemId,
                   description: item?.description || '',
-                  price: item?.purchase_price?.toString() || '',
+                  purchasePrice: item?.purchasePrice?.toString() || '',
                   sku: item?.sku || '',
-                  market_value: item?.market_value?.toString() || '',
+                  marketValue: item?.marketValue?.toString() || '',
                   notes: item?.notes || '',
                   imageFiles: [],
                   images: item?.images || []
@@ -154,11 +225,25 @@ export default function EditTransaction() {
               })
             )
             console.log('Loaded transaction items:', transactionItems.map(item => ({
-              id: item.item_id,
+              id: item.itemId,
               description: item.description,
-              isTempId: item.item_id.startsWith('temp-')
+              isTempId: item.itemId.startsWith('temp-')
             })))
             setItems(itemsWithDetails)
+            // Capture initial snapshot of loaded items to detect later edits.
+            try {
+              initialItemsRef.current = itemsWithDetails.map(i => ({
+                id: i.id,
+                description: i.description,
+                purchasePrice: i.purchasePrice,
+                sku: i.sku,
+                marketValue: i.marketValue,
+                notes: i.notes
+              } as TransactionItemFormData))
+            } catch (e) {
+              // Non-fatal
+              initialItemsRef.current = null
+            }
           } catch (itemError) {
             console.error('Error loading transaction items:', itemError)
           }
@@ -171,7 +256,7 @@ export default function EditTransaction() {
     }
 
     loadTransaction()
-  }, [projectId, transactionId])
+  }, [projectId, transactionId, currentAccountId, availableVendors])
 
   // Validation function
   const validateForm = (): boolean => {
@@ -185,8 +270,8 @@ export default function EditTransaction() {
     // TransactionType is optional
     // PaymentMethod is optional
 
-    if (!formData.budget_category?.trim()) {
-      newErrors.budget_category = 'Budget category is required'
+    if (!formData.categoryId?.trim()) {
+      newErrors.categoryId = 'Budget category is required'
     }
 
     if (!formData.amount.trim()) {
@@ -204,18 +289,26 @@ export default function EditTransaction() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm() || !projectId || !transactionId) return
+    if (!validateForm() || !projectId || !transactionId || !currentAccountId) return
 
-    setIsSubmitting(true)
-
+  setIsSubmitting(true)
+    let _needsReviewBatchStarted = false
     try {
+      if (currentAccountId && transactionId) {
+        try {
+          transactionService.beginNeedsReviewBatch(currentAccountId, transactionId)
+          _needsReviewBatchStarted = true
+        } catch (e) {
+          console.warn('Failed to begin needs review batch:', e)
+        }
+      }
       // First, handle item updates and creations
       if (items.length > 0) {
         // Debug: Log all items to understand the issue
         console.log('All items before processing:', items.map(item => ({
           id: item.id,
           description: item.description,
-          price: item.purchase_price,
+          price: item.purchasePrice,
           sku: item.sku,
           isTempId: item.id.startsWith('temp-'),
           idFormat: item.id.startsWith('I-') ? 'database' : item.id.startsWith('temp-') ? 'temp' : 'unknown'
@@ -247,16 +340,35 @@ export default function EditTransaction() {
 
         console.log(`Separated ${existingItems.length} existing items and ${newItems.length} new items`)
 
-        // Update existing items (classification is now robust, so no additional safety checks needed)
+        // Update existing items only if fields actually changed compared to the initial load.
+        const initialItemsMap = new Map<string, TransactionItemFormData>()
+        if (initialItemsRef.current) {
+          for (const it of initialItemsRef.current) initialItemsMap.set(it.id, it)
+        }
+
+        const itemsToUpdate: Array<{ id: string; updates: Partial<TransactionItemFormData> }> = []
         for (const item of existingItems) {
-          await unifiedItemsService.updateItem(item.id, {
-            description: item.description,
-            purchase_price: item.purchase_price,
-            sku: item.sku,
-            market_value: item.market_value,
-            notes: item.notes,
-            transaction_id: transactionId
-          })
+          const orig = initialItemsMap.get(item.id)
+          const updates: Partial<TransactionItemFormData> = {}
+          if (!orig || orig.description !== item.description) updates.description = item.description
+          // Normalize undefined/empty string comparisons for numeric fields stored as strings
+          if (!orig || String(orig.purchasePrice || '') !== String(item.purchasePrice || '')) updates.purchasePrice = item.purchasePrice
+          if (!orig || String(orig.marketValue || '') !== String(item.marketValue || '')) updates.marketValue = item.marketValue
+          if (!orig || (orig.sku || '') !== (item.sku || '')) updates.sku = item.sku
+          if (!orig || (orig.notes || '') !== (item.notes || '')) updates.notes = item.notes
+          // Ensure transaction linkage is present
+          updates.transactionId = transactionId
+
+          // If there are any meaningful updates (besides transactionId), add to update list
+          const meaningfulKeys = Object.keys(updates).filter(k => k !== 'transactionId')
+          if (meaningfulKeys.length > 0) {
+            itemsToUpdate.push({ id: item.id, updates })
+          }
+        }
+
+        console.log(`Preparing to update ${itemsToUpdate.length} of ${existingItems.length} existing items`)
+        for (const u of itemsToUpdate) {
+          await unifiedItemsService.updateItem(currentAccountId, u.id, u.updates)
         }
 
         // Create new items using the same batch infrastructure as new transactions
@@ -266,23 +378,23 @@ export default function EditTransaction() {
             newItems.map(async (item) => {
               const itemData = {
                 ...item,
-                project_id: projectId,
-                transaction_id: transactionId,
-                date_created: formData.transaction_date,
+                projectId: projectId,
+                transactionId: transactionId,
+                dateCreated: formData.transactionDate,
                 source: formData.source,
-                inventory_status: 'available' as const,
-                payment_method: 'Unknown',
-                qr_key: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                inventoryStatus: 'available' as const,
+                paymentMethod: 'Unknown',
+                qrKey: `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
                 bookmark: false,
                 sku: item.sku || '',
-                purchase_price: item.purchase_price || '',
-                project_price: item.project_price || '',
-                market_value: item.market_value || '',
+                purchasePrice: item.purchasePrice || '',
+                projectPrice: item.projectPrice || '',
+                marketValue: item.marketValue || '',
                 notes: item.notes || '',
                 space: item.space || '',
                 disposition: 'keep'
               }
-              return await unifiedItemsService.createItem(itemData)
+              return await unifiedItemsService.createItem(currentAccountId, itemData)
             })
           )
           console.log('Created new items:', createdItemIds)
@@ -303,10 +415,10 @@ export default function EditTransaction() {
 
       // Upload other images
       let otherImages: TransactionImage[] = [...existingOtherImages]
-      if (formData.other_images && formData.other_images.length > 0) {
+      if (formData.otherImages && formData.otherImages.length > 0) {
         try {
           const uploadResults = await ImageUploadService.uploadMultipleOtherImages(
-            formData.other_images,
+            formData.otherImages,
             projectName,
             transactionId,
             handleImageUploadProgress
@@ -317,7 +429,7 @@ export default function EditTransaction() {
           otherImages = [...existingOtherImages, ...newOtherImages]
         } catch (error) {
           console.error('Error uploading other images:', error)
-          setErrors({ other_images: 'Failed to upload other images. Please try again.' })
+          setErrors({ otherImages: 'Failed to upload other images. Please try again.' })
           setIsSubmitting(false)
           setIsUploadingImages(false)
           return
@@ -328,33 +440,50 @@ export default function EditTransaction() {
       }
 
       // Update transaction with new data and images
-      const { other_images, receipt_images, transaction_images, ...formDataWithoutImages } = formData
+      const { otherImages: _, receiptImages: __, transactionImages: ___, ...formDataWithoutImages } = formData
       const updateData = {
         ...formDataWithoutImages,
-        other_images: otherImages
+        otherImages: otherImages,
+        // Include tax fields only when a tax rate preset is explicitly selected.
+        ...(taxRatePreset ? { taxRatePreset: taxRatePreset, subtotal: taxRatePreset === 'Other' ? subtotal : '' } : { subtotal: '' })
       }
 
-      await transactionService.updateTransaction(projectId, transactionId, updateData)
+      await transactionService.updateTransaction(currentAccountId, projectId, transactionId, updateData)
       navigate(`/project/${projectId}/transaction/${transactionId}`)
     } catch (error) {
       console.error('Error updating transaction:', error)
       // Set a general error message instead of targeting specific fields
       setErrors({ general: error instanceof Error ? error.message : 'Failed to update transaction. Please try again.' })
     } finally {
+      if (_needsReviewBatchStarted && currentAccountId && transactionId) {
+        try {
+          await transactionService.flushNeedsReviewBatch(currentAccountId, transactionId, { flushImmediately: true })
+        } catch (e) {
+          console.warn('Failed to flush needs review batch:', e)
+        }
+      }
       setIsSubmitting(false)
     }
   }
 
-  const handleInputChange = (field: keyof TransactionFormData, value: string | boolean | File[]) => {
+  const handleInputChange = (field: Exclude<keyof TransactionFormData, 'taxRatePreset' | 'subtotal'> | 'categoryId', value: string | boolean | File[]) => {
+    // Handle categoryId separately since it's not in the original TransactionFormData type exclusion
+    if (field === 'categoryId') {
+      setFormData(prev => ({ ...prev, categoryId: value as string }))
+      if (errors.categoryId) {
+        setErrors(prev => ({ ...prev, categoryId: undefined }))
+      }
+      return
+    }
     setFormData(prev => {
       const newData = { ...prev, [field]: value }
 
       // Apply business rules for status and reimbursement type
-      if (field === 'status' && value === 'completed' && prev.reimbursement_type) {
+      if (field === 'status' && value === 'completed' && prev.reimbursementType) {
         // If setting status to completed, clear reimbursement type by setting to empty string
         // The service layer will convert this to deleteField()
-        newData.reimbursement_type = ''
-      } else if (field === 'reimbursement_type' && value && prev.status === 'completed') {
+        newData.reimbursementType = ''
+      } else if (field === 'reimbursementType' && value && prev.status === 'completed') {
         // If setting reimbursement type while status is completed, change status to pending
         newData.status = 'pending'
       }
@@ -394,7 +523,10 @@ export default function EditTransaction() {
         {/* Back button row */}
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              const target = navigationStack.pop(location.pathname + location.search) || buildContextUrl(`/project/${projectId}`)
+              navigate(target)
+            }}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -430,7 +562,7 @@ export default function EditTransaction() {
               Source/Vendor *
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-              {TRANSACTION_SOURCES.map((source) => (
+              {availableVendors.map((source) => (
                 <div key={source} className="flex items-center">
                   <input
                     type="radio"
@@ -484,6 +616,19 @@ export default function EditTransaction() {
             )}
           </div>
 
+          {/* Budget Category */}
+          <div>
+            <CategorySelect
+              value={formData.categoryId}
+              onChange={(categoryId) => {
+                handleInputChange('categoryId', categoryId)
+              }}
+              label="Budget Category"
+              error={errors.categoryId}
+              required
+            />
+          </div>
+
           {/* Transaction Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -494,38 +639,25 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="type_purchase"
-                  name="transaction_type"
+                  name="transactionType"
                   value="Purchase"
-                  checked={formData.transaction_type === 'Purchase'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  checked={formData.transactionType === 'Purchase'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="type_purchase" className="ml-2 block text-sm text-gray-900">
                   Purchase
                 </label>
               </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="type_to_inventory"
-                  name="transaction_type"
-                  value="To Inventory"
-                  checked={formData.transaction_type === 'To Inventory'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="type_to_inventory" className="ml-2 block text-sm text-gray-900">
-                  To Inventory
-                </label>
-              </div>
+              {/* 'To Inventory' option removed */}
               <div className="flex items-center">
                 <input
                   type="radio"
                   id="type_return"
-                  name="transaction_type"
+                  name="transactionType"
                   value="Return"
-                  checked={formData.transaction_type === 'Return'}
-                  onChange={(e) => handleInputChange('transaction_type', e.target.value)}
+                  checked={formData.transactionType === 'Return'}
+                  onChange={(e) => handleInputChange('transactionType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="type_return" className="ml-2 block text-sm text-gray-900">
@@ -533,8 +665,8 @@ export default function EditTransaction() {
                 </label>
               </div>
             </div>
-            {errors.transaction_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_type}</p>
+            {errors.transactionType && (
+              <p className="mt-1 text-sm text-red-600">{errors.transactionType}</p>
             )}
           </div>
 
@@ -577,13 +709,13 @@ export default function EditTransaction() {
                   type="radio"
                   id="status_cancelled"
                   name="status"
-                  value="cancelled"
-                  checked={formData.status === 'cancelled'}
+                  value="canceled"
+                  checked={formData.status === 'canceled'}
                   onChange={(e) => handleInputChange('status', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="status_cancelled" className="ml-2 block text-sm text-gray-900">
-                  Cancelled
+                  Canceled
                 </label>
               </div>
             </div>
@@ -592,20 +724,61 @@ export default function EditTransaction() {
             )}
           </div>
 
+          {/* Payment Method */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Transaction Method
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_client_card"
+                  name="paymentMethod"
+                  value="Client Card"
+                  checked={formData.paymentMethod === 'Client Card'}
+                  onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
+                  Client Card
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="method_1584_card"
+                  name="paymentMethod"
+                  value={COMPANY_NAME}
+                  checked={formData.paymentMethod === COMPANY_NAME}
+                  onChange={(e) => handleInputChange('paymentMethod', e.target.value)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
+                  {COMPANY_NAME}
+                </label>
+              </div>
+            </div>
+            {errors.paymentMethod && (
+              <p className="mt-1 text-sm text-red-600">{errors.paymentMethod}</p>
+            )}
+          </div>
+
           {/* Reimbursement Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Reimbursement Type
             </label>
+            <p className="mb-3 text-xs text-gray-500">Flags transactions that require reimbursement</p>
             <div className="space-y-2">
               <div className="flex items-center">
                 <input
                   type="radio"
                   id="reimbursement_none"
-                  name="reimbursement_type"
+                  name="reimbursementType"
                   value=""
-                  checked={!formData.reimbursement_type}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  checked={!formData.reimbursementType}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_none" className="ml-2 block text-sm text-gray-900">
@@ -616,34 +789,69 @@ export default function EditTransaction() {
                 <input
                   type="radio"
                   id="reimbursement_client_owes"
-                  name="reimbursement_type"
-                  value="Client Owes"
-                  checked={formData.reimbursement_type === 'Client Owes'}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  name="reimbursementType"
+                  value={CLIENT_OWES_COMPANY}
+                  checked={formData.reimbursementType === CLIENT_OWES_COMPANY}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_client_owes" className="ml-2 block text-sm text-gray-900">
-                  Client Owes
+                  {CLIENT_OWES_COMPANY}
                 </label>
               </div>
               <div className="flex items-center">
                 <input
                   type="radio"
                   id="reimbursement_we_owe"
-                  name="reimbursement_type"
-                  value="We Owe"
-                  checked={formData.reimbursement_type === 'We Owe'}
-                  onChange={(e) => handleInputChange('reimbursement_type', e.target.value)}
+                  name="reimbursementType"
+                  value={COMPANY_OWES_CLIENT}
+                  checked={formData.reimbursementType === COMPANY_OWES_CLIENT}
+                  onChange={(e) => handleInputChange('reimbursementType', e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
                 <label htmlFor="reimbursement_we_owe" className="ml-2 block text-sm text-gray-900">
-                  We Owe
+                  {COMPANY_OWES_CLIENT}
                 </label>
               </div>
             </div>
-            {errors.reimbursement_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.reimbursement_type}</p>
+            {errors.reimbursementType && (
+              <p className="mt-1 text-sm text-red-600">{errors.reimbursementType}</p>
             )}
+          </div>
+
+          {/* Receipt Email Copy */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Receipt Email Copy
+            </label>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="receipt_yes"
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === true}
+                  onChange={() => handleInputChange('receiptEmailed', true)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
+                  Yes
+                </label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="radio"
+                  id="receipt_no"
+                  name="receiptEmailed"
+                  checked={formData.receiptEmailed === false}
+                  onChange={() => handleInputChange('receiptEmailed', false)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                />
+                <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
+                  No
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Amount */}
@@ -671,211 +879,92 @@ export default function EditTransaction() {
             )}
           </div>
 
-          {/* Payment Method */}
+          {/* Tax Rate Presets */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Payment Method
-            </label>
-            <div className="flex items-center space-x-6">
+            <label className="block text-sm font-medium text-gray-700 mb-3">Tax Rate Preset</label>
+            <div className="space-y-2">
+              {taxPresets.map((preset) => (
+                <div key={preset.id} className="flex items-center">
+                  <input
+                    type="radio"
+                    id={`tax_preset_${preset.id}`}
+                    name="tax_rate_preset"
+                    value={preset.id}
+                    checked={taxRatePreset === preset.id}
+                    onChange={(e) => setTaxRatePreset(e.target.value)}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                  />
+                  <label htmlFor={`tax_preset_${preset.id}`} className="ml-2 block text-sm text-gray-900">
+                    {preset.name} ({preset.rate.toFixed(2)}%)
+                  </label>
+                </div>
+              ))}
               <div className="flex items-center">
                 <input
                   type="radio"
-                  id="method_client_card"
-                  name="payment_method"
-                  value="Client Card"
-                  checked={formData.payment_method === 'Client Card'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
+                  id="tax_preset_other"
+                  name="tax_rate_preset"
+                  value="Other"
+                  checked={taxRatePreset === 'Other'}
+                  onChange={(e) => setTaxRatePreset(e.target.value)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
                 />
-                <label htmlFor="method_client_card" className="ml-2 block text-sm text-gray-900">
-                  Client Card
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="method_1584_card"
-                  name="payment_method"
-                  value="1584 Design"
-                  checked={formData.payment_method === '1584 Design'}
-                  onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="method_1584_card" className="ml-2 block text-sm text-gray-900">
-                  1584 Design
+                <label htmlFor="tax_preset_other" className="ml-2 block text-sm text-gray-900">
+                  Other
                 </label>
               </div>
             </div>
-            {errors.payment_method && (
-              <p className="mt-1 text-sm text-red-600">{errors.payment_method}</p>
+            {/* Show selected tax rate for presets */}
+            {taxRatePreset && taxRatePreset !== 'Other' && selectedPresetRate !== undefined && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Tax Rate:</span> {selectedPresetRate.toFixed(2)}%
+                </p>
+              </div>
             )}
           </div>
 
-          {/* Budget Category */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Budget Category *
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="flex items-center">
+          {/* Subtotal (shown only for Other) */}
+          {taxRatePreset === 'Other' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Subtotal</label>
+              <div className="mt-1 relative rounded-md shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span className="text-gray-500 sm:text-sm">$</span>
+                </div>
                 <input
-                  type="radio"
-                  id="budget_design_fee"
-                  name="budget_category"
-                  value="Design Fee"
-                  checked={formData.budget_category === 'Design Fee'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
+                  type="text"
+                  id="subtotal"
+                  value={subtotal}
+                  onChange={(e) => setSubtotal(e.target.value)}
+                  placeholder="0.00"
+                  className={`block w-full pl-8 pr-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 border-gray-300`}
                 />
-                <label htmlFor="budget_design_fee" className="ml-2 block text-sm text-gray-900">
-                  Design Fee
-                </label>
               </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_furnishings"
-                  name="budget_category"
-                  value="Furnishings"
-                  checked={formData.budget_category === 'Furnishings'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_furnishings" className="ml-2 block text-sm text-gray-900">
-                  Furnishings
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_property_management"
-                  name="budget_category"
-                  value="Property Management"
-                  checked={formData.budget_category === 'Property Management'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_property_management" className="ml-2 block text-sm text-gray-900">
-                  Property Management
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_kitchen"
-                  name="budget_category"
-                  value="Kitchen"
-                  checked={formData.budget_category === 'Kitchen'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_kitchen" className="ml-2 block text-sm text-gray-900">
-                  Kitchen
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_install"
-                  name="budget_category"
-                  value="Install"
-                  checked={formData.budget_category === 'Install'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_install" className="ml-2 block text-sm text-gray-900">
-                  Install
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_storage_receiving"
-                  name="budget_category"
-                  value="Storage & Receiving"
-                  checked={formData.budget_category === 'Storage & Receiving'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_storage_receiving" className="ml-2 block text-sm text-gray-900">
-                  Storage & Receiving
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="budget_fuel"
-                  name="budget_category"
-                  value="Fuel"
-                  checked={formData.budget_category === 'Fuel'}
-                  onChange={(e) => handleInputChange('budget_category', e.target.value)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="budget_fuel" className="ml-2 block text-sm text-gray-900">
-                  Fuel
-                </label>
-              </div>
+              <p className="mt-1 text-sm text-gray-500">This will be used to calculate the tax rate.</p>
             </div>
-            {errors.budget_category && (
-              <p className="mt-1 text-sm text-red-600">{errors.budget_category}</p>
-            )}
-          </div>
+          )}
 
           {/* Transaction Date */}
           <div>
-            <label htmlFor="transaction_date" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="transactionDate" className="block text-sm font-medium text-gray-700">
               Transaction Date
             </label>
             <input
               type="date"
-              id="transaction_date"
-              value={formData.transaction_date}
+              id="transactionDate"
+              value={formData.transactionDate}
               onChange={(e) => {
                 // Use the date value directly (YYYY-MM-DD format)
-                handleInputChange('transaction_date', e.target.value)
+                handleInputChange('transactionDate', e.target.value)
               }}
               className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                errors.transaction_date ? 'border-red-300' : 'border-gray-300'
+                errors.transactionDate ? 'border-red-300' : 'border-gray-300'
               }`}
             />
-            {errors.transaction_date && (
-              <p className="mt-1 text-sm text-red-600">{errors.transaction_date}</p>
+            {errors.transactionDate && (
+              <p className="mt-1 text-sm text-red-600">{errors.transactionDate}</p>
             )}
-          </div>
-
-          {/* Receipt Email Copy */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Receipt Email Copy
-            </label>
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="receipt_yes"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === true}
-                  onChange={() => handleInputChange('receipt_emailed', true)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="receipt_yes" className="ml-2 block text-sm text-gray-900">
-                  Yes
-                </label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  type="radio"
-                  id="receipt_no"
-                  name="receipt_emailed"
-                  checked={formData.receipt_emailed === false}
-                  onChange={() => handleInputChange('receipt_emailed', false)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                />
-                <label htmlFor="receipt_no" className="ml-2 block text-sm text-gray-900">
-                  No
-                </label>
-              </div>
-            </div>
           </div>
 
           {/* Notes */}
@@ -904,14 +993,14 @@ export default function EditTransaction() {
               Other Images
             </h3>
             <ImageUpload
-              onImagesChange={(files) => handleInputChange('other_images', files)}
+              onImagesChange={(files) => handleInputChange('otherImages', files)}
               maxImages={5}
               maxFileSize={10}
               disabled={isSubmitting || isUploadingImages}
               className="mb-2"
             />
-            {errors.other_images && (
-              <p className="mt-1 text-sm text-red-600">{errors.other_images}</p>
+            {errors.otherImages && (
+              <p className="mt-1 text-sm text-red-600">{errors.otherImages}</p>
             )}
           </div>
 
@@ -919,7 +1008,10 @@ export default function EditTransaction() {
           {/* Form Actions - Normal on desktop, hidden on mobile (replaced by sticky bar) */}
           <div className="hidden sm:flex justify-end sm:space-x-3 pt-4">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                const target = navigationStack.pop(location.pathname + location.search) || buildContextUrl(`/project/${projectId}`)
+                navigate(target)
+              }}
               className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               <X className="h-4 w-4 mr-2" />
@@ -941,7 +1033,10 @@ export default function EditTransaction() {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
         <div className="flex space-x-3">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              const target = navigationStack.pop(location.pathname + location.search) || buildContextUrl(`/project/${projectId}`)
+              navigate(target)
+            }}
             className="flex-1 inline-flex justify-center items-center px-4 py-3 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <X className="h-4 w-4 mr-2" />

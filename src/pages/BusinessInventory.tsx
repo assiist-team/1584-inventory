@@ -1,14 +1,21 @@
-import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, Edit, Bookmark, Copy, DollarSign, ChevronDown } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import ContextLink from '@/components/ContextLink'
 import { Item, Transaction, ItemImage, Project } from '@/types'
 import type { Transaction as TransactionType } from '@/types'
-import { unifiedItemsService, transactionService, projectService } from '@/services/inventoryService'
+import { unifiedItemsService, transactionService, projectService, integrationService } from '@/services/inventoryService'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { useToast } from '@/components/ui/ToastContext'
+import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatCurrency, formatDate } from '@/utils/dateUtils'
+import { COMPANY_INVENTORY, COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/company'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
+import { useAccount } from '@/contexts/AccountContext'
+import { useNavigationContext } from '@/hooks/useNavigationContext'
 
 interface FilterOptions {
   status?: string
@@ -16,6 +23,9 @@ interface FilterOptions {
 }
 
 export default function BusinessInventory() {
+  const { currentAccountId, loading: accountLoading } = useAccount()
+  const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
+  const { buildContextUrl } = useNavigationContext()
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<Item[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -29,7 +39,7 @@ export default function BusinessInventory() {
 
   // Filter state for transactions tab
   const [showTransactionFilterMenu, setShowTransactionFilterMenu] = useState(false)
-  const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'cancelled' | 'inventory-only'>('all')
+  const [transactionFilterMode, setTransactionFilterMode] = useState<'all' | 'pending' | 'completed' | 'canceled' | 'inventory-only'>('all')
 
   // Image upload state
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
@@ -38,6 +48,8 @@ export default function BusinessInventory() {
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
+  const { showSuccess, showError } = useToast()
 
   // Batch allocation state
   const [projects, setProjects] = useState<Project[]>([])
@@ -67,6 +79,77 @@ export default function BusinessInventory() {
     }
   }, [showFilterMenu, showTransactionFilterMenu])
 
+  // Close disposition menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openDispositionMenu && !event.target) return
+
+      const target = event.target as Element
+      if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
+        setOpenDispositionMenu(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [openDispositionMenu])
+
+  const toggleDispositionMenu = (itemId: string) => {
+    setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
+  }
+
+  const getDispositionBadgeClasses = (disposition?: string) => {
+    const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
+
+    switch (d) {
+      case 'keep':
+        return `${baseClasses} bg-green-100 text-green-800`
+      case 'to return':
+        return `${baseClasses} bg-red-100 text-red-700`
+      case 'returned':
+        return `${baseClasses} bg-red-800 text-red-100`
+      case 'inventory':
+        return `${baseClasses} bg-primary-100 text-primary-600`
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800`
+    }
+  }
+
+  const updateDisposition = async (itemId: string, newDisposition: string) => {
+    try {
+      const item = items.find((it: Item) => it.itemId === itemId)
+      if (!item) {
+        console.error('Item not found for disposition update:', itemId)
+        return
+      }
+
+      if (!currentAccountId) throw new Error('Account ID is required')
+      await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: newDisposition })
+
+      if (newDisposition === 'inventory') {
+        try {
+          await integrationService.handleItemDeallocation(currentAccountId, itemId, item.projectId || '', newDisposition)
+          setOpenDispositionMenu(null)
+          showSuccess && showSuccess('Item moved to inventory')
+        } catch (deallocationError) {
+          console.error('Failed to handle deallocation:', deallocationError)
+          await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: item.disposition })
+          showError && showError('Failed to move item to inventory. Please try again.')
+          return
+        }
+      } else {
+        setItems(prev => prev.map(i => i.itemId === itemId ? { ...i, disposition: newDisposition } : i))
+        setOpenDispositionMenu(null)
+      }
+    } catch (error) {
+      console.error('Failed to update disposition:', error)
+      showError && showError('Failed to update disposition. Please try again.')
+    }
+  }
+
   // Compute filtered items (matching InventoryList.tsx)
   const filteredItems = useMemo(() => {
     return items.filter(item => {
@@ -74,10 +157,10 @@ export default function BusinessInventory() {
       const matchesSearch = !inventorySearchQuery ||
         item.description?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
         item.sku?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
-        item.business_inventory_location?.toLowerCase().includes(inventorySearchQuery.toLowerCase())
+        item.businessInventoryLocation?.toLowerCase().includes(inventorySearchQuery.toLowerCase())
 
       // Apply status filter
-      const matchesStatus = !filters.status || item.inventory_status === filters.status
+      const matchesStatus = !filters.status || item.inventoryStatus === filters.status
 
       // Apply bookmark filter
       const matchesFilter = filterMode === 'all' || (filterMode === 'bookmarked' && item.bookmark)
@@ -93,8 +176,8 @@ export default function BusinessInventory() {
     // Apply status filter based on filter mode
     if (transactionFilterMode !== 'all') {
       if (transactionFilterMode === 'inventory-only') {
-        // Show only business inventory transactions (project_id == null)
-        filtered = filtered.filter(t => t.project_id === null)
+        // Show only business inventory transactions (projectId == null)
+        filtered = filtered.filter(t => t.projectId === null)
       } else {
         // Apply status filter for other modes
         filtered = filtered.filter(t => t.status === transactionFilterMode)
@@ -106,8 +189,8 @@ export default function BusinessInventory() {
       const query = transactionSearchQuery.toLowerCase()
       filtered = filtered.filter(t =>
         t.source?.toLowerCase().includes(query) ||
-        t.transaction_type?.toLowerCase().includes(query) ||
-        t.project_name?.toLowerCase().includes(query) ||
+        t.transactionType?.toLowerCase().includes(query) ||
+        t.projectName?.toLowerCase().includes(query) ||
         t.notes?.toLowerCase().includes(query)
       )
     }
@@ -117,8 +200,8 @@ export default function BusinessInventory() {
 
   // Canonical transaction title for display only
   const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
-    if (transaction.transaction_id?.startsWith('INV_SALE_')) return '1584 Inventory Sale'
-    if (transaction.transaction_id?.startsWith('INV_PURCHASE_')) return '1584 Inventory Purchase'
+    if (transaction.transactionId?.startsWith('INV_SALE_')) return COMPANY_INVENTORY_SALE
+    if (transaction.transactionId?.startsWith('INV_PURCHASE_')) return COMPANY_INVENTORY_PURCHASE
     return transaction.source
   }
 
@@ -127,35 +210,117 @@ export default function BusinessInventory() {
     { id: 'transactions' as const, name: 'Transactions', icon: Receipt }
   ]
 
+  // Unified useEffect for data loading and real-time subscriptions
   useEffect(() => {
-    loadBusinessInventory()
-    loadBusinessTransactions()
-    loadProjects()
-  }, [])
+    let itemsUnsubscribe: (() => void) | null = null
+    let transactionsUnsubscribe: (() => void) | null = null
 
-  // Subscribe to real-time updates for inventory
-  useEffect(() => {
-    const unsubscribe = unifiedItemsService.subscribeToBusinessInventory(
-      (updatedItems) => {
-        setItems(updatedItems)
-        setIsLoading(false)
-      },
-      filters
-    )
-
-    return unsubscribe
-  }, [filters])
-
-  // Subscribe to real-time updates for transactions when on transactions tab
-  useEffect(() => {
-    if (activeTab !== 'transactions') return
-
-    const loadTransactionsOnTabChange = async () => {
-      await loadBusinessTransactions()
+    const loadInitialData = async () => {
+    if (!currentAccountId) {
+      setIsLoading(false)
+      return
     }
 
-    loadTransactionsOnTabChange()
-  }, [activeTab])
+        setIsLoading(true)
+      try {
+        const [inventoryData, businessInventoryTransactions, inventoryRelatedTransactions, projectsData] = await Promise.all([
+          unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters),
+          transactionService.getBusinessInventoryTransactions(currentAccountId),
+          transactionService.getInventoryRelatedTransactions(currentAccountId),
+          projectService.getProjects(currentAccountId)
+        ])
+
+        const allTransactions = [...businessInventoryTransactions, ...inventoryRelatedTransactions]
+        const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
+          index === self.findIndex(t => t.transactionId === transaction.transactionId)
+        )
+        uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+        setItems(inventoryData)
+        setTransactions(uniqueTransactions)
+        setProjects(projectsData)
+
+        // Setup subscriptions after initial data load
+        itemsUnsubscribe = unifiedItemsService.subscribeToBusinessInventory(
+          currentAccountId,
+          (updatedItems) => setItems(updatedItems),
+          filters,
+          inventoryData
+        )
+        
+        // We need a new subscription service for transactions
+        transactionsUnsubscribe = transactionService.subscribeToAllTransactions(
+          currentAccountId,
+          (updatedTransactions) => {
+            const allTrans = [...updatedTransactions];
+            const uniqueTrans = allTrans.filter((transaction, index, self) =>
+              index === self.findIndex(t => t.transactionId === transaction.transactionId)
+            );
+            uniqueTrans.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setTransactions(uniqueTrans);
+          },
+          uniqueTransactions
+        )
+
+      } catch (error) {
+        console.error('Error loading business inventory data:', error)
+          setItems([])
+          setTransactions([])
+          setProjects([])
+      } finally {
+          setIsLoading(false)
+        }
+    }
+
+    loadInitialData()
+
+    return () => {
+      if (itemsUnsubscribe) itemsUnsubscribe()
+      if (transactionsUnsubscribe) transactionsUnsubscribe()
+    }
+  }, [currentAccountId, filters])
+
+  // Per-visible-item lineage subscriptions: refetch single item on new edges to keep list in sync
+  useEffect(() => {
+    if (!currentAccountId || items.length === 0) return
+
+    const unsubMap = new Map<string, () => void>()
+    try {
+      items.forEach(item => {
+        if (!item?.itemId) return
+        const unsub = lineageService.subscribeToItemLineageForItem(currentAccountId, item.itemId, async () => {
+          try {
+            const updatedItem = await unifiedItemsService.getItemById(currentAccountId, item.itemId)
+            if (updatedItem) {
+              // If it is still a business inventory item, update it; otherwise remove it from the list
+              if (!updatedItem.projectId) {
+                setItems(prev => prev.map(i => i.itemId === updatedItem.itemId ? updatedItem : i))
+              } else {
+                setItems(prev => prev.filter(i => i.itemId !== updatedItem.itemId))
+              }
+              // Also refresh transactions to ensure deletions/creations are reflected
+              try {
+                await loadBusinessTransactions()
+              } catch (tErr) {
+                console.debug('BusinessInventory - failed to reload transactions after lineage event', tErr)
+              }
+            }
+          } catch (err) {
+            console.debug('BusinessInventory - failed to refetch item on lineage event', err)
+          }
+        })
+        unsubMap.set(item.itemId, unsub)
+      })
+    } catch (err) {
+      console.debug('BusinessInventory - failed to setup per-item lineage subscriptions', err)
+    }
+
+    return () => {
+      unsubMap.forEach(u => {
+        try { u() } catch (e) { /* noop */ }
+      })
+    }
+  }, [items.map(i => i.itemId).join(','), currentAccountId])
 
   // Reset uploading state on unmount to prevent hanging state
   useEffect(() => {
@@ -165,8 +330,9 @@ export default function BusinessInventory() {
   }, [])
 
   const loadBusinessInventory = async () => {
+    if (!currentAccountId) return
     try {
-      const data = await unifiedItemsService.getBusinessInventoryItems(filters)
+      const data = await unifiedItemsService.getBusinessInventoryItems(currentAccountId, filters)
       setItems(data)
     } catch (error) {
       console.error('Error loading business inventory:', error)
@@ -178,25 +344,26 @@ export default function BusinessInventory() {
 
 
   const loadBusinessTransactions = async () => {
+    if (!currentAccountId) return
     try {
       // Get inventory-related transactions from top-level collection
       const allTransactions: Transaction[] = []
 
       // Get business inventory transactions (project_id == null)
-      const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions()
+      const businessInventoryTransactions = await transactionService.getBusinessInventoryTransactions(currentAccountId)
       allTransactions.push(...businessInventoryTransactions)
 
       // Get inventory-related transactions (reimbursement_type in ['Client Owes', 'We Owe'])
-      const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions()
+      const inventoryRelatedTransactions = await transactionService.getInventoryRelatedTransactions(currentAccountId)
       allTransactions.push(...inventoryRelatedTransactions)
 
       // Remove duplicates (same transaction might appear in both queries)
       const uniqueTransactions = allTransactions.filter((transaction, index, self) =>
-        index === self.findIndex(t => t.transaction_id === transaction.transaction_id)
+        index === self.findIndex(t => t.transactionId === transaction.transactionId)
       )
 
       // Sort by creation date, newest first
-      uniqueTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      uniqueTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       setTransactions(uniqueTransactions)
     } catch (error) {
       console.error('Error loading business transactions:', error)
@@ -205,8 +372,9 @@ export default function BusinessInventory() {
   }
 
   const loadProjects = async () => {
+    if (!currentAccountId) return
     try {
-      const projectsData = await projectService.getProjects()
+      const projectsData = await projectService.getProjects(currentAccountId)
       setProjects(projectsData)
     } catch (error) {
       console.error('Error loading projects:', error)
@@ -221,7 +389,10 @@ export default function BusinessInventory() {
   const { toggleBookmark } = useBookmark<Item>({
     items,
     setItems,
-    updateItemService: unifiedItemsService.updateItem
+    updateItemService: (itemId: string, updates: Partial<Item>) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
+      return unifiedItemsService.updateItem(currentAccountId, itemId, updates)
+    }
   })
 
   // Use duplication hook for business inventory items
@@ -229,16 +400,18 @@ export default function BusinessInventory() {
     items,
     setItems,
     duplicationService: async (itemId: string) => {
+      if (!currentAccountId) throw new Error('Account ID is required')
       // Since we're using the unified service, we need to create a duplicate item
-      const originalItem = await unifiedItemsService.getItemById(itemId)
+      const originalItem = await unifiedItemsService.getItemById(currentAccountId, itemId)
       if (!originalItem) throw new Error('Item not found')
 
       // Create a new item with similar data but new ID
-      const { item_id, date_created, last_updated, ...itemData } = originalItem
-      return await unifiedItemsService.createItem({
+      // Rename destructured `itemId` to `originalItemId` to avoid redeclaring the `itemId` parameter
+      const { itemId: originalItemId, dateCreated, lastUpdated, ...itemData } = originalItem
+      return await unifiedItemsService.createItem(currentAccountId, {
         ...itemData,
-        inventory_status: 'available',
-        project_id: null,
+        inventoryStatus: 'available',
+        projectId: null,
         disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
       })
     }
@@ -264,12 +437,13 @@ export default function BusinessInventory() {
   }
 
   const handleBatchAllocationSubmit = async () => {
-    if (!batchAllocationForm.projectId || selectedItems.size === 0) return
+    if (!batchAllocationForm.projectId || selectedItems.size === 0 || !currentAccountId) return
 
     setIsAllocating(true)
     try {
       const itemIds = Array.from(selectedItems)
       await unifiedItemsService.batchAllocateItemsToProject(
+        currentAccountId,
         itemIds,
         batchAllocationForm.projectId,
         {
@@ -290,6 +464,59 @@ export default function BusinessInventory() {
       alert('Error allocating items. Please try again.')
     } finally {
       setIsAllocating(false)
+    }
+  }
+
+  const handleDeleteSelectedItems = async () => {
+    if (selectedItems.size === 0 || !currentAccountId) return
+
+    const itemCount = selectedItems.size
+    const confirmMessage = itemCount === 1
+      ? 'Are you sure you want to delete this item? This action cannot be undone.'
+      : `Are you sure you want to delete ${itemCount} items? This action cannot be undone.`
+
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    const itemIds = Array.from(selectedItems)
+    
+    // Optimistically update UI immediately by removing deleted items from state
+    setItems(prevItems => prevItems.filter(item => !itemIds.includes(item.itemId)))
+    
+    // Clear selections immediately
+    setSelectedItems(new Set())
+
+    try {
+      let successCount = 0
+      let errorCount = 0
+
+      // Delete items one by one
+      for (const itemId of itemIds) {
+        try {
+          await unifiedItemsService.deleteItem(currentAccountId, itemId)
+          successCount++
+        } catch (error) {
+          console.error(`Error deleting item ${itemId}:`, error)
+          errorCount++
+        }
+      }
+
+      // Show result message
+      if (errorCount === 0) {
+        alert(`Successfully deleted ${successCount} item${successCount !== 1 ? 's' : ''}.`)
+      } else {
+        // If there were errors, reload the items to restore the failed deletions
+        await loadBusinessInventory()
+        alert(`Deleted ${successCount} item${successCount !== 1 ? 's' : ''}, but ${errorCount} item${errorCount !== 1 ? 's' : ''} failed to delete.`)
+      }
+
+      // Real-time subscription will keep the UI in sync
+    } catch (error) {
+      console.error('Error deleting items:', error)
+      // Reload items on error to restore state
+      await loadBusinessInventory()
+      alert('Error deleting items. Please try again.')
     }
   }
 
@@ -345,7 +572,8 @@ export default function BusinessInventory() {
     }
 
     // Update the item with the new image
-    await unifiedItemsService.updateItem(itemId, { images: [newImage] })
+    if (!currentAccountId) throw new Error('Account ID is required')
+    await unifiedItemsService.updateItem(currentAccountId, itemId, { images: [newImage] })
 
     // Show success notification on the last file
     if (allFiles && allFiles.indexOf(file) === allFiles.length - 1) {
@@ -358,7 +586,7 @@ export default function BusinessInventory() {
   // Filter handlers (matching InventoryList.tsx)
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedItems(new Set(filteredItems.map(item => item.item_id)))
+      setSelectedItems(new Set(filteredItems.map(item => item.itemId)))
     } else {
       setSelectedItems(new Set())
     }
@@ -374,6 +602,38 @@ export default function BusinessInventory() {
     setSelectedItems(newSelected)
   }
 
+  // Guard against no account when not loading
+  if (!isLoading && !accountLoading && !currentAccountId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">Business Inventory</h1>
+        </div>
+        <div className="bg-white shadow rounded-lg border border-yellow-200 bg-yellow-50">
+          <div className="px-4 py-5 sm:p-6">
+            <div className="text-center py-12">
+              <Package className="mx-auto h-12 w-12 text-yellow-600" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                No Account Selected
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                Please select or create an account to manage inventory.
+              </p>
+              <div className="mt-6">
+                <Link
+                  to="/settings"
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                >
+                  Go to Settings
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-32">
@@ -386,7 +646,7 @@ export default function BusinessInventory() {
     <div className="space-y-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">1584 Inventory</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{COMPANY_INVENTORY}</h1>
       </div>
 
       {/* Tabs */}
@@ -420,13 +680,13 @@ export default function BusinessInventory() {
             <>
               {/* Header - Just Add Item button */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
-                <Link
-                  to="/business-inventory/add?returnTo=/business-inventory"
+                <ContextLink
+                  to={buildContextUrl('/business-inventory/add')}
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Item
-                </Link>
+                </ContextLink>
               </div>
 
               {/* Search and Controls - Sticky Container */}
@@ -512,21 +772,24 @@ export default function BusinessInventory() {
                   disabled={selectedItems.size === 0}
                   title="Allocate selected items to project"
                 >
-                  <Plus className="h-4 w-4" />
+                  <DollarSign className="h-4 w-4" />
                 </button>
 
-                <button
-                  className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
-                  disabled={selectedItems.size === 0}
-                  title="Generate QR Codes"
-                >
-                  <QrCode className="h-4 w-4" />
-                </button>
+                {ENABLE_QR && (
+                  <button
+                    className="inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors duration-200"
+                    disabled={selectedItems.size === 0}
+                    title="Generate QR Codes"
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </button>
+                )}
 
                 <button
+                  onClick={handleDeleteSelectedItems}
                   className="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
                   disabled={selectedItems.size === 0}
-                  title="Delete All"
+                  title="Delete Selected Items"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -554,15 +817,15 @@ export default function BusinessInventory() {
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <ul className="divide-y divide-gray-200">
                     {filteredItems.map((item) => (
-                      <li key={item.item_id} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
+                      <li key={item.itemId} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                         {/* Top row: Controls - stays outside Link */}
                         <div className="flex items-center justify-between mb-0 px-4 py-3">
                           <div className="flex items-center">
                             <input
                               type="checkbox"
                               className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4 flex-shrink-0"
-                              checked={selectedItems.has(item.item_id)}
-                              onChange={(e) => handleSelectItem(item.item_id, e.target.checked)}
+                              checked={selectedItems.has(item.itemId)}
+                              onChange={(e) => handleSelectItem(item.itemId, e.target.checked)}
                             />
                           </div>
 
@@ -578,46 +841,73 @@ export default function BusinessInventory() {
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                toggleBookmark(item.item_id)
+                                toggleBookmark(item.itemId)
                               }}
                             >
                               <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                             </button>
-                            <Link
-                              to={`/business-inventory/${item.item_id}/edit?returnTo=/business-inventory`}
+                            <ContextLink
+                              to={buildContextUrl(`/business-inventory/${item.itemId}/edit`)}
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Edit item"
                             >
                               <Edit className="h-4 w-4" />
-                            </Link>
+                            </ContextLink>
                             <button
                               onClick={(e) => {
                                 e.preventDefault()
                                 e.stopPropagation()
-                                duplicateItem(item.item_id)
+                                duplicateItem(item.itemId)
                               }}
                               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                               title="Duplicate item"
                             >
                               <Copy className="h-4 w-4" />
                             </button>
-                            {/* Status badge moved to top-right corner */}
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                              item.inventory_status === 'available'
-                                ? 'bg-green-100 text-green-800'
-                                : item.inventory_status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {item.inventory_status === 'available' ? 'Available' :
-                               item.inventory_status === 'pending' ? 'Allocated' : 'Sold'}
-                            </span>
+                            {/* Disposition badge (replaces inventory status badge) */}
+                            <div className="relative ml-1">
+                              <span
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  toggleDispositionMenu(item.itemId)
+                                }}
+                                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
+                              >
+                                {displayDispositionLabel(item.disposition) || 'Not Set'}
+                                <ChevronDown className="h-3 w-3 ml-1" />
+                              </span>
+
+                              {/* Dropdown menu */}
+                              {openDispositionMenu === item.itemId && (
+                                <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                  <div className="py-1">
+                                    {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                                      <button
+                                        key={disposition}
+                                        onClick={(e) => {
+                                          e.preventDefault()
+                                          e.stopPropagation()
+                                          updateDisposition(item.itemId, disposition)
+                                        }}
+                                        className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
+                                          dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                                        }`}
+                                        disabled={!item.disposition}
+                                      >
+                                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
 
                         {/* Main tappable content - wrapped in Link */}
-                        <Link to={`/business-inventory/${item.item_id}`}>
+                        <ContextLink to={buildContextUrl(`/business-inventory/${item.itemId}`)}>
                           <div className="block bg-transparent">
                             <div className="px-4 pb-3 sm:px-6">
                               {/* Middle row: Thumbnail and Description - now tappable */}
@@ -643,9 +933,9 @@ export default function BusinessInventory() {
                                       onClick={(e) => {
                                         e.preventDefault()
                                         e.stopPropagation()
-                                        handleAddImage(item.item_id)
+                                        handleAddImage(item.itemId)
                                       }}
-                                      disabled={uploadingImages.has(item.item_id)}
+                                      disabled={uploadingImages.has(item.itemId)}
                                       className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
                                       title="Add image (camera or gallery)"
                                     >
@@ -661,9 +951,9 @@ export default function BusinessInventory() {
                                       {item.description}
                                     </h3>
                                     {/* Storage Location field */}
-                                    {item.business_inventory_location && (
+                                    {item.businessInventoryLocation && (
                                       <p className="text-sm text-gray-600 mt-1">
-                                        {item.business_inventory_location}
+                                        {item.businessInventoryLocation}
                                       </p>
                                     )}
                                   </div>
@@ -674,18 +964,18 @@ export default function BusinessInventory() {
                               <div className="space-y-2">
                                 {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                                  {(item.project_price || item.purchase_price) && (
-                                    <span className="font-medium text-gray-700">${item.project_price || item.purchase_price}</span>
+                                  {(item.projectPrice || item.purchasePrice) && (
+                                    <span className="font-medium text-gray-700">${item.projectPrice || item.purchasePrice}</span>
                                   )}
                                   {item.source && (
                                     <>
-                                      {(item.project_price || item.purchase_price) && <span className="hidden sm:inline">•</span>}
+                                      {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.source}</span>
                                     </>
                                   )}
                                   {item.sku && (
                                     <>
-                                      {(item.project_price || item.purchase_price || item.source) && <span className="hidden sm:inline">•</span>}
+                                      {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
                                       <span className="font-medium text-gray-700">{item.sku}</span>
                                     </>
                                   )}
@@ -700,7 +990,7 @@ export default function BusinessInventory() {
                               </div>
                             </div>
                           </div>
-                        </Link>
+                        </ContextLink>
                       </li>
                     ))}
                   </ul>
@@ -713,13 +1003,13 @@ export default function BusinessInventory() {
             <>
               {/* Header - Add Transaction button */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                <Link
-                  to="/business-inventory/transactions/add"
+                <ContextLink
+                  to={buildContextUrl('/business-inventory/transaction/add')}
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Transaction
-                </Link>
+                </ContextLink>
               </div>
 
               {/* Search and Controls - Sticky Container */}
@@ -794,14 +1084,14 @@ export default function BusinessInventory() {
                             </button>
                             <button
                               onClick={() => {
-                                setTransactionFilterMode('cancelled')
+                                setTransactionFilterMode('canceled')
                                 setShowTransactionFilterMenu(false)
                               }}
                               className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                                transactionFilterMode === 'cancelled' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                                transactionFilterMode === 'canceled' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
                               }`}
                             >
-                              Cancelled
+                              Canceled
                             </button>
                             <button
                               onClick={() => {
@@ -840,8 +1130,8 @@ export default function BusinessInventory() {
                 <div className="bg-white shadow overflow-hidden sm:rounded-md">
                   <ul className="divide-y divide-gray-200">
                     {filteredTransactions.map((transaction) => (
-                      <li key={transaction.transaction_id} className="relative">
-                        <Link to={`/business-inventory/transaction/${transaction.transaction_id}`}>
+                      <li key={transaction.transactionId} className="relative">
+                        <ContextLink to={buildContextUrl(`/business-inventory/transaction/${transaction.transactionId}`)}>
                           <div className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
                             <div className="px-4 py-4 sm:px-6">
                             {/* Top row: Header with source and status */}
@@ -861,7 +1151,7 @@ export default function BusinessInventory() {
                                 }`}>
                                   {transaction.status === 'completed' ? 'Completed' :
                                    transaction.status === 'pending' ? 'Pending' :
-                                   transaction.status === 'cancelled' ? 'Cancelled' :
+                                   transaction.status === 'canceled' ? 'Canceled' :
                                    transaction.status}
                                 </span>
                               </div>
@@ -872,17 +1162,17 @@ export default function BusinessInventory() {
                               {/* Details row - Price, project, date */}
                               <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                 <span className="font-medium text-gray-700">{formatCurrency(transaction.amount)}</span>
-                                {transaction.project_name && (
+                                {transaction.projectName && (
                                   <>
                                     <span className="hidden sm:inline">•</span>
                                     <span className="font-medium text-gray-700">
-                                      {transaction.project_name}
+                                      {transaction.projectName}
                                     </span>
                                   </>
                                 )}
                                 <span className="hidden sm:inline">•</span>
                                 <span className="font-medium text-gray-700">
-                                  {formatDate(transaction.transaction_date)}
+                                  {formatDate(transaction.transactionDate)}
                                 </span>
                               </div>
 
@@ -897,7 +1187,7 @@ export default function BusinessInventory() {
 
                             </div>
                           </div>
-                        </Link>
+                        </ContextLink>
                       </li>
                     ))}
                   </ul>

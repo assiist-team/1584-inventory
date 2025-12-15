@@ -1,10 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { useBusinessProfile } from '../../contexts/BusinessProfileContext'
 import { Button } from '../ui/Button'
 import { LogOut, Settings, Package, FolderOpen } from 'lucide-react'
 
 export default function Header() {
   const { user, signOut, loading } = useAuth()
+  const { businessName } = useBusinessProfile()
   const location = useLocation()
 
   const isProjectsActive = location.pathname.startsWith('/projects') || location.pathname.startsWith('/project') || location.pathname === '/'
@@ -12,13 +14,13 @@ export default function Header() {
   const isSettingsActive = location.pathname.startsWith('/settings')
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="bg-white shadow-sm border-b border-gray-200 print:hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 justify-between items-center gap-2">
           {/* Left side - Logo only */}
           <div className="flex items-center">
             <Link to="/" className="text-xl font-bold text-gray-900">
-              1584 Design
+              {businessName}
             </Link>
           </div>
 

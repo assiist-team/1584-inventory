@@ -21,18 +21,51 @@ interface ProjectFormProps {
 export default function ProjectForm({ onSubmit, onCancel, isLoading = false, initialData }: ProjectFormProps) {
   const isEditing = Boolean(initialData?.name)
 
+  // Migrate designFee to budgetCategories if it exists and budgetCategories doesn't have it
+  const migratedBudgetCategories = (() => {
+    if (initialData?.budgetCategories) {
+      // If budgetCategories exists but designFee is 0/undefined and old designFee exists, merge it
+      if ((!initialData.budgetCategories.designFee || initialData.budgetCategories.designFee === 0) 
+          && initialData?.designFee !== undefined && initialData.designFee > 0) {
+        return {
+          ...initialData.budgetCategories,
+          designFee: initialData.designFee
+        }
+      }
+      return initialData.budgetCategories
+    }
+    if (initialData?.designFee !== undefined) {
+      return {
+        designFee: initialData.designFee,
+        furnishings: 0,
+        propertyManagement: 0,
+        kitchen: 0,
+        install: 0,
+        storageReceiving: 0,
+        fuel: 0
+      }
+    }
+    return undefined
+  })()
+
   const [formData, setFormData] = useState<ProjectFormData>({
     name: initialData?.name || '',
     description: initialData?.description || '',
     clientName: initialData?.clientName || '',
     budget: initialData?.budget || undefined,
     designFee: initialData?.designFee || undefined,
-    budgetCategories: initialData?.budgetCategories || undefined,
+    budgetCategories: migratedBudgetCategories,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const handleChange = (field: keyof ProjectFormData, value: string | number | ProjectBudgetCategories) => {
+  // Calculate total budget from all budget categories
+  const calculateTotalBudget = (): number => {
+    if (!formData.budgetCategories) return 0
+    return Object.values(formData.budgetCategories).reduce((sum, value) => sum + (value || 0), 0)
+  }
+
+  const handleChange = (field: keyof ProjectFormData, value: string | number | ProjectBudgetCategories | undefined) => {
     if (field === 'budgetCategories' && typeof value === 'object') {
       setFormData(prev => ({ ...prev, [field]: value }))
     } else {
@@ -56,14 +89,7 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
       newErrors.clientName = 'Client name is required'
     }
 
-    // Budget and design fee are optional, but if provided, should be valid numbers
-    if (formData.budget !== undefined && (isNaN(formData.budget) || formData.budget < 0)) {
-      newErrors.budget = 'Budget must be a positive number'
-    }
-
-    if (formData.designFee !== undefined && (isNaN(formData.designFee) || formData.designFee < 0)) {
-      newErrors.designFee = 'Design fee must be a positive number'
-    }
+    // Budget categories validation is handled in the individual fields
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -72,7 +98,10 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    console.debug('ProjectForm: submit clicked', { formData })
+
     if (!validateForm()) {
+      console.debug('ProjectForm: validation failed', { formData })
       return
     }
 
@@ -90,16 +119,19 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
       }
 
       const cleanedData = cleanObject(formData) as ProjectFormData
+      console.debug('ProjectForm: calling onSubmit with', { cleanedData })
       await onSubmit(cleanedData)
+      console.debug('ProjectForm: onSubmit resolved')
     } catch (error) {
       console.error('Error submitting form:', error)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div className="mt-3">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto z-50">
+      <div className="flex min-h-screen items-start sm:items-center justify-center p-4">
+        <div className="relative w-full max-w-md mx-auto p-5 border shadow-lg rounded-md bg-white max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <div className="mt-3">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">
@@ -166,76 +198,66 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
               />
             </div>
 
-            {/* Budget */}
-            <div>
-              <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-                Budget (Optional)
-              </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                </div>
-                <input
-                  type="number"
-                  id="budget"
-                  value={formData.budget?.toString() || ''}
-                  onChange={(e) => {
-                    const inputValue = e.target.value.trim()
-                    if (inputValue === '') {
-                      handleChange('budget', 0) // This will be converted to undefined in handleChange
-                    } else {
-                      const numericValue = parseFloat(inputValue)
-                      handleChange('budget', isNaN(numericValue) ? 0 : numericValue)
-                    }
-                  }}
-                  className={`block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
-                    errors.budget ? 'border-red-300' : ''
-                  }`}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              {errors.budget && <p className="mt-1 text-sm text-red-600">{errors.budget}</p>}
-            </div>
-
-            {/* Design Fee */}
-            <div>
-              <label htmlFor="designFee" className="block text-sm font-medium text-gray-700">
-                Design Fee (Optional)
-              </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                </div>
-                <input
-                  type="number"
-                  id="designFee"
-                  value={formData.designFee?.toString() || ''}
-                  onChange={(e) => {
-                    const inputValue = e.target.value.trim()
-                    if (inputValue === '') {
-                      handleChange('designFee', 0) // This will be converted to undefined in handleChange
-                    } else {
-                      const numericValue = parseFloat(inputValue)
-                      handleChange('designFee', isNaN(numericValue) ? 0 : numericValue)
-                    }
-                  }}
-                  className={`block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
-                    errors.designFee ? 'border-red-300' : ''
-                  }`}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              {errors.designFee && <p className="mt-1 text-sm text-red-600">{errors.designFee}</p>}
-            </div>
+            {/* Default Transaction Category moved to account-level presets (Settings → Presets → Budget Categories) */}
 
             {/* Budget Categories Section */}
             <div className="border-t border-gray-200 pt-4">
-              <h4 className="text-md font-medium text-gray-900 mb-3">Budget Categories (Optional)</h4>
+              <h4 className="text-md font-medium text-gray-900 mb-3">Budget Categories</h4>
               <p className="text-sm text-gray-500 mb-4">Set specific budgets for different project categories. These will be used to track spending by category.</p>
+
+              {/* Total Budget (Read-only) */}
+              <div className="mb-4">
+                <label htmlFor="totalBudget" className="block text-sm font-medium text-gray-700">
+                  Total Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    id="totalBudget"
+                    value={calculateTotalBudget().toFixed(2)}
+                    readOnly
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm bg-gray-50 text-gray-700 sm:text-sm cursor-not-allowed"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Automatically calculated from budget categories</p>
+              </div>
+
+              {/* Design Fee */}
+              <div className="mb-4">
+                <label htmlFor="budgetCategories.designFee" className="block text-sm font-medium text-gray-700">
+                  Design Fee Budget
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="number"
+                    id="budgetCategories.designFee"
+                    value={formData.budgetCategories?.designFee?.toString() || ''}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value) || 0
+                      const newBudgetCategories: ProjectBudgetCategories = {
+                        designFee: value > 0 ? value : 0,
+                        furnishings: formData.budgetCategories?.furnishings || 0,
+                        propertyManagement: formData.budgetCategories?.propertyManagement || 0,
+                        kitchen: formData.budgetCategories?.kitchen || 0,
+                        install: formData.budgetCategories?.install || 0,
+                        storageReceiving: formData.budgetCategories?.storageReceiving || 0,
+                        fuel: formData.budgetCategories?.fuel || 0
+                      }
+                      handleChange('budgetCategories', newBudgetCategories)
+                    }}
+                    className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
 
               {/* Furnishings */}
               <div className="mb-4">
@@ -287,16 +309,14 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                     onChange={(e) => {
                       const value = parseFloat(e.target.value) || 0
                       const newBudgetCategories: ProjectBudgetCategories = {
-                        designFee: 0,
-                        furnishings: 0,
-                        propertyManagement: 0,
-                        kitchen: 0,
-                        install: 0,
-                        storageReceiving: 0,
-                        fuel: 0,
-                        ...(formData.budgetCategories || {})
+                        designFee: formData.budgetCategories?.designFee || 0,
+                        furnishings: formData.budgetCategories?.furnishings || 0,
+                        propertyManagement: value > 0 ? value : 0,
+                        kitchen: formData.budgetCategories?.kitchen || 0,
+                        install: formData.budgetCategories?.install || 0,
+                        storageReceiving: formData.budgetCategories?.storageReceiving || 0,
+                        fuel: formData.budgetCategories?.fuel || 0
                       }
-                      newBudgetCategories.propertyManagement = value > 0 ? value : 0
                       handleChange('budgetCategories', newBudgetCategories)
                     }}
                     className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -323,16 +343,14 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                     onChange={(e) => {
                       const value = parseFloat(e.target.value) || 0
                       const newBudgetCategories: ProjectBudgetCategories = {
-                        designFee: 0,
-                        furnishings: 0,
-                        propertyManagement: 0,
-                        kitchen: 0,
-                        install: 0,
-                        storageReceiving: 0,
-                        fuel: 0,
-                        ...(formData.budgetCategories || {})
+                        designFee: formData.budgetCategories?.designFee || 0,
+                        furnishings: formData.budgetCategories?.furnishings || 0,
+                        propertyManagement: formData.budgetCategories?.propertyManagement || 0,
+                        kitchen: value > 0 ? value : 0,
+                        install: formData.budgetCategories?.install || 0,
+                        storageReceiving: formData.budgetCategories?.storageReceiving || 0,
+                        fuel: formData.budgetCategories?.fuel || 0
                       }
-                      newBudgetCategories.kitchen = value > 0 ? value : 0
                       handleChange('budgetCategories', newBudgetCategories)
                     }}
                     className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -359,16 +377,14 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                     onChange={(e) => {
                       const value = parseFloat(e.target.value) || 0
                       const newBudgetCategories: ProjectBudgetCategories = {
-                        designFee: 0,
-                        furnishings: 0,
-                        propertyManagement: 0,
-                        kitchen: 0,
-                        install: 0,
-                        storageReceiving: 0,
-                        fuel: 0,
-                        ...(formData.budgetCategories || {})
+                        designFee: formData.budgetCategories?.designFee || 0,
+                        furnishings: formData.budgetCategories?.furnishings || 0,
+                        propertyManagement: formData.budgetCategories?.propertyManagement || 0,
+                        kitchen: formData.budgetCategories?.kitchen || 0,
+                        install: value > 0 ? value : 0,
+                        storageReceiving: formData.budgetCategories?.storageReceiving || 0,
+                        fuel: formData.budgetCategories?.fuel || 0
                       }
-                      newBudgetCategories.install = value > 0 ? value : 0
                       handleChange('budgetCategories', newBudgetCategories)
                     }}
                     className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -395,16 +411,14 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                     onChange={(e) => {
                       const value = parseFloat(e.target.value) || 0
                       const newBudgetCategories: ProjectBudgetCategories = {
-                        designFee: 0,
-                        furnishings: 0,
-                        propertyManagement: 0,
-                        kitchen: 0,
-                        install: 0,
-                        storageReceiving: 0,
-                        fuel: 0,
-                        ...(formData.budgetCategories || {})
+                        designFee: formData.budgetCategories?.designFee || 0,
+                        furnishings: formData.budgetCategories?.furnishings || 0,
+                        propertyManagement: formData.budgetCategories?.propertyManagement || 0,
+                        kitchen: formData.budgetCategories?.kitchen || 0,
+                        install: formData.budgetCategories?.install || 0,
+                        storageReceiving: value > 0 ? value : 0,
+                        fuel: formData.budgetCategories?.fuel || 0
                       }
-                      newBudgetCategories.storageReceiving = value > 0 ? value : 0
                       handleChange('budgetCategories', newBudgetCategories)
                     }}
                     className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -431,16 +445,14 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                     onChange={(e) => {
                       const value = parseFloat(e.target.value) || 0
                       const newBudgetCategories: ProjectBudgetCategories = {
-                        designFee: 0,
-                        furnishings: 0,
-                        propertyManagement: 0,
-                        kitchen: 0,
-                        install: 0,
-                        storageReceiving: 0,
-                        fuel: 0,
-                        ...(formData.budgetCategories || {})
+                        designFee: formData.budgetCategories?.designFee || 0,
+                        furnishings: formData.budgetCategories?.furnishings || 0,
+                        propertyManagement: formData.budgetCategories?.propertyManagement || 0,
+                        kitchen: formData.budgetCategories?.kitchen || 0,
+                        install: formData.budgetCategories?.install || 0,
+                        storageReceiving: formData.budgetCategories?.storageReceiving || 0,
+                        fuel: value > 0 ? value : 0
                       }
-                      newBudgetCategories.fuel = value > 0 ? value : 0
                       handleChange('budgetCategories', newBudgetCategories)
                     }}
                     className="block w-full pl-10 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -474,6 +486,7 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
               </button>
             </div>
           </form>
+          </div>
         </div>
       </div>
     </div>

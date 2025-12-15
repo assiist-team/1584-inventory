@@ -1,18 +1,67 @@
 // Core types for the inventory management system
+
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
+
+// Tax preset interface (imported from constants for consistency)
+export interface TaxPreset {
+  id: string;
+  name: string;
+  rate: number; // percentage, e.g., 8.375
+}
+
+export interface BudgetCategory {
+  id: string;
+  accountId: string;
+  name: string;
+  slug: string;
+  isArchived: boolean;
+  metadata?: Record<string, any> | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  createdAt: Date;
+  createdBy: string;
+}
+
+
+export interface BusinessProfile {
+  name: string;
+  logoUrl: string | null;
+  updatedAt: Date;
+  updatedBy: string;
+  accountId: string;
+}
+
 export interface User {
   id: string;
   email: string;
-  displayName: string;
-  role: UserRole;
+  fullName: string;
+  accountId: string; // Links user to account
+  role?: 'owner' | 'admin' | 'user' | null; // System owner, account admin, or account user
   createdAt: Date;
   lastLogin: Date;
 }
 
 export enum UserRole {
-  OWNER = 'owner',
-  ADMIN = 'admin',
-  DESIGNER = 'designer',
-  VIEWER = 'viewer'
+  OWNER = 'owner',    // System-level super admin
+  ADMIN = 'admin',    // Account-level admin
+  USER = 'user'       // Account-level user
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  accountId: string;
+  role: 'admin' | 'user';
+  invitedBy: string;
+  status: 'pending' | 'accepted' | 'expired';
+  createdAt: Date;
+  expiresAt: Date;
+  acceptedAt?: Date;
 }
 
 export interface Project {
@@ -23,6 +72,7 @@ export interface Project {
   budget?: number;
   designFee?: number;
   budgetCategories?: ProjectBudgetCategories;
+  defaultCategoryId?: string;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -52,37 +102,49 @@ export interface ProjectMetadata {
 }
 
 export interface Item {
-  // Note: This interface defines the FORM field names used in AddItem/EditItem forms
-  // Field mapping to Firebase happens in the service layer:
-  // - purchase_price (form) ↔ purchase_price (Firebase)
-  // - project_price (form) ↔ project_price (Firebase) - formerly resale_price
-  // - market_value (form) ↔ market_value (Firebase) - direct mapping
-  item_id: string;
+  // Note: This interface uses camelCase for all fields (TypeScript/JavaScript convention)
+  // Field mapping to Supabase (snake_case) happens in the service layer conversion functions
+  itemId: string;
+  accountId?: string;
+  projectId?: string | null;   // null = business inventory, string = allocated to project
+  transactionId?: string | null;
+  previousProjectTransactionId?: string | null;
+  previousProjectId?: string | null;
+  name?: string;
   description: string;
   source: string;
   sku: string;
   price?: string;               // What we paid for the item (used in forms)
-  purchase_price?: string;      // What we paid for the item
-  project_price?: string;       // What we sell it for (1584 design project price) - formerly resale_price
-  market_value?: string;        // Current market value - direct mapping
-  payment_method: string;
+  purchasePrice?: string;      // What we paid for the item
+  projectPrice?: string;       // What we sell it for (Design Business project price) - formerly resale_price
+  marketValue?: string;        // Current market value - direct mapping
+  paymentMethod: string;
   disposition?: string;
   notes?: string;
   space?: string;               // Space/location where item is placed
-  qr_key: string;
+  qrKey: string;
   bookmark: boolean;
-  transaction_id: string;
-  project_id?: string | null;   // null = business inventory, string = allocated to project
-  date_created: string;
-  last_updated: string;
+  dateCreated: string;
+  lastUpdated: string;
   images?: ItemImage[];         // Images associated with this item
+  // Tax fields
+  taxRatePct?: number; // percentage, e.g., 8.25
+  taxAmount?: string; // Legacy single tax amount (kept for compatibility)
+  taxAmountPurchasePrice?: string; // Tax amount applied to `purchasePrice` (stored as four-decimal string; display as 2-decimal)
+  taxAmountProjectPrice?: string;  // Tax amount applied to `projectPrice` (stored as four-decimal string; display as 2-decimal)
+  createdBy?: string;
+  createdAt?: Date;
 
   // Optional transaction selection for form UI
   selectedTransactionId?: string; // UI field for selecting transaction
 
   // Business Inventory fields (unified with Item)
-  inventory_status?: 'available' | 'pending' | 'sold';
-  business_inventory_location?: string; // Warehouse location details
+  inventoryStatus?: 'available' | 'allocated' | 'sold';
+  businessInventoryLocation?: string; // Warehouse location details
+
+  // Lineage tracking fields
+  originTransactionId?: string | null;  // Immutable: transaction id at creation/intake
+  latestTransactionId?: string | null;  // Denormalized: current transaction association; null = in inventory
 }
 
 // Note: ItemCategory and ItemStatus enums have been removed as they don't align
@@ -154,30 +216,37 @@ export interface ApiError {
 }
 
 export interface Transaction {
-  transaction_id: string;
-  project_id?: string | null;
-  project_name?: string | null;
-  transaction_date: string;
+  transactionId: string;
+  projectId?: string | null;
+  projectName?: string | null;
+  transactionDate: string;
   source: string;
-  transaction_type: string;
-  payment_method: string;
+  transactionType: string;
+  paymentMethod: string;
   amount: string;
-  budget_category?: string;
+  budgetCategory?: string; // Legacy field - kept for backward compatibility
+  categoryId?: string; // New field - FK to budget_categories.id
   notes?: string;
-  transaction_images?: TransactionImage[]; // Legacy field for backward compatibility
-  receipt_images?: TransactionImage[]; // New field for receipt images
-  other_images?: TransactionImage[]; // New field for other images
-  receipt_emailed: boolean;
-  created_at: string;
-  created_by: string;
+  transactionImages?: TransactionImage[]; // Legacy field for backward compatibility
+  receiptImages?: TransactionImage[]; // New field for receipt images
+  otherImages?: TransactionImage[]; // New field for other images
+  receiptEmailed: boolean;
+  createdAt: string;
+  createdBy: string;
 
   // NEW: Pending Transaction fields for Enhanced Transaction System
-  status?: 'pending' | 'completed' | 'cancelled';
-  reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
-  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
+  status?: 'pending' | 'completed' | 'canceled';
+  reimbursementType?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
+  triggerEvent?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
 
   // NEW: Item linkage for unified inventory system
-  item_ids?: string[]; // Links to items in the top-level items collection
+  itemIds?: string[]; // Links to items in the top-level items collection
+  // Tax fields
+  taxRatePreset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
+  taxRatePct?: number; // percentage, e.g., 8.25 (calculated from preset or subtotal)
+  subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
+  needsReview?: boolean; // Denormalized flag from DB: true if transaction needs audit review
+  sumItemPurchasePrices?: string; // Denormalized numeric string stored as two-decimal string, e.g. '123.45'
 }
 
 export enum BudgetCategory {
@@ -201,31 +270,36 @@ export enum ErrorType {
 
 // Transaction form types and validation
 export interface TransactionFormData {
-  transaction_date: string;
+  transactionDate: string;
   source: string;
-  transaction_type: string;
-  payment_method: string;
+  transactionType: string;
+  paymentMethod: string;
   amount: string;
-  budget_category?: string;
+  budgetCategory?: string; // Legacy field - kept for backward compatibility
+  categoryId?: string; // New field - FK to budget_categories.id
   notes?: string;
-  status?: 'pending' | 'completed' | 'cancelled';
-  reimbursement_type?: 'Client Owes' | 'We Owe' | '' | null | undefined;
-  trigger_event?: 'Inventory allocation' | 'Inventory return' | 'Purchase from client' | 'Manual';
-  transaction_images?: File[]; // Legacy field for backward compatibility
-  receipt_images?: File[]; // New field for receipt image files
-  other_images?: File[]; // New field for other image files
-  receipt_emailed: boolean;
+  status?: 'pending' | 'completed' | 'canceled';
+  reimbursementType?: typeof CLIENT_OWES_COMPANY | typeof COMPANY_OWES_CLIENT | '' | null | undefined;
+  triggerEvent?: 'Inventory allocation' | 'Inventory return' | 'Inventory sale' | 'Purchase from client' | 'Manual';
+  transactionImages?: File[]; // Legacy field for backward compatibility
+  receiptImages?: File[]; // New field for receipt image files
+  otherImages?: File[]; // New field for other image files
+  receiptEmailed?: boolean;
   items?: TransactionItemFormData[];
+  // Tax form fields
+  taxRatePreset?: string; // ID of the selected preset (e.g., 'nv', 'ut', etc.) or 'Other' for custom
+  subtotal?: string; // pre-tax amount as string, e.g. '100.00' (used when tax_rate_preset is 'Other')
 }
 
 export interface TransactionItemFormData {
   id: string; // temporary id for form management
+  transactionId?: string;
   description: string;
   sku?: string;
   price?: string; // What we paid for the item (used in forms)
-  purchase_price?: string; // What we paid for the item
-  project_price?: string; // What we sell it for (1584 design project price) - formerly resale_price
-  market_value?: string;
+  purchasePrice?: string; // What we paid for the item
+  projectPrice?: string; // What we sell it for (Design Business project price) - formerly resale_price
+  marketValue?: string;
   space?: string;
   notes?: string;
   images?: ItemImage[]; // Images associated with this item
@@ -233,20 +307,21 @@ export interface TransactionItemFormData {
 }
 
 export interface TransactionValidationErrors {
-  transaction_date?: string;
+  transactionDate?: string;
   source?: string;
-  transaction_type?: string;
-  payment_method?: string;
+  transactionType?: string;
+  paymentMethod?: string;
   amount?: string;
-  budget_category?: string;
+  budgetCategory?: string; // Legacy field - kept for backward compatibility
+  categoryId?: string; // New field - FK to budget_categories.id
   notes?: string;
   status?: string;
-  reimbursement_type?: string;
-  trigger_event?: string;
-  transaction_images?: string; // Legacy field for backward compatibility
-  receipt_images?: string; // New field for receipt image errors
-  other_images?: string; // New field for other image errors
-  receipt_emailed?: string;
+  reimbursementType?: string;
+  triggerEvent?: string;
+  transactionImages?: string; // Legacy field for backward compatibility
+  receiptImages?: string; // New field for receipt image errors
+  otherImages?: string; // New field for other image errors
+  receiptEmailed?: string;
   items?: string; // General error for items
   general?: string; // General form error
 }
@@ -255,9 +330,9 @@ export interface TransactionItemValidationErrors {
   description?: string;
   sku?: string;
   price?: string; // Used in form validation
-  purchase_price?: string;
-  project_price?: string; // What we sell it for (1584 design project price) - formerly resale_price
-  market_value?: string;
+  purchasePrice?: string;
+  projectPrice?: string; // What we sell it for (Design Business project price) - formerly resale_price
+  marketValue?: string;
   space?: string;
   notes?: string;
 }
@@ -278,15 +353,44 @@ export interface TransactionFormProps {
 export interface BusinessInventoryStats {
   totalItems: number;
   availableItems: number;
-  pendingItems: number;
+  allocatedItems: number;
   soldItems: number;
 }
 
-// Utility type for date values that might be Firestore Timestamp, Date, string, or number
+// Utility type for date values that might be Date, string, or number
 export type DateValue = Date | string | number | { toDate?: () => Date; seconds?: number; nanoseconds?: number } | null | undefined
 
 // Common interface for items that can be bookmarked
 export interface BookmarkableItem {
-  item_id: string;
+  itemId: string;
   bookmark: boolean;
+}
+
+// Transaction Completeness Types
+export type CompletenessStatus = 'complete' | 'near' | 'incomplete' | 'over'
+
+export interface TransactionCompleteness {
+  itemsNetTotal: number
+  itemsCount: number
+  itemsMissingPriceCount: number
+  transactionSubtotal: number
+  completenessRatio: number
+  completenessStatus: CompletenessStatus
+  missingTaxData: boolean
+  inferredTax?: number
+  taxAmount?: number
+  varianceDollars: number
+  variancePercent: number
+}
+
+// Item Lineage Edge - append-only record of item movement between transactions
+export interface ItemLineageEdge {
+  id: string;
+  accountId: string;
+  itemId: string;
+  fromTransactionId: string | null;  // null == from inventory
+  toTransactionId: string | null;     // null == to inventory
+  createdAt: string;  // ISO timestamp
+  createdBy?: string | null;  // UUID of user who created the edge
+  note?: string | null;  // Optional note about the move
 }

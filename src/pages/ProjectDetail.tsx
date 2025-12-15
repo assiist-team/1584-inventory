@@ -1,22 +1,31 @@
-import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign } from 'lucide-react'
+import { ArrowLeft, Package, FileText, Edit, Trash2, DollarSign, Building2, User, Receipt } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
+import ContextBackLink from '@/components/ContextBackLink'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 import { useState, useEffect } from 'react'
-import { Project, Transaction } from '@/types'
-import { projectService, transactionService } from '@/services/inventoryService'
+import { Project, Transaction, Item } from '@/types'
+import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
+import { lineageService } from '@/services/lineageService'
+import { useAccount } from '@/contexts/AccountContext'
 import InventoryList from './InventoryList'
 import TransactionsList from './TransactionsList'
 import ProjectForm from '@/components/ProjectForm'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 import { useToast } from '@/components/ui/ToastContext'
+import { Button } from '@/components/ui/Button'
+import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const navigate = useStackedNavigate()
   const location = useLocation()
+  const { currentAccountId } = useAccount()
   const [searchParams, setSearchParams] = useSearchParams()
+  const budgetTabParam = searchParams.get('budgetTab')
   const [project, setProject] = useState<Project | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [items, setItems] = useState<Item[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -28,7 +37,7 @@ export default function ProjectDetail() {
   const activeTab = searchParams.get('tab') || 'transactions'
 
   // Budget tabs state, default to 'budget'
-  const [activeBudgetTab, setActiveBudgetTab] = useState('budget')
+  const [activeBudgetTab, setActiveBudgetTab] = useState<string>(() => (budgetTabParam === 'accounting' ? 'accounting' : 'budget'))
 
   // Navigation context logic
   const currentSearchParams = new URLSearchParams(location.search)
@@ -62,103 +71,161 @@ export default function ProjectDetail() {
   // Handle budget tab changes
   const handleBudgetTabChange = (tabId: string) => {
     setActiveBudgetTab(tabId)
+    const newSearchParams = new URLSearchParams(searchParams)
+    newSearchParams.set('budgetTab', tabId)
+    setSearchParams(newSearchParams)
   }
 
-  // Calculate amounts owed
-  const calculateOwedTo1584 = () => {
-    const clientOwesTransactions = transactions.filter(transaction => {
-      // For "owed to 1584", we want transactions where the client owes 1584
-      // This happens when 1584 paid for the transaction
+  // Calculate amounts owed - simple sum of transaction amounts by reimbursement type
+  const owedTo1584 = useMemo(() => {
+    return transactions
+      .filter(t => t.status !== 'canceled')
+      .filter(t => t.reimbursementType === CLIENT_OWES_COMPANY)
+      .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0)
+  }, [transactions])
 
-      const isExplicitlyClientOwes = transaction.status === 'pending' && transaction.reimbursement_type === 'Client Owes'
-      const isLegacyClientOwes = (!transaction.status || transaction.status === 'pending') &&
-                                transaction.payment_method === '1584 Card'
-
-      return isExplicitlyClientOwes || isLegacyClientOwes
-    })
-    console.log('Owed to 1584 - Client Owes transactions:', clientOwesTransactions.length)
-    return clientOwesTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
-  }
-
-  const calculateOwedToClient = () => {
-    const weOweTransactions = transactions.filter(transaction => {
-      // For "owed to client", we want transactions where 1584 owes the client
-      // This happens when the client paid for the transaction
-
-      const isExplicitlyWeOwe = transaction.status === 'pending' && transaction.reimbursement_type === 'We Owe'
-      const isLegacyWeOwe = (!transaction.status || transaction.status === 'pending') &&
-                           transaction.payment_method === 'Client Card'
-
-      return isExplicitlyWeOwe || isLegacyWeOwe
-    })
-    console.log('Owed to Client - We Owe transactions:', weOweTransactions.length)
-    return weOweTransactions.reduce((sum, transaction) => sum + parseFloat(transaction.amount || '0'), 0)
-  }
-
-
-  const loadProjectAndTransactions = async () => {
-    if (!id) {
-      console.warn('No project ID provided, redirecting to projects')
-      navigate('/projects')
-      return
-    }
-
-    setIsLoading(true)
-
-    try {
-      console.log('Loading project data for ID:', id)
-      // Load project data
-      const projectData = await projectService.getProject(id)
-      if (projectData) {
-        console.log('Project loaded successfully:', projectData.name)
-        setProject(projectData)
-
-        // Load transactions for budget calculation
-        const transactionsData = await transactionService.getTransactions(id)
-        console.log('Transactions loaded:', transactionsData.length)
-        setTransactions(transactionsData)
-      } else {
-        console.warn('Project not found:', id)
-        // Project not found
-        navigate('/projects')
-      }
-    } catch (error) {
-      console.error('Error loading project:', error)
-      setError('Failed to load project. Please try again.')
-      setIsLoading(false)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const owedToClient = useMemo(() => {
+    return transactions
+      .filter(t => t.status !== 'canceled')
+      .filter(t => t.reimbursementType === COMPANY_OWES_CLIENT)
+      .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0)
+  }, [transactions])
 
   useEffect(() => {
-    loadProjectAndTransactions()
-  }, [id, navigate])
+    console.log('🔍 ProjectDetail - useEffect triggered. id:', id, 'currentAccountId:', currentAccountId, 'isLoading:', isLoading)
+    
+    let transactionUnsubscribe: (() => void) | undefined
+    let itemsUnsubscribe: (() => void) | undefined
+
+    const setupTransactionSubscription = (initialTransactions: Transaction[]) => {
+      if (!id || !currentAccountId) return
+      transactionUnsubscribe = transactionService.subscribeToTransactions(
+        currentAccountId,
+        id,
+        (updatedTransactions) => {
+          setTransactions(updatedTransactions)
+        },
+        initialTransactions
+      )
+    }
+
+    const setupItemsSubscription = (initialItems: Item[]) => {
+      if (!id || !currentAccountId) return
+      itemsUnsubscribe = unifiedItemsService.subscribeToProjectItems(
+        currentAccountId,
+        id,
+        (updatedItems) => {
+          setItems(updatedItems)
+        },
+        initialItems
+      )
+    }
+
+    const loadData = async () => {
+      console.log('🔍 ProjectDetail - loadData called. id:', id, 'currentAccountId:', currentAccountId)
+      
+      if (!id) {
+        console.warn('No project ID provided, redirecting to projects')
+        navigate('/projects')
+        return
+      }
+      if (!currentAccountId) {
+        console.log('🔍 ProjectDetail - No account ID yet, waiting...')
+        return
+      }
+
+      setIsLoading(true)
+      try {
+        console.log('🔍 ProjectDetail - Loading project data for ID:', id)
+        const projectData = await projectService.getProject(currentAccountId, id)
+        if (projectData) {
+          console.log('🔍 ProjectDetail - Project loaded successfully:', projectData.name)
+          setProject(projectData)
+
+          const [transactionsData, itemsData] = await Promise.all([
+            transactionService.getTransactions(currentAccountId, id),
+            unifiedItemsService.getItemsByProject(currentAccountId, id)
+          ])
+
+          console.log('🔍 ProjectDetail - Loaded', transactionsData.length, 'transactions and', itemsData.length, 'items')
+          setTransactions(transactionsData)
+          setItems(itemsData)
+          setupTransactionSubscription(transactionsData)
+          setupItemsSubscription(itemsData)
+        } else {
+          console.warn('Project not found:', id)
+          navigate('/projects')
+        }
+      } catch (error) {
+        console.error('Error loading project:', error)
+        setError('Failed to load project. Please try again.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+
+    return () => {
+      if (transactionUnsubscribe) transactionUnsubscribe()
+      if (itemsUnsubscribe) itemsUnsubscribe()
+    }
+  }, [id, currentAccountId, navigate])
+
+  // Subscribe to edges-from-transaction for each transaction so we can refresh items
+  useEffect(() => {
+    if (!currentAccountId || !id || transactions.length === 0) return
+
+    const unsubs: (() => void)[] = []
+    try {
+      transactions.forEach(tx => {
+        if (!tx.transactionId) return
+        const unsub = lineageService.subscribeToEdgesFromTransaction(currentAccountId, tx.transactionId, async () => {
+          try {
+            const updatedItems = await unifiedItemsService.getItemsByProject(currentAccountId, id)
+            setItems(updatedItems)
+          } catch (err) {
+            console.debug('ProjectDetail - failed to refresh items on lineage event', err)
+          }
+
+          // Also refresh transactions for the project to reflect any deletions/changes
+          try {
+            const updatedTransactions = await transactionService.getTransactions(currentAccountId, id)
+            setTransactions(updatedTransactions)
+          } catch (tErr) {
+            console.debug('ProjectDetail - failed to refresh transactions on lineage event', tErr)
+          }
+        })
+        unsubs.push(unsub)
+      })
+    } catch (err) {
+      console.debug('ProjectDetail - failed to subscribe to edges from transactions', err)
+    }
+
+    return () => {
+      unsubs.forEach(u => {
+        try { u() } catch (e) { /* noop */ }
+      })
+    }
+  }, [transactions.map(t => t.transactionId).join(','), currentAccountId, id])
 
   // Retry function for failed loads
   const retryLoadProject = () => {
     setError(null)
-    loadProjectAndTransactions()
-  }
-
-  // Subscribe to real-time transaction updates
-  useEffect(() => {
-    if (!id) return
-
-    const unsubscribe = transactionService.subscribeToTransactions(id, (updatedTransactions) => {
-      setTransactions(updatedTransactions)
-    })
-
-    return unsubscribe
-  }, [id])
+    // We need to reload the data, not just call the old function
+    if (id && currentAccountId) {
+      // Re-trigger the useEffect
+      navigate(0); 
+    }
+  };
 
   const handleEditProject = async (projectData: any) => {
-    if (!project || !id) return
+    if (!project || !id || !currentAccountId) return
 
     try {
-      await projectService.updateProject(id, projectData)
+      await projectService.updateProject(currentAccountId, id, projectData)
       // Reload project data
-      const updatedProject = await projectService.getProject(id)
+      const updatedProject = await projectService.getProject(currentAccountId, id)
       setProject(updatedProject)
       setIsEditing(false)
     } catch (error) {
@@ -184,11 +251,11 @@ export default function ProjectDetail() {
   }
 
   const handleDeleteProject = async () => {
-    if (!id) return
+    if (!id || !currentAccountId) return
 
     setIsDeleting(true)
     try {
-      await projectService.deleteProject(id)
+      await projectService.deleteProject(currentAccountId, id)
       // Redirect to projects list after successful deletion
       navigate('/projects')
     } catch (error) {
@@ -234,13 +301,13 @@ export default function ProjectDetail() {
           >
             Try Again
           </button>
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )
@@ -253,13 +320,13 @@ export default function ProjectDetail() {
         <h3 className="mt-2 text-sm font-medium text-gray-900">Project not found</h3>
         <p className="mt-1 text-sm text-gray-500">The project you're looking for doesn't exist.</p>
         <div className="mt-6">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
-          </Link>
+          </ContextBackLink>
         </div>
       </div>
     )
@@ -271,13 +338,13 @@ export default function ProjectDetail() {
       <div className="space-y-4">
         {/* Back button row */}
         <div className="flex items-center justify-between">
-          <Link
-            to={backDestination}
+          <ContextBackLink
+            fallback={backDestination}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
-          </Link>
+          </ContextBackLink>
           <div className="flex items-center space-x-3">
             <button
               onClick={handleStartEdit}
@@ -340,26 +407,47 @@ export default function ProjectDetail() {
               />
             )}
             {activeBudgetTab === 'accounting' && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Owed to 1584 */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to 1584</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      ${calculateOwedTo1584().toFixed(2)}
+              <div className="space-y-6">
+                {/* Dashboard Section */}
+                <section>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Owed to Design Business */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Design Business</div>
+                      <div className="text-xl font-bold text-gray-900">
+                        ${owedTo1584.toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* Owed to Client */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
+                      <div className="text-xl font-bold text-gray-900">
+                        ${owedToClient.toFixed(2)}
+                      </div>
                     </div>
                   </div>
+                </section>
 
-                  {/* Owed to Client */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 mb-0.5">Owed to Client</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      ${calculateOwedToClient().toFixed(2)}
-                    </div>
+                {/* Reports Section */}
+                <section>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Reports</h2>
+                  <div className="flex flex-wrap gap-3">
+                    <Button variant="secondary" onClick={() => navigate(`/project/${project.id}/property-management-summary`)}>
+                      <Building2 className="h-4 w-4 mr-2" />
+                      Generate Property Management Summary
+                    </Button>
+                    <Button variant="secondary" onClick={() => navigate(`/project/${project.id}/client-summary`)}>
+                      <User className="h-4 w-4 mr-2" />
+                      Generate Client Summary
+                    </Button>
+                    <Button variant="secondary" onClick={() => navigate(`/project/${project.id}/invoice`)}>
+                      <Receipt className="h-4 w-4 mr-2" />
+                      Generate Invoice
+                    </Button>
                   </div>
-                </div>
-
-              </>
+                </section>
+              </div>
             )}
           </div>
         </div>
@@ -391,11 +479,14 @@ export default function ProjectDetail() {
 
         {/* Tab Content */}
         <div className="px-6 py-6">
-          {activeTab === 'inventory' && (
-            <InventoryList projectId={project.id} projectName={project.name} />
+          {activeTab === 'inventory' && project && (
+            <>
+              {console.log('🔍 ProjectDetail - Rendering InventoryList with', items.length, 'items')}
+              <InventoryList projectId={project.id} projectName={project.name} items={items} />
+            </>
           )}
-          {activeTab === 'transactions' && (
-            <TransactionsList projectId={project.id} />
+          {activeTab === 'transactions' && project && (
+            <TransactionsList projectId={project.id} transactions={transactions} />
           )}
         </div>
       </div>
