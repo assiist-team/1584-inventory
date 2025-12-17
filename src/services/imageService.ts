@@ -102,6 +102,19 @@ export class ImageUploadService {
   }
 
   /**
+   * Upload a project main image to Supabase Storage
+   */
+  static async uploadProjectImage(
+    file: File,
+    projectName: string,
+    projectId: string,
+    onProgress?: (progress: UploadProgress) => void,
+    retryCount: number = 0
+  ): Promise<ImageUploadResult> {
+    return this.uploadImageInternal(file, projectName, projectId, 'project-images', onProgress, retryCount)
+  }
+
+  /**
    * Upload business logo to Supabase Storage
    */
   static async uploadBusinessLogo(
@@ -221,7 +234,7 @@ export class ImageUploadService {
     file: File,
     projectName: string,
     id: string,
-    imageType: 'item-images' | 'transaction-images' | 'receipt-images' | 'other-images',
+    imageType: 'item-images' | 'transaction-images' | 'receipt-images' | 'other-images' | 'project-images',
     onProgress?: (progress: UploadProgress) => void,
     retryCount: number = 0
   ): Promise<ImageUploadResult> {

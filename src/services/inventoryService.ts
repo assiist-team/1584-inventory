@@ -112,6 +112,7 @@ export const projectService = {
         budget: converted.budget ? parseFloat(converted.budget) : undefined,
         designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
         budgetCategories: converted.budget_categories || undefined,
+        mainImageUrl: converted.main_image_url || undefined,
         createdAt: converted.created_at,
         updatedAt: converted.updated_at,
         createdBy: converted.created_by,
@@ -154,6 +155,7 @@ export const projectService = {
       budget: converted.budget ? parseFloat(converted.budget) : undefined,
       designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
       budgetCategories: converted.budget_categories || undefined,
+      mainImageUrl: converted.main_image_url || undefined,
       createdAt: converted.created_at,
       updatedAt: converted.updated_at,
       createdBy: converted.created_by,
@@ -179,6 +181,7 @@ export const projectService = {
         budget: projectData.budget || null,
         design_fee: projectData.designFee || null,
         budget_categories: projectData.budgetCategories || {},
+        main_image_url: projectData.mainImageUrl || null,
         // default_category_id removed - default category is now account-wide preset
         settings: projectData.settings || {},
         metadata: projectData.metadata || {},
@@ -210,6 +213,7 @@ export const projectService = {
     if (updates.budget !== undefined) updateData.budget = updates.budget
     if (updates.designFee !== undefined) updateData.design_fee = updates.designFee
     if (updates.budgetCategories !== undefined) updateData.budget_categories = updates.budgetCategories
+    if (updates.mainImageUrl !== undefined) updateData.main_image_url = updates.mainImageUrl || null
     // defaultCategoryId updates removed - default category is now account-wide preset
     if (updates.settings !== undefined) updateData.settings = updates.settings
     if (updates.metadata !== undefined) updateData.metadata = updates.metadata

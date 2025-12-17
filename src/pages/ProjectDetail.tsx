@@ -364,14 +364,25 @@ export default function ProjectDetail() {
         </div>
 
         {/* Project information and Budget/Accounting Tabs */}
-        <div className="bg-white rounded-lg shadow p-6">
-          {/* Project information */}
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">{project.name}</h1>
-            {project.clientName && (
-              <p className="text-lg text-gray-600 mb-6">{project.clientName}</p>
-            )}
-          </div>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {/* Project Image */}
+          {project.mainImageUrl && (
+            <div className="w-full h-64 bg-gray-200 overflow-hidden">
+              <img
+                src={project.mainImageUrl}
+                alt={project.name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          <div className="p-6">
+            {/* Project information */}
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">{project.name}</h1>
+              {project.clientName && (
+                <p className="text-lg text-gray-600 mb-6">{project.clientName}</p>
+              )}
+            </div>
 
           {/* Tab Navigation */}
           <div className="border-b border-gray-200">
@@ -450,8 +461,8 @@ export default function ProjectDetail() {
               </div>
             )}
           </div>
+          </div>
         </div>
-      </div>
 
       {/* Tabs */}
       <div className="bg-white shadow rounded-lg">
@@ -495,12 +506,14 @@ export default function ProjectDetail() {
         {isEditing && project && (
           <ProjectForm
             initialData={{
+              id: project.id,
               name: project.name,
               description: project.description,
               clientName: project.clientName,
               budget: project.budget,
               designFee: project.designFee,
               budgetCategories: project.budgetCategories,
+              mainImageUrl: project.mainImageUrl,
             }}
             onSubmit={handleEditProject}
             onCancel={handleCancelEdit}

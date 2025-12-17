@@ -1,6 +1,9 @@
-import { useState } from 'react'
-import { X, DollarSign } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { X, DollarSign, Upload, Image as ImageIcon, Trash2 } from 'lucide-react'
 import { ProjectBudgetCategories } from '@/types'
+import { ImageUploadService } from '@/services/imageService'
+import { projectService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
 
 interface ProjectFormData {
   name: string;
@@ -9,16 +12,18 @@ interface ProjectFormData {
   budget?: number;
   designFee?: number;
   budgetCategories?: ProjectBudgetCategories;
+  mainImageUrl?: string;
 }
 
 interface ProjectFormProps {
-  onSubmit: (data: ProjectFormData) => Promise<void>;
+  onSubmit: (data: ProjectFormData) => Promise<string | void>; // Returns project ID for new projects
   onCancel: () => void;
   isLoading?: boolean;
-  initialData?: Partial<ProjectFormData>;
+  initialData?: Partial<ProjectFormData & { id?: string }>;
 }
 
 export default function ProjectForm({ onSubmit, onCancel, isLoading = false, initialData }: ProjectFormProps) {
+  const { currentAccountId } = useAccount()
   const isEditing = Boolean(initialData?.name)
 
   // Migrate designFee to budgetCategories if it exists and budgetCategories doesn't have it
@@ -55,9 +60,14 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     budget: initialData?.budget || undefined,
     designFee: initialData?.designFee || undefined,
     budgetCategories: migratedBudgetCategories,
+    mainImageUrl: initialData?.mainImageUrl || undefined,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.mainImageUrl || null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Calculate total budget from all budget categories
   const calculateTotalBudget = (): number => {
@@ -75,6 +85,58 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
+    }
+  }
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+    if (!validTypes.includes(file.type)) {
+      setErrors(prev => ({ ...prev, image: 'Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image.' }))
+      return
+    }
+
+    // Validate file size (10MB max)
+    const maxSize = 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      setErrors(prev => ({ ...prev, image: 'File too large. Maximum size is 10MB.' }))
+      return
+    }
+
+    setImageFile(file)
+    setImagePreview(ImageUploadService.createPreviewUrl(file))
+    setErrors(prev => ({ ...prev, image: '' }))
+  }
+
+  const handleRemoveImage = () => {
+    if (imagePreview && imagePreview.startsWith('blob:')) {
+      ImageUploadService.revokePreviewUrl(imagePreview)
+    }
+    setImagePreview(null)
+    setImageFile(null)
+    setFormData(prev => ({ ...prev, mainImageUrl: undefined }))
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleSelectFromGallery = async () => {
+    try {
+      const files = await ImageUploadService.selectFromGallery()
+      if (files && files.length > 0) {
+        const file = files[0]
+        setImageFile(file)
+        setImagePreview(ImageUploadService.createPreviewUrl(file))
+        setErrors(prev => ({ ...prev, image: '' }))
+      }
+    } catch (error: any) {
+      if (error.message?.includes('timeout') || error.message?.includes('canceled')) {
+        return // User canceled, don't show error
+      }
+      console.error('Error selecting from gallery:', error)
     }
   }
 
@@ -106,6 +168,8 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     }
 
     try {
+      setIsUploadingImage(true)
+
       // Filter out undefined values before submitting
       const cleanObject = (obj: any): any => {
         if (obj === null || obj === undefined) return undefined
@@ -118,12 +182,53 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
         return obj
       }
 
-      const cleanedData = cleanObject(formData) as ProjectFormData
+      // For editing: upload image first if new file selected
+      let imageUrl = formData.mainImageUrl
+      if (isEditing && imageFile && (initialData as any)?.id) {
+        try {
+          const uploadResult = await ImageUploadService.uploadProjectImage(
+            imageFile,
+            formData.name || 'Project',
+            (initialData as any).id
+          )
+          imageUrl = uploadResult.url
+        } catch (uploadError) {
+          console.error('Error uploading image:', uploadError)
+          setErrors(prev => ({ ...prev, image: 'Failed to upload image. Please try again.' }))
+          setIsUploadingImage(false)
+          return
+        }
+      }
+
+      const cleanedData = cleanObject({
+        ...formData,
+        mainImageUrl: imageUrl
+      }) as ProjectFormData
       console.debug('ProjectForm: calling onSubmit with', { cleanedData })
-      await onSubmit(cleanedData)
-      console.debug('ProjectForm: onSubmit resolved')
+      const result = await onSubmit(cleanedData)
+      console.debug('ProjectForm: onSubmit resolved', { result })
+
+      // For new projects: upload image after creation if projectId is returned
+      if (!isEditing && imageFile && result && typeof result === 'string' && currentAccountId) {
+        try {
+          const uploadResult = await ImageUploadService.uploadProjectImage(
+            imageFile,
+            formData.name || 'Project',
+            result
+          )
+          // Update project with image URL
+          await projectService.updateProject(currentAccountId, result, {
+            mainImageUrl: uploadResult.url
+          })
+        } catch (uploadError) {
+          console.error('Error uploading image after project creation:', uploadError)
+          // Don't fail the form submission, just log the error
+        }
+      }
     } catch (error) {
       console.error('Error submitting form:', error)
+    } finally {
+      setIsUploadingImage(false)
     }
   }
 
@@ -196,6 +301,62 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 placeholder="Enter project description"
               />
+            </div>
+
+            {/* Main Image Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Main Project Image
+              </label>
+              {imagePreview ? (
+                <div className="relative">
+                  <img
+                    src={imagePreview}
+                    alt="Project preview"
+                    className="w-full h-48 object-cover rounded-md border border-gray-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    disabled={isUploadingImage}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col space-y-2">
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingImage}
+                      className="flex-1 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Choose File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectFromGallery}
+                      disabled={isUploadingImage}
+                      className="flex-1 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                    >
+                      <ImageIcon className="h-4 w-4 mr-2" />
+                      From Gallery
+                    </button>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <p className="text-xs text-gray-500">JPEG, PNG, GIF, or WebP. Max 10MB.</p>
+                </div>
+              )}
+              {errors.image && <p className="mt-1 text-sm text-red-600">{errors.image}</p>}
             </div>
 
             {/* Default Transaction Category moved to account-level presets (Settings → Presets → Budget Categories) */}
@@ -476,10 +637,10 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
               </button>
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || isUploadingImage}
                 className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
               >
-                {isLoading
+                {isLoading || isUploadingImage
                   ? (isEditing ? 'Updating...' : 'Creating...')
                   : (isEditing ? 'Update Project' : 'Create Project')
                 }

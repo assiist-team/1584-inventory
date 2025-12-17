@@ -73,6 +73,7 @@ export interface Project {
   designFee?: number;
   budgetCategories?: ProjectBudgetCategories;
   defaultCategoryId?: string;
+  mainImageUrl?: string;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
