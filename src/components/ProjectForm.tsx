@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { X, DollarSign, Upload, Image as ImageIcon, Trash2 } from 'lucide-react'
+import { X, DollarSign, Upload, Trash2 } from 'lucide-react'
 import { ProjectBudgetCategories } from '@/types'
 import { ImageUploadService } from '@/services/imageService'
 import { projectService } from '@/services/inventoryService'
@@ -123,22 +123,6 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
     }
   }
 
-  const handleSelectFromGallery = async () => {
-    try {
-      const files = await ImageUploadService.selectFromGallery()
-      if (files && files.length > 0) {
-        const file = files[0]
-        setImageFile(file)
-        setImagePreview(ImageUploadService.createPreviewUrl(file))
-        setErrors(prev => ({ ...prev, image: '' }))
-      }
-    } catch (error: any) {
-      if (error.message?.includes('timeout') || error.message?.includes('canceled')) {
-        return // User canceled, don't show error
-      }
-      console.error('Error selecting from gallery:', error)
-    }
-  }
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -326,26 +310,15 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
                 </div>
               ) : (
                 <div className="flex flex-col space-y-2">
-                  <div className="flex space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploadingImage}
-                      className="flex-1 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Choose File
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSelectFromGallery}
-                      disabled={isUploadingImage}
-                      className="flex-1 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-                    >
-                      <ImageIcon className="h-4 w-4 mr-2" />
-                      From Gallery
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingImage}
+                    className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Choose File
+                  </button>
                   <input
                     ref={fileInputRef}
                     type="file"

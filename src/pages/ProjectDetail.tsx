@@ -463,6 +463,7 @@ export default function ProjectDetail() {
           </div>
           </div>
         </div>
+      </div>
 
       {/* Tabs */}
       <div className="bg-white shadow rounded-lg">
