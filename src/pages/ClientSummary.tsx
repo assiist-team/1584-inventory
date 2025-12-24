@@ -28,6 +28,7 @@ export default function ClientSummary() {
   const { currentAccountId } = useAccount()
   const { businessName, businessLogoUrl } = useBusinessProfile()
   const { categories: accountCategories } = useCategories(false)
+  const { buildContextUrl } = useNavigationContext()
 
   const [project, setProject] = useState<Project | null>(null)
   const [items, setItems] = useState<Item[]>([])

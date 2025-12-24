@@ -81,15 +81,10 @@ export interface Project {
   metadata?: ProjectMetadata;
 }
 
-export interface ProjectBudgetCategories {
-  designFee: number;
-  furnishings: number;
-  propertyManagement: number;
-  kitchen: number;
-  install: number;
-  storageReceiving: number;
-  fuel: number;
-}
+// ProjectBudgetCategories maps category IDs to budget amounts
+// Format: { [categoryId: string]: number }
+// This allows projects to use dynamic budget categories from the budget_categories table
+export type ProjectBudgetCategories = Record<string, number>
 
 export interface ProjectSettings {
   allowPublicAccess: boolean;

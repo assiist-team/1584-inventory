@@ -217,7 +217,42 @@ export default function TransactionDetail() {
               setTransactionItems(validItems)
             }
           } else {
-            setTransactionItems([])
+            // Fallback: query items by transaction_id when itemIds is empty or missing
+            console.log('TransactionDetail - itemIds empty, falling back to getItemsForTransaction')
+            try {
+              const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectId, transactionId)
+              const itemIds = transactionItems.map(item => item.itemId)
+              const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
+              const items = await Promise.all(itemsPromises)
+              const validItems = items.filter(item => item !== null) as Item[]
+              
+              // Fetch edges that moved FROM this transaction to determine "moved out" items
+              const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+              const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+              
+              // Split items into "In this transaction" vs "Moved out"
+              const itemsInTransaction = validItems.filter(item => {
+                const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                const isInTransaction = currentTransactionId === transactionId
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                return isInTransaction && !hasMovedOut
+              })
+              
+              const itemsMovedOut = validItems.filter(item => {
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                const transitionalMovedOut = !item.latestTransactionId && 
+                  item.projectId == null && 
+                  item.previousProjectTransactionId === transactionId
+                return hasMovedOut || transitionalMovedOut
+              })
+              
+              const combined = [...itemsInTransaction, ...itemsMovedOut]
+              setTransactionItems(combined)
+              resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
+            } catch (itemError) {
+              console.error('TransactionDetail - failed to fetch items by transaction_id:', itemError)
+              setTransactionItems([])
+            }
           }
         }
 
@@ -270,7 +305,45 @@ export default function TransactionDetail() {
               setTransactionItems(validItems)
             }
           } else {
-            setTransactionItems([])
+            // Fallback: query items by transaction_id when itemIds is empty or missing
+            console.log('TransactionDetail - itemIds empty for business inventory, falling back to getItemsForTransaction')
+            try {
+              // For business inventory, we need to search across all projects
+              // Use getItemsForTransaction with the actual projectId from the transaction
+              const actualProjectIdForQuery = actualProjectId || ''
+              const transactionItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, actualProjectIdForQuery, transactionId)
+              const itemIds = transactionItems.map(item => item.itemId)
+              const itemsPromises = itemIds.map(id => unifiedItemsService.getItemById(currentAccountId, id))
+              const items = await Promise.all(itemsPromises)
+              const validItems = items.filter(item => item !== null) as Item[]
+              
+              // Fetch edges that moved FROM this transaction to determine "moved out" items
+              const edgesFromTransaction = await lineageService.getEdgesFromTransaction(transactionId, currentAccountId)
+              const movedOutItemIds = new Set(edgesFromTransaction.map(edge => edge.itemId))
+              
+              // Split items into "In this transaction" vs "Moved out"
+              const itemsInTransaction = validItems.filter(item => {
+                const currentTransactionId = item.latestTransactionId ?? item.transactionId
+                const isInTransaction = currentTransactionId === transactionId
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                return isInTransaction && !hasMovedOut
+              })
+              
+              const itemsMovedOut = validItems.filter(item => {
+                const hasMovedOut = movedOutItemIds.has(item.itemId)
+                const transitionalMovedOut = !item.latestTransactionId && 
+                  item.projectId == null && 
+                  item.previousProjectTransactionId === transactionId
+                return hasMovedOut || transitionalMovedOut
+              })
+              
+              const combined = [...itemsInTransaction, ...itemsMovedOut]
+              setTransactionItems(combined)
+              resolveMissingProjectIds(combined).catch(err => console.debug('resolveMissingProjectIds error:', err))
+            } catch (itemError) {
+              console.error('TransactionDetail - failed to fetch items by transaction_id (business inventory):', itemError)
+              setTransactionItems([])
+            }
           }
         }
 

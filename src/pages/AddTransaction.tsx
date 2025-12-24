@@ -360,22 +360,33 @@ export default function AddTransaction() {
       }
 
       // Upload item images with the correct item IDs
-      if (imageFilesMap.size > 0) {
+      if (imageFilesMap.size > 0 && items.length > 0) {
         try {
           console.log('Starting image upload process...')
           // Get the created items and extract their IDs
           const createdItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
           const createdItemIds = createdItems.map(item => item.itemId)
           console.log('Created item IDs:', createdItemIds)
+          console.log('Form items:', items.map(item => ({ id: item.id, description: item.description })))
+          console.log('Image files map keys:', Array.from(imageFilesMap.keys()))
 
-          // Upload images for each item
+          // Create a mapping from form item index to created item ID
+          // We need to match items by their order since they're created in the same order
+          // But we also need to match by temp ID from imageFilesMap
           for (let i = 0; i < items.length && i < createdItemIds.length; i++) {
-            const item = items[i]
+            const formItem = items[i]
             const itemId = createdItemIds[i]
-            const imageFiles = imageFilesMap.get(item.id)
+            
+            // Try to get image files using the form item's temp ID
+            let imageFiles = imageFilesMap.get(formItem.id)
+            
+            // Fallback: also check if the item has imageFiles directly
+            if (!imageFiles && formItem.imageFiles && formItem.imageFiles.length > 0) {
+              imageFiles = formItem.imageFiles
+            }
 
             if (imageFiles && imageFiles.length > 0) {
-              console.log(`Uploading ${imageFiles.length} images for item ${itemId}`)
+              console.log(`Uploading ${imageFiles.length} images for item ${itemId} (form item ID: ${formItem.id})`)
 
               // Upload each image file with the final item ID
               const uploadPromises = imageFiles.map(async (file, fileIndex) => {
@@ -392,7 +403,7 @@ export default function AddTransaction() {
                   const uploadedImage: ItemImage = {
                     url: uploadResult.url,
                     alt: file.name,
-                    isPrimary: item.images?.find(img => img.fileName === file.name)?.isPrimary || false,
+                    isPrimary: formItem.images?.find(img => img.fileName === file.name)?.isPrimary || (fileIndex === 0),
                     uploadedAt: new Date(),
                     fileName: file.name,
                     size: file.size,

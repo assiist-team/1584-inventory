@@ -98,24 +98,9 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
         // Use designFee prop for design fee category
         categoryBudget = designFee || 0
       } else {
-        // Try to match category name to legacy budgetCategories structure
-        // This is a fallback for backward compatibility
-        if (budgetCategories) {
-          // Map category names to legacy keys (approximate matching)
-          const nameLower = categoryName.toLowerCase()
-          if (nameLower.includes('furnish')) {
-            categoryBudget = budgetCategories.furnishings || 0
-          } else if (nameLower.includes('install')) {
-            categoryBudget = budgetCategories.install || 0
-          } else if (nameLower.includes('fuel')) {
-            categoryBudget = budgetCategories.fuel || 0
-          } else if (nameLower.includes('storage') || nameLower.includes('receiving')) {
-            categoryBudget = budgetCategories.storageReceiving || 0
-          } else if (nameLower.includes('kitchen')) {
-            categoryBudget = budgetCategories.kitchen || 0
-          } else if (nameLower.includes('property') || nameLower.includes('management')) {
-            categoryBudget = budgetCategories.propertyManagement || 0
-          }
+        // Use categoryId to look up budget from budgetCategories (new format: Record<categoryId, amount>)
+        if (budgetCategories && categoryId) {
+          categoryBudget = budgetCategories[categoryId] || 0
         }
       }
 
@@ -137,47 +122,27 @@ export default function BudgetProgress({ budget, designFee, budgetCategories, tr
     })
 
     // Also include categories from budgetCategories that might not have transactions yet
+    // budgetCategories is now Record<categoryId, amount>
     if (budgetCategories) {
-      // Legacy mapping of project budget keys to matchers and display names
-      const legacyMappings: Array<{ key: keyof ProjectBudgetCategories; matcher: (name: string) => boolean; displayName: string }> = [
-        { key: 'furnishings', matcher: n => n.includes('furnish'), displayName: 'Furnishings' },
-        { key: 'install', matcher: n => n.includes('install'), displayName: 'Install' },
-        { key: 'fuel', matcher: n => n.includes('fuel'), displayName: 'Fuel' },
-        { key: 'storageReceiving', matcher: n => n.includes('storage') || n.includes('receiving'), displayName: 'Storage & Receiving' },
-        { key: 'kitchen', matcher: n => n.includes('kitchen'), displayName: 'Kitchen' },
-        { key: 'propertyManagement', matcher: n => n.includes('property') || n.includes('management'), displayName: 'Property Management' }
-      ]
+      Object.entries(budgetCategories).forEach(([categoryId, budgetAmount]) => {
+        // Skip if already processed (has transactions)
+        const alreadyPresent = categoryData.find(cat => cat.categoryId === categoryId)
+        if (alreadyPresent || budgetAmount <= 0) return
 
-      for (const mapping of legacyMappings) {
-        const value = (budgetCategories as any)[mapping.key] || 0
-        if (value > 0) {
-          const alreadyPresent = categoryData.find(cat => mapping.matcher(cat.categoryName.toLowerCase()))
-          if (!alreadyPresent) {
-            // Prefer matching an account-level category if it exists
-            const accountCat = accountCategories.find(cat => mapping.matcher(cat.name.toLowerCase()))
-            if (accountCat) {
-              categoryData.push({
-                categoryId: accountCat.id,
-                categoryName: accountCat.name,
-                budget: value,
-                spent: 0,
-                percentage: 0,
-                isDesignFee: false
-              })
-            } else {
-              // Fallback placeholder when no account-level category exists
-              categoryData.push({
-                categoryId: `legacy-${mapping.key}`,
-                categoryName: mapping.displayName,
-                budget: value,
-                spent: 0,
-                percentage: 0,
-                isDesignFee: false
-              })
-            }
-          }
+        // Find the category name from account categories
+        const accountCat = accountCategories.find(cat => cat.id === categoryId)
+        if (accountCat) {
+          const isDesignFee = isDesignFeeCategory(accountCat.name)
+          categoryData.push({
+            categoryId: accountCat.id,
+            categoryName: accountCat.name,
+            budget: budgetAmount,
+            spent: 0,
+            percentage: 0,
+            isDesignFee
+          })
         }
-      }
+      })
     }
 
     // Sort: Design Fee last, then by name

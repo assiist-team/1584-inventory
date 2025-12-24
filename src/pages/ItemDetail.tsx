@@ -629,7 +629,7 @@ export default function ItemDetail() {
               <FileText className="h-5 w-5 mr-2" />
               Item Details
             </h3>
-            <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-3">
               {item.source && (
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Source</dt>
@@ -696,7 +696,7 @@ export default function ItemDetail() {
               )}
 
               {item.notes && item.notes !== 'No notes' && (
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
                   <dt className="text-sm font-medium text-gray-500">Notes</dt>
                   <dd className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{item.notes}</dd>
                 </div>

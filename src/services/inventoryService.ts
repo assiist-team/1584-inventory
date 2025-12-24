@@ -462,6 +462,54 @@ async function _adjustSumItemPurchasePrices(accountId: string, transactionId: st
   return newSumStr
 }
 
+async function _updateTransactionItemIds(
+  accountId: string,
+  transactionId: string | null | undefined,
+  itemId: string,
+  action: 'add' | 'remove'
+): Promise<void> {
+  if (!transactionId) return
+
+  await ensureAuthenticatedForDatabase()
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('item_ids')
+    .eq('account_id', accountId)
+    .eq('transaction_id', transactionId)
+    .single()
+
+  if (error || !data) {
+    console.warn('⚠️ Failed to load transaction for item_ids sync:', transactionId, error)
+    return
+  }
+
+  const currentItemIds: string[] = Array.isArray(data.item_ids) ? data.item_ids : []
+  const hasItem = currentItemIds.includes(itemId)
+
+  let updatedItemIds: string[] = currentItemIds
+  if (action === 'add') {
+    if (hasItem) return
+    updatedItemIds = [...currentItemIds, itemId]
+  } else {
+    if (!hasItem) return
+    updatedItemIds = currentItemIds.filter(id => id !== itemId)
+  }
+
+  const { error: updateError } = await supabase
+    .from('transactions')
+    .update({
+      item_ids: updatedItemIds,
+      updated_at: new Date().toISOString()
+    })
+    .eq('account_id', accountId)
+    .eq('transaction_id', transactionId)
+
+  if (updateError) {
+    console.warn('⚠️ Failed to update transaction item_ids during sync:', transactionId, updateError)
+  }
+}
+
 // Transaction Services
 export const transactionService = {
   async adjustSumItemPurchasePrices(accountId: string, transactionId: string, delta: number | string): Promise<string> {
@@ -1008,6 +1056,20 @@ export const transactionService = {
           dbTransaction.tax_rate_pct
         )
         console.log('Created items:', createdItemIds)
+
+        // Update the transaction's itemIds field to include the newly created items
+        if (createdItemIds.length > 0) {
+          const { error: updateError } = await supabase
+            .from('transactions')
+            .update({ item_ids: createdItemIds })
+            .eq('account_id', accountId)
+            .eq('transaction_id', transactionId)
+
+          if (updateError) {
+            console.warn('Failed to update transaction itemIds:', updateError)
+            // Don't fail the transaction creation if this update fails
+          }
+        }
       }
       // Ensure the denormalized needs_review flag is computed and persisted
       try {
@@ -1823,6 +1885,15 @@ export const unifiedItemsService = {
       .insert(dbItem)
 
     if (error) throw error
+
+    try {
+      if (dbItem.transaction_id) {
+        await _updateTransactionItemIds(accountId, dbItem.transaction_id, itemId, 'add')
+      }
+    } catch (e) {
+      console.warn('Failed to sync transaction item_ids after createItem:', e)
+    }
+
     // If this item was created attached to a transaction, adjust that transaction's derived sum and recompute
     try {
       if (dbItem.transaction_id) {
@@ -1856,6 +1927,12 @@ export const unifiedItemsService = {
     } catch (e) {
       console.warn('Failed to fetch existing item before update:', e)
     }
+
+    const previousTransactionId = existingItem?.transactionId ?? null
+    const explicitTransactionUpdate = updates.transactionId !== undefined
+    const nextTransactionId = explicitTransactionUpdate
+      ? (updates.transactionId as string | null | undefined) ?? null
+      : previousTransactionId
 
     // Convert camelCase updates to database format
     const dbUpdates = this._convertItemToDb({
@@ -1941,12 +2018,24 @@ export const unifiedItemsService = {
       .eq('item_id', itemId)
 
     if (error) throw error
+
+    if (previousTransactionId !== nextTransactionId) {
+      try {
+        if (previousTransactionId) {
+          await _updateTransactionItemIds(accountId, previousTransactionId, itemId, 'remove')
+        }
+        if (nextTransactionId) {
+          await _updateTransactionItemIds(accountId, nextTransactionId, itemId, 'add')
+        }
+      } catch (e) {
+        console.warn('Failed to sync transaction item_ids after updateItem:', e)
+      }
+    }
+
     // Adjust persisted derived sums and recompute needs_review for affected transactions (old and new)
     try {
-      const prevTx = existingItem?.transactionId ?? null
-      const newTx = updates.transactionId !== undefined ? (updates.transactionId as string | null) : prevTx
       const projectForTx = (updates.projectId !== undefined ? updates.projectId : existingItem?.projectId) ?? null
-      const affected = Array.from(new Set([prevTx, newTx]).values()).filter(Boolean) as string[]
+      const affected = Array.from(new Set([previousTransactionId, nextTransactionId]).values()).filter(Boolean) as string[]
       const prevPrice = parseFloat(existingItem?.purchasePrice || '0')
       const newPrice = updates.purchasePrice !== undefined ? parseFloat(String(updates.purchasePrice || '0')) : prevPrice
 
@@ -1954,7 +2043,7 @@ export const unifiedItemsService = {
         try {
           if (!transactionService._isBatchActive(accountId, txId)) {
             // Same transaction updated: send delta (new - prev)
-            if (prevTx && newTx && prevTx === newTx && txId === prevTx) {
+            if (previousTransactionId && nextTransactionId && previousTransactionId === nextTransactionId && txId === previousTransactionId) {
               const delta = newPrice - prevPrice
               if (delta !== 0) {
                 transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
@@ -1963,13 +2052,13 @@ export const unifiedItemsService = {
               }
             } else {
               // Moved between transactions: subtract from old and add to new
-              if (txId === prevTx) {
+              if (txId === previousTransactionId) {
                 const delta = -prevPrice
                 transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
                   console.warn('Failed to notifyTransactionChanged for old tx after moving item', txId, e)
                 })
               }
-              if (txId === newTx) {
+              if (txId === nextTransactionId) {
                 const delta = newPrice
                 transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
                   console.warn('Failed to notifyTransactionChanged for new tx after moving item', txId, e)
