@@ -298,6 +298,9 @@ export interface TransactionItemFormData {
   marketValue?: string;
   space?: string;
   notes?: string;
+  // Item-level tax amounts (stored as strings; persisted to `items.tax_amount_*` columns)
+  taxAmountPurchasePrice?: string;
+  taxAmountProjectPrice?: string;
   images?: ItemImage[]; // Images associated with this item
   imageFiles?: File[]; // File objects for upload (not persisted)
 }

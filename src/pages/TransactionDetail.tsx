@@ -450,14 +450,14 @@ export default function TransactionDetail() {
     setShowGallery(false)
   }
 
-  const handleReceiptImagesUpload = async (files: File[]) => {
+  const handleReceiptsUpload = async (files: File[]) => {
     if (!projectId || !transactionId || !project || files.length === 0) return
 
     setIsUploadingReceiptImages(true)
 
     try {
-      // Upload receipt images
-      const uploadResults = await ImageUploadService.uploadMultipleReceiptImages(
+      // Upload receipts (images + PDFs)
+      const uploadResults = await ImageUploadService.uploadMultipleReceiptAttachments(
         files,
         project.name,
         transactionId
@@ -466,7 +466,7 @@ export default function TransactionDetail() {
       // Convert to TransactionImage format
       const newReceiptImages = ImageUploadService.convertFilesToReceiptImages(uploadResults)
 
-      // Update transaction with new receipt images
+      // Update transaction with new receipts
       const currentReceiptImages = transaction?.receiptImages || []
       const updatedReceiptImages = [...currentReceiptImages, ...newReceiptImages]
 
@@ -482,10 +482,10 @@ export default function TransactionDetail() {
       const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
-      showSuccess('Receipt images uploaded successfully')
+      showSuccess('Receipts uploaded successfully')
     } catch (error) {
-      console.error('Error uploading receipt images:', error)
-      showError('Failed to upload receipt images. Please try again.')
+      console.error('Error uploading receipts:', error)
+      showError('Failed to upload receipts. Please try again.')
     } finally {
       setIsUploadingReceiptImages(false)
     }
@@ -550,10 +550,10 @@ export default function TransactionDetail() {
       const updatedTransaction = await transactionService.getTransaction(currentAccountId, refreshProjectId || '', transactionId)
       setTransaction(updatedTransaction)
 
-      showSuccess('Receipt image deleted successfully')
+      showSuccess('Receipt deleted successfully')
     } catch (error) {
-      console.error('Error deleting receipt image:', error)
-      showError('Failed to delete receipt image. Please try again.')
+      console.error('Error deleting receipt:', error)
+      showError('Failed to delete receipt. Please try again.')
     }
   }
 
@@ -695,13 +695,23 @@ export default function TransactionDetail() {
     setImageFilesMap(new Map())
   }
 
-  // Convert all transaction images (receipt and other) to ItemImage format for the gallery
-  const allTransactionImages = [
+  // Convert transaction attachments to ItemImage format for the gallery (images only).
+  // Receipt attachments may include PDFs; those should not be rendered in an <img> gallery.
+  const allTransactionAttachments = [
     ...(transaction?.receiptImages || []),
     ...(transaction?.otherImages || [])
   ]
 
-    const itemImages = allTransactionImages.map((img, index) => ({
+  const isRenderableImageAttachment = (img: { mimeType?: string; fileName?: string; url: string }) => {
+    const mime = (img.mimeType || '').toLowerCase()
+    if (mime.startsWith('image/')) return true
+    const name = (img.fileName || img.url || '').toLowerCase()
+    return /\.(png|jpe?g|gif|webp|heic|heif)$/.test(name)
+  }
+
+  const galleryTransactionImages = allTransactionAttachments.filter(isRenderableImageAttachment)
+
+  const itemImages = galleryTransactionImages.map((img, index) => ({
     url: img.url,
     alt: img.fileName,
     fileName: img.fileName,
@@ -1079,12 +1089,12 @@ export default function TransactionDetail() {
           </dl>
         </div>
 
-        {/* Receipt Images */}
+        {/* Receipts */}
         <div className="px-6 py-6 border-t border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900 flex items-center">
               <ImageIcon className="h-5 w-5 mr-2" />
-              Receipt Images
+              Receipts
             </h3>
                 {transaction.receiptImages && transaction.receiptImages.length > 0 && (
               <button
@@ -1093,11 +1103,11 @@ export default function TransactionDetail() {
                   const input = document.createElement('input')
                   input.type = 'file'
                   input.multiple = true
-                  input.accept = 'image/*'
+                  input.accept = 'image/*,application/pdf'
                   input.onchange = (e) => {
                     const files = (e.target as HTMLInputElement).files
                     if (files) {
-                      handleReceiptImagesUpload(Array.from(files))
+                      handleReceiptsUpload(Array.from(files))
                     }
                   }
                   input.click()
@@ -1106,7 +1116,7 @@ export default function TransactionDetail() {
                 className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
               >
                 <ImageIcon className="h-3 w-3 mr-1" />
-                {isUploadingReceiptImages ? 'Uploading...' : 'Add Images'}
+                {isUploadingReceiptImages ? 'Uploading...' : 'Add Receipts'}
               </button>
             )}
           </div>
@@ -1114,7 +1124,10 @@ export default function TransactionDetail() {
             <TransactionImagePreview
               images={transaction.receiptImages}
               onRemoveImage={handleDeleteReceiptImage}
-              onImageClick={handleImageClick}
+              onImageClick={(imageUrl) => {
+                const idx = galleryTransactionImages.findIndex(img => img.url === imageUrl)
+                if (idx >= 0) handleImageClick(idx)
+              }}
               maxImages={5}
               showControls={true}
               size="md"
@@ -1123,18 +1136,18 @@ export default function TransactionDetail() {
           ) : (
             <div className="text-center py-8">
               <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No receipt images uploaded</h3>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No receipts uploaded</h3>
               <button
                 onClick={() => {
                   // Trigger file input click programmatically
                   const input = document.createElement('input')
                   input.type = 'file'
                   input.multiple = true
-                  input.accept = 'image/*'
+                  input.accept = 'image/*,application/pdf'
                   input.onchange = (e) => {
                     const files = (e.target as HTMLInputElement).files
                     if (files) {
-                      handleReceiptImagesUpload(Array.from(files))
+                      handleReceiptsUpload(Array.from(files))
                     }
                   }
                   input.click()
@@ -1143,7 +1156,7 @@ export default function TransactionDetail() {
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 mt-3 disabled:opacity-50"
               >
                 <ImageIcon className="h-3 w-3 mr-1" />
-                {isUploadingReceiptImages ? 'Uploading...' : 'Add Receipt Images'}
+                {isUploadingReceiptImages ? 'Uploading...' : 'Add Receipts'}
               </button>
             </div>
           )}
@@ -1182,12 +1195,9 @@ export default function TransactionDetail() {
             <TransactionImagePreview
               images={transaction.otherImages}
               onRemoveImage={handleDeleteOtherImage}
-              onImageClick={(index) => {
-                // Find the correct index in the combined array for gallery navigation
-                const receiptCount = transaction.receiptImages?.length || 0
-                const legacyCount = transaction.transactionImages?.length || 0
-                const galleryIndex = receiptCount + legacyCount + index
-                handleImageClick(galleryIndex)
+              onImageClick={(imageUrl) => {
+                const idx = galleryTransactionImages.findIndex(img => img.url === imageUrl)
+                if (idx >= 0) handleImageClick(idx)
               }}
               maxImages={5}
               showControls={true}
@@ -1205,7 +1215,7 @@ export default function TransactionDetail() {
               <Package className="h-5 w-5 mr-2" />
               Transaction Items
             </h3>
-            {/* Add Item Button - Only show when items exist (like Receipt Images section) */}
+            {/* Add Item Button - Only show when items exist (like Receipts section) */}
             {(!isLoadingItems && !isAddingItem && transactionItems.length > 0) && (
               <button
                 onClick={() => setIsAddingItem(true)}

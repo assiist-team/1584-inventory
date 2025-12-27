@@ -50,8 +50,18 @@ async function main() {
     qty: li.qty,
     unitPrice: li.unitPrice,
     total: li.total,
+    sku: li.sku,
     description: li.description.length > 80 ? `${li.description.slice(0, 77)}...` : li.description,
   }))
+
+  const skuCount = result.lineItems.filter(li => Boolean(li.sku && li.sku.trim())).length
+  const skuSamples = result.lineItems
+    .filter(li => Boolean(li.sku && li.sku.trim()))
+    .slice(0, 10)
+    .map(li => ({
+      sku: li.sku,
+      description: li.description.length > 80 ? `${li.description.slice(0, 77)}...` : li.description,
+    }))
 
   const summary = {
     invoiceNumber: result.invoiceNumber,
@@ -59,6 +69,7 @@ async function main() {
     orderTotal: result.orderTotal,
     lineItemsDetected: result.lineItems.length,
     sections: { shipped: shippedCount, to_be_shipped: toBeShippedCount, unknown: unknownCount },
+    skuCoverage: { withSku: skuCount, withoutSku: result.lineItems.length - skuCount },
     totals: {
       sumLineTotals: Number(sumLineTotals.toFixed(2)),
       orderTotal: Number(orderTotalNum.toFixed(2)),
@@ -66,6 +77,7 @@ async function main() {
     },
     warnings: result.warnings,
     sampleLineItems: topItems,
+    sampleSkus: skuSamples,
   }
 
   // eslint-disable-next-line no-console

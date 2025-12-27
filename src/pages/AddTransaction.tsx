@@ -241,12 +241,12 @@ export default function AddTransaction() {
       // Create transaction with items first to get the real transaction ID
       const transactionId = await transactionService.createTransaction(currentAccountId, projectId, transactionData, items)
 
-      // Now upload receipt images using the real transaction ID
+      // Now upload receipts (images + PDFs) using the real transaction ID
       if (formData.receiptImages && formData.receiptImages.length > 0) {
         setIsUploadingImages(true)
 
         try {
-          const uploadResults = await ImageUploadService.uploadMultipleReceiptImages(
+          const uploadResults = await ImageUploadService.uploadMultipleReceiptAttachments(
             formData.receiptImages,
             projectName,
             transactionId,
@@ -255,19 +255,19 @@ export default function AddTransaction() {
 
           // Convert to TransactionImage format
           const receiptImages = ImageUploadService.convertFilesToReceiptImages(uploadResults)
-          console.log('Receipt images uploaded successfully:', receiptImages.length, 'images')
-          console.log('Receipt images to save:', receiptImages)
+          console.log('Receipts uploaded successfully:', receiptImages.length, 'files')
+          console.log('Receipts to save:', receiptImages)
 
-          // Update the transaction with the uploaded receipt images
+          // Update the transaction with the uploaded receipts
           if (receiptImages && receiptImages.length > 0) {
-            console.log('Updating transaction with receipt images...')
+            console.log('Updating transaction with receipts...')
             try {
               await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
                 receiptImages: receiptImages
               })
-              console.log('Transaction updated successfully with receipt images')
+              console.log('Transaction updated successfully with receipts')
             } catch (updateError) {
-              console.error('Failed to update transaction with receipt images:', updateError)
+              console.error('Failed to update transaction with receipts:', updateError)
               // Don't fail the entire transaction if image update fails
             }
           }
@@ -275,10 +275,10 @@ export default function AddTransaction() {
           // Small delay to ensure the update is processed before continuing
           await new Promise(resolve => setTimeout(resolve, 500))
         } catch (error: any) {
-          console.error('Error uploading receipt images:', error)
+          console.error('Error uploading receipts:', error)
 
           // Provide specific error messages based on error type
-          let errorMessage = 'Failed to upload receipt images. Please try again.'
+          let errorMessage = 'Failed to upload receipts. Please try again.'
           if (error.message?.includes('Storage service is not available')) {
             errorMessage = 'Storage service is unavailable. Please check your internet connection.'
           } else if (error.message?.includes('Network error') || error.message?.includes('offline')) {
@@ -944,15 +944,16 @@ export default function AddTransaction() {
             )}
           </div>
 
-          {/* Receipt Images */}
+          {/* Receipts */}
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Receipt Images
+              Receipts
             </h3>
             <ImageUpload
               onImagesChange={handleReceiptImagesChange}
               maxImages={5}
               maxFileSize={10}
+              acceptedTypes={['image/jpeg','image/jpg','image/png','image/gif','image/webp','image/heic','image/heif','application/pdf']}
               disabled={isSubmitting || isUploadingImages}
               className="mb-2"
             />

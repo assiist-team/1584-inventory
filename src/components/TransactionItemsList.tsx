@@ -61,6 +61,14 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     return isNaN(num) ? '$0.00' : `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
+  const hasNonEmptyMoneyString = (value: string | undefined) => {
+    if (value === undefined) return false
+    if (typeof value !== 'string') return false
+    if (!value.trim()) return false
+    const n = Number.parseFloat(value)
+    return Number.isFinite(n)
+  }
+
   if (isAddingItem || editingItemId) {
     const itemToEdit = getItemToEdit()
     return (
@@ -102,6 +110,12 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                   </span>
                   <span className="text-sm text-gray-500">
                     {formatCurrency(item.projectPrice || item.purchasePrice || '')}
+                    {hasNonEmptyMoneyString(item.taxAmountPurchasePrice) && (
+                      <>
+                        {' • Tax: '}
+                        {formatCurrency(item.taxAmountPurchasePrice as string)}
+                      </>
+                    )}
                   </span>
                 </div>
 
@@ -118,6 +132,11 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                   {item.marketValue && (
                     <div>
                       <span className="font-medium">Market Value:</span> ${item.marketValue}
+                    </div>
+                  )}
+                  {hasNonEmptyMoneyString(item.taxAmountProjectPrice) && (
+                    <div>
+                      <span className="font-medium">Tax on project:</span> {formatCurrency(item.taxAmountProjectPrice as string)}
                     </div>
                   )}
                 </div>

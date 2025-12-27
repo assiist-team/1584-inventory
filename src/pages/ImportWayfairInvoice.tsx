@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import { ArrowLeft, FileUp, Save, Shield, Trash2 } from 'lucide-react'
 import ContextBackLink from '@/components/ContextBackLink'
 import TransactionItemsList from '@/components/TransactionItemsList'
-import CategorySelect from '@/components/CategorySelect'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import { useToast } from '@/components/ui/ToastContext'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
@@ -16,6 +15,7 @@ import { normalizeMoneyToTwoDecimalString, parseMoneyToNumber } from '@/utils/mo
 import { getDefaultCategory } from '@/services/accountPresetsService'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
+import { budgetCategoriesService } from '@/services/budgetCategoriesService'
 import { extractPdfEmbeddedImages, type PdfEmbeddedImagePlacement } from '@/utils/pdfEmbeddedImageExtraction'
 import { COMPANY_NAME } from '@/constants/company'
 import type { ItemImage, TransactionItemFormData } from '@/types'
@@ -47,15 +47,40 @@ function buildTransactionItemsWithSourceIndex(lineItemsWithIndex: Array<{ li: Wa
     const qty = Math.max(1, Math.floor(li.qty || 1))
     const totalNum = parseMoneyToNumber(li.total)
     const unitPriceNum = li.unitPrice ? parseMoneyToNumber(li.unitPrice) : undefined
+    const shippingNum = li.shipping ? (parseMoneyToNumber(li.shipping) || 0) : 0
+    const adjustmentNum = li.adjustment ? (parseMoneyToNumber(li.adjustment) || 0) : 0
+    const taxNum = li.tax ? (parseMoneyToNumber(li.tax) || 0) : 0
 
-    // Preferred: total/qty. Fallback: unitPrice. Last resort: total (when qty is 1).
+    // Purchase price rule (Wayfair import):
+    //   purchasePricePerUnit = unitPrice - adjustment + shipping
+    // Tax is stored separately at item-level.
+    //
+    // If unit price is unavailable, fall back to total/qty (legacy behavior).
     const perUnitFromTotal = totalNum !== undefined ? totalNum / qty : undefined
-    const perUnit = (perUnitFromTotal ?? unitPriceNum ?? totalNum ?? 0)
-    const perUnitMoney = normalizeMoneyToTwoDecimalString(String(perUnit)) || '0.00'
+    const shippingPerUnit = shippingNum / qty
+    const adjustmentPerUnit = adjustmentNum / qty
+    const taxPerUnit = taxNum / qty
+    const perUnitPurchasePrice = unitPriceNum !== undefined
+      ? (unitPriceNum - adjustmentPerUnit + shippingPerUnit)
+      : (perUnitFromTotal ?? totalNum ?? 0)
+
+    const perUnitPurchaseMoney = normalizeMoneyToTwoDecimalString(String(perUnitPurchasePrice)) || '0.00'
+    const perUnitTaxMoney = normalizeMoneyToTwoDecimalString(String(taxPerUnit)) || undefined
 
     const baseNotesParts: string[] = []
     if (li.shippedOn) baseNotesParts.push(`Wayfair shipped on ${li.shippedOn}`)
     if (li.section === 'to_be_shipped') baseNotesParts.push('Wayfair: items to be shipped')
+    const attributeNoteParts: string[] = []
+    if (li.attributeLines && li.attributeLines.length > 0) {
+      attributeNoteParts.push(...li.attributeLines)
+    } else {
+      // Back-compat: older parse results only had structured attributes.
+      if (li.attributes?.color) attributeNoteParts.push(`Color: ${li.attributes.color}`)
+      if (li.attributes?.size) attributeNoteParts.push(`Size: ${li.attributes.size}`)
+    }
+    for (const p of Array.from(new Set(attributeNoteParts.map(x => x.trim()).filter(Boolean)))) {
+      baseNotesParts.push(p)
+    }
     const baseNotes = baseNotesParts.length > 0 ? baseNotesParts.join(' • ') : 'Wayfair import'
 
     for (let i = 0; i < qty; i++) {
@@ -64,8 +89,10 @@ function buildTransactionItemsWithSourceIndex(lineItemsWithIndex: Array<{ li: Wa
       items.push({
         id: formId,
         description: `${li.description}${suffix}`.trim(),
-        purchasePrice: perUnitMoney,
-        price: perUnitMoney,
+        sku: li.sku,
+        purchasePrice: perUnitPurchaseMoney,
+        price: perUnitPurchaseMoney,
+        taxAmountPurchasePrice: perUnitTaxMoney,
         notes: baseNotes,
       })
       formItemIdToSourceIndex.set(formId, sourceIndex)
@@ -122,7 +149,6 @@ export default function ImportWayfairInvoice() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isParsing, setIsParsing] = useState(false)
   const [parseResult, setParseResult] = useState<WayfairInvoiceParseResult | null>(null)
-  const [includeToBeShipped, setIncludeToBeShipped] = useState(true)
   const [transactionDate, setTransactionDate] = useState(getTodayIsoDate())
   const [paymentMethod, setPaymentMethod] = useState<string>('Client Card')
   const [amount, setAmount] = useState<string>('')
@@ -138,6 +164,20 @@ export default function ImportWayfairInvoice() {
   const [thumbnailWarning, setThumbnailWarning] = useState<string | null>(null)
   const [formItemIdToSourceIndex, setFormItemIdToSourceIndex] = useState<Map<string, number>>(new Map())
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
+  const [extractedPdfText, setExtractedPdfText] = useState<string | null>(null)
+  const [extractedPdfPages, setExtractedPdfPages] = useState<string[] | null>(null)
+
+  const debugStats = useMemo(() => {
+    if (!parseResult) return null
+    const skuCount = parseResult.lineItems.filter(li => Boolean(li.sku && li.sku.trim())).length
+    const attrCount = parseResult.lineItems.filter(li => Boolean(li.attributeLines && li.attributeLines.length > 0)).length
+    return {
+      skuCount,
+      missingSkuCount: parseResult.lineItems.length - skuCount,
+      attrCount,
+      missingAttrCount: parseResult.lineItems.length - attrCount,
+    }
+  }, [parseResult])
 
   useEffect(() => {
     const loadProject = async () => {
@@ -153,23 +193,34 @@ export default function ImportWayfairInvoice() {
   }, [projectId, currentAccountId])
 
   useEffect(() => {
-    const loadAccountDefaultCategory = async () => {
+    const loadWayfairDefaultCategory = async () => {
       if (!currentAccountId) return
       try {
+        // Wayfair invoices should default to Furnishings (if the category exists for this account).
+        const categories = await budgetCategoriesService.getCategories(currentAccountId, true)
+        const furnishings = categories.find(c =>
+          (c.slug || '').toLowerCase() === 'furnishings' ||
+          (c.name || '').toLowerCase().includes('furnish')
+        )
+        if (furnishings?.id) {
+          setCategoryId(furnishings.id)
+          return
+        }
+
+        // Fallback to account preset default category, if any.
         const defaultCategory = await getDefaultCategory(currentAccountId)
         if (defaultCategory) setCategoryId(defaultCategory)
       } catch (err) {
-        console.error('Failed to load account default category:', err)
+        console.error('Failed to load Wayfair default category:', err)
       }
     }
-    loadAccountDefaultCategory()
+    loadWayfairDefaultCategory()
   }, [currentAccountId])
 
   const includedLineItems = useMemo(() => {
     if (!parseResult) return []
-    if (includeToBeShipped) return parseResult.lineItems
-    return parseResult.lineItems.filter(li => li.section !== 'to_be_shipped')
-  }, [parseResult, includeToBeShipped])
+    return parseResult.lineItems
+  }, [parseResult])
 
   const parseStats = useMemo(() => {
     if (!parseResult) return null
@@ -182,7 +233,8 @@ export default function ImportWayfairInvoice() {
   const handleReset = () => {
     setSelectedFile(null)
     setParseResult(null)
-    setIncludeToBeShipped(true)
+    setExtractedPdfText(null)
+    setExtractedPdfPages(null)
     setTransactionDate(getTodayIsoDate())
     setPaymentMethod('Client Card')
     setAmount('')
@@ -243,24 +295,21 @@ export default function ImportWayfairInvoice() {
     }
   }
 
-  const applyParsedInvoiceToDraft = (result: WayfairInvoiceParseResult, nextIncludeToBeShipped: boolean) => {
+  const applyParsedInvoiceToDraft = (result: WayfairInvoiceParseResult) => {
     const today = getTodayIsoDate()
     setTransactionDate(result.orderDate || today)
 
     const lineItemsWithIndex = result.lineItems.map((li, idx) => ({ li, sourceIndex: idx }))
-    const includedLineItemsWithIndex = nextIncludeToBeShipped
-      ? lineItemsWithIndex
-      : lineItemsWithIndex.filter(({ li }) => li.section !== 'to_be_shipped')
 
-    const lineItemsForAmount = includedLineItemsWithIndex.map(x => x.li)
+    const lineItemsForAmount = lineItemsWithIndex.map(x => x.li)
     const computedSum = sumLineTotals(lineItemsForAmount)
-    const defaultAmount = (nextIncludeToBeShipped && result.orderTotal) ? result.orderTotal : computedSum
+    const defaultAmount = result.orderTotal || computedSum
     setAmount(defaultAmount)
 
-    const hasSubtotal = Boolean(result.subtotal && result.orderTotal)
-    if (hasSubtotal && result.subtotal) {
+    const hasSubtotal = Boolean(result.calculatedSubtotal && result.orderTotal)
+    if (hasSubtotal && result.calculatedSubtotal) {
       setTaxRatePreset('Other')
-      setSubtotal(result.subtotal)
+      setSubtotal(result.calculatedSubtotal)
     } else {
       setTaxRatePreset(undefined)
       setSubtotal('')
@@ -270,10 +319,9 @@ export default function ImportWayfairInvoice() {
     notesParts.push('Wayfair import')
     if (result.invoiceNumber) notesParts.push(`Invoice # ${result.invoiceNumber}`)
     if (result.orderDate) notesParts.push(`Order date: ${result.orderDate}`)
-    if (nextIncludeToBeShipped === false) notesParts.push('Excluded: Items to be Shipped section')
     setNotes(notesParts.join(' • '))
 
-    const built = buildTransactionItemsWithSourceIndex(includedLineItemsWithIndex)
+    const built = buildTransactionItemsWithSourceIndex(lineItemsWithIndex)
     setFormItemIdToSourceIndex(built.formItemIdToSourceIndex)
 
     // If thumbnails were already extracted, attach them to the rebuilt item list.
@@ -298,7 +346,7 @@ export default function ImportWayfairInvoice() {
     setThumbnailWarning(null)
     setIsParsing(true)
     try {
-      const [{ fullText }, embeddedImages] = await Promise.all([
+      const [{ fullText, pages }, embeddedImages] = await Promise.all([
         extractPdfText(file),
         (async () => {
           setIsExtractingThumbnails(true)
@@ -320,20 +368,20 @@ export default function ImportWayfairInvoice() {
         })(),
       ])
 
+      setExtractedPdfText(fullText)
+      setExtractedPdfPages(pages)
+
       const result = parseWayfairInvoiceText(fullText)
       setParseResult(result)
       setEmbeddedImagePlacements(embeddedImages)
 
       // Build draft items first
-      applyParsedInvoiceToDraft(result, includeToBeShipped)
+      applyParsedInvoiceToDraft(result)
 
       // Attach thumbnails onto the currently-built items (if any)
       if (embeddedImages.length > 0) {
         const builtLineItemsWithIndex = result.lineItems.map((li, idx) => ({ li, sourceIndex: idx }))
-        const included = includeToBeShipped
-          ? builtLineItemsWithIndex
-          : builtLineItemsWithIndex.filter(({ li }) => li.section !== 'to_be_shipped')
-        const built = buildTransactionItemsWithSourceIndex(included)
+        const built = buildTransactionItemsWithSourceIndex(builtLineItemsWithIndex)
         setFormItemIdToSourceIndex(built.formItemIdToSourceIndex)
         const applied = applyThumbnailsToDraftItems(built.items, built.formItemIdToSourceIndex, embeddedImages, result.lineItems)
         setItems(applied.items)
@@ -352,11 +400,60 @@ export default function ImportWayfairInvoice() {
       console.error('Failed to parse PDF:', err)
       setParseResult(null)
       setItems([])
+      setExtractedPdfText(null)
+      setExtractedPdfPages(null)
       setGeneralError(err instanceof Error ? err.message : 'Failed to parse PDF. Please try again.')
       showError('Failed to parse PDF.')
     } finally {
       setIsParsing(false)
     }
+  }
+
+  const buildParseReport = (): Record<string, unknown> | null => {
+    if (!parseResult) return null
+    const rawText = extractedPdfText || ''
+    const rawLines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    return {
+      generatedAt: new Date().toISOString(),
+      file: selectedFile ? { name: selectedFile.name, size: selectedFile.size, type: selectedFile.type } : null,
+      extraction: {
+        pageCount: extractedPdfPages?.length ?? null,
+        charCount: rawText.length,
+        nonEmptyLineCount: rawLines.length,
+        firstLines: rawLines.slice(0, 120),
+      },
+      parse: parseResult,
+      debug: debugStats,
+    }
+  }
+
+  const copyParseReportToClipboard = async () => {
+    const report = buildParseReport()
+    if (!report) return
+    const text = JSON.stringify(report, null, 2)
+    try {
+      await navigator.clipboard.writeText(text)
+      showSuccess('Parse report copied to clipboard.')
+    } catch (e) {
+      console.warn('Failed to copy parse report:', e)
+      showError('Failed to copy parse report. Your browser may block clipboard access.')
+    }
+  }
+
+  const downloadParseReportJson = () => {
+    const report = buildParseReport()
+    if (!report) return
+    const text = JSON.stringify(report, null, 2)
+    const blob = new Blob([text], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const base = selectedFile?.name?.replace(/\.pdf$/i, '') || 'wayfair-invoice'
+    a.href = url
+    a.download = `${base}-parse-report.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const validateBeforeCreate = (): string | null => {
@@ -461,6 +558,33 @@ export default function ImportWayfairInvoice() {
         }
       } catch (imageErr) {
         console.warn('Wayfair import: item thumbnail upload failed (non-fatal):', imageErr)
+      }
+
+      // Upload original Wayfair invoice PDF as a receipt attachment (so we can reference it later).
+      // Note: this is stored alongside receipt uploads in the `receipt-images` storage bucket.
+      try {
+        if (selectedFile) {
+          const uploadResult = await ImageUploadService.uploadReceiptAttachment(
+            selectedFile,
+            projectName || 'Project',
+            transactionId
+          )
+
+          const receiptAttachment = [{
+            url: uploadResult.url,
+            fileName: uploadResult.fileName,
+            uploadedAt: new Date(),
+            size: uploadResult.size,
+            mimeType: uploadResult.mimeType
+          }]
+
+          await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
+            receiptImages: receiptAttachment,
+            transactionImages: receiptAttachment // legacy compatibility
+          })
+        }
+      } catch (receiptErr) {
+        console.warn('Wayfair import: attaching PDF receipt failed (non-fatal):', receiptErr)
       }
 
       showSuccess('Transaction created.')
@@ -606,12 +730,22 @@ export default function ImportWayfairInvoice() {
                     <p className="text-sm font-medium text-gray-900">
                       {parseResult.orderTotal ? formatCurrencyFromString(parseResult.orderTotal) : 'Unknown'}
                     </p>
+                    {parseResult.taxTotal && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Tax Total: {formatCurrencyFromString(parseResult.taxTotal)}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Detected line items</p>
                     <p className="text-sm font-medium text-gray-900">
                       {parseStats ? `${parseStats.total} (shipped ${parseStats.shipped}, to-be-shipped ${parseStats.toBeShipped})` : `${parseResult.lineItems.length}`}
                     </p>
+                    {debugStats && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        SKU: {debugStats.skuCount}/{parseResult.lineItems.length} • Attributes: {debugStats.attrCount}/{parseResult.lineItems.length}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -637,34 +771,75 @@ export default function ImportWayfairInvoice() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Include toggle */}
-            {parseResult && (
-              <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <input
-                  id="includeToBeShipped"
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  checked={includeToBeShipped}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                    if (items.length > 0) {
-                      showWarning('Changing this will rebuild items from the invoice and discard item edits.')
-                    }
-                    setIncludeToBeShipped(next)
-                    if (parseResult) applyParsedInvoiceToDraft(parseResult, next)
-                  }}
-                />
-                <div className="flex-1">
-                  <label htmlFor="includeToBeShipped" className="text-sm font-medium text-gray-900">
-                    Include “Items to be Shipped”
-                  </label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    If unchecked, the transaction amount will default to the sum of included line totals ({formatCurrencyFromString(sumLineTotals(includedLineItems))}).
-                  </p>
-                </div>
+                {/* Debug / Parse Report (visible, not console-dependent) */}
+                <details className="mt-4 border border-gray-200 rounded-md bg-gray-50 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-gray-900">
+                    Parse report (debug)
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void copyParseReportToClipboard()}
+                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                      >
+                        Copy JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={downloadParseReportJson}
+                        className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                      >
+                        Download JSON
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="bg-white border border-gray-200 rounded-md p-3">
+                        <p className="text-xs text-gray-500">Parsed line items (compact)</p>
+                        <div className="mt-2 max-h-64 overflow-auto">
+                          <ul className="space-y-2 text-xs text-gray-800">
+                            {parseResult.lineItems.slice(0, 50).map((li, idx) => (
+                              <li key={idx} className="border-b border-gray-100 pb-2">
+                                <div className="font-medium">{idx + 1}. {li.description}</div>
+                                <div className="text-gray-600">
+                                  SKU: {li.sku || '—'} • Qty: {li.qty} • Total: ${li.total}
+                                </div>
+                                {li.attributeLines && li.attributeLines.length > 0 && (
+                                  <div className="text-gray-600">
+                                    Attr: {li.attributeLines.join(' • ')}
+                                  </div>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                          {parseResult.lineItems.length > 50 && (
+                            <p className="mt-2 text-xs text-gray-500">Showing first 50 of {parseResult.lineItems.length} items.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-gray-200 rounded-md p-3">
+                        <p className="text-xs text-gray-500">Raw extracted text (first ~200 lines)</p>
+                        <div className="mt-2 max-h-64 overflow-auto">
+                          <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-gray-800">
+                            {(extractedPdfText || '')
+                              .split(/\r?\n/)
+                              .map(l => l.trim())
+                              .filter(Boolean)
+                              .slice(0, 200)
+                              .map((l, i) => `${String(i + 1).padStart(3, '0')}: ${l}`)
+                              .join('\n')}
+                          </pre>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          If parsing fails, download the JSON report and send it—this includes the first lines of extracted text and the parsed output.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </details>
               </div>
             )}
 
@@ -678,7 +853,7 @@ export default function ImportWayfairInvoice() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`grid grid-cols-1 ${taxRatePreset === 'Other' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Transaction Date</label>
                     <input
@@ -687,6 +862,46 @@ export default function ImportWayfairInvoice() {
                       onChange={(e) => setTransactionDate(e.target.value)}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     />
+                  </div>
+
+                  {taxRatePreset === 'Other' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Calculated Subtotal</label>
+                      <div className="mt-1 relative rounded-md shadow-sm">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={subtotal}
+                          onChange={(e) => setSubtotal(e.target.value)}
+                          className="block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                      {parseResult?.taxTotal && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Tax Total: {formatCurrencyFromString(parseResult.taxTotal)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Amount</label>
+                    <div className="mt-1 relative rounded-md shadow-sm">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-gray-500 sm:text-sm">$</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        className="block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Sum of included line totals: {formatCurrencyFromString(sumLineTotals(includedLineItems))}
+                    </p>
                   </div>
 
                   <div>
@@ -716,74 +931,6 @@ export default function ImportWayfairInvoice() {
                       </label>
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Amount</label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500 sm:text-sm">$</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                      />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Sum of included line totals: {formatCurrencyFromString(sumLineTotals(includedLineItems))}
-                    </p>
-                  </div>
-
-                  <div>
-                    <CategorySelect
-                      value={categoryId}
-                      onChange={(id) => setCategoryId(id)}
-                      label="Budget Category"
-                      required={false}
-                      helperText="Optional, but recommended for budget tracking."
-                    />
-                  </div>
-                </div>
-
-                {/* Tax (Optional) */}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Tax handling</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        If the invoice subtotal was parsed, we set Tax Rate Preset to “Other” and compute the rate from subtotal → total.
-                      </p>
-                    </div>
-                    <div className="text-sm text-gray-700">
-                      {taxRatePreset === 'Other' ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-primary-100 text-primary-800">
-                          Other (computed)
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-200 text-gray-700">
-                          Not set
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {taxRatePreset === 'Other' && (
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700">Subtotal</label>
-                      <div className="mt-1 relative rounded-md shadow-sm">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500 sm:text-sm">$</span>
-                        </div>
-                        <input
-                          type="text"
-                          value={subtotal}
-                          onChange={(e) => setSubtotal(e.target.value)}
-                          className="block w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div>

@@ -3470,6 +3470,13 @@ export const unifiedItemsService = {
       return tax.toFixed(4)
     }
 
+    const normalizeMoneyStringToFourDecimals = (input: string | null | undefined): string | null => {
+      if (!input) return null
+      const n = Number.parseFloat(String(input))
+      if (!Number.isFinite(n)) return null
+      return n.toFixed(4)
+    }
+
     for (const itemData of items) {
       const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
       createdItemIds.push(itemId)
@@ -3505,9 +3512,12 @@ export const unifiedItemsService = {
       } else if (inheritedTax !== undefined) {
         item.tax_rate_pct = inheritedTax
       }
-      // Compute and attach derived tax amounts (purchase and project) as two-decimal strings
-      item.tax_amount_purchase_price = computeTaxString(item.purchase_price, item.tax_rate_pct)
-      item.tax_amount_project_price = computeTaxString(item.project_price, item.tax_rate_pct)
+      // Attach item-level tax amounts. If provided explicitly (e.g. importer parsed line-item tax),
+      // prefer those; otherwise compute from the tax rate.
+      const explicitPurchaseTax = normalizeMoneyStringToFourDecimals(itemData.taxAmountPurchasePrice)
+      const explicitProjectTax = normalizeMoneyStringToFourDecimals(itemData.taxAmountProjectPrice)
+      item.tax_amount_purchase_price = explicitPurchaseTax ?? computeTaxString(item.purchase_price, item.tax_rate_pct)
+      item.tax_amount_project_price = explicitProjectTax ?? computeTaxString(item.project_price, item.tax_rate_pct)
 
       itemsToInsert.push(item)
     }
