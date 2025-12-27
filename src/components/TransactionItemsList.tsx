@@ -86,6 +86,15 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
         {items.map((item, index) => (
           <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div className="flex items-start justify-between">
+              {item.images && item.images.length > 0 && (
+                <div className="mr-4">
+                  <img
+                    src={item.images.find(img => img.isPrimary)?.url || item.images[0].url}
+                    alt={item.images[0].alt || item.images[0].fileName}
+                    className="h-12 w-12 rounded-md object-cover border border-gray-200"
+                  />
+                </div>
+              )}
               <div className="flex-1">
                 <div className="flex items-center space-x-4 mb-2">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">

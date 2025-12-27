@@ -144,7 +144,8 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const { duplicateItem } = useDuplication({
     items,
     setItems,
-    projectId
+    projectId,
+    accountId: currentAccountId || undefined
   })
 
   // Use navigation context for proper back navigation

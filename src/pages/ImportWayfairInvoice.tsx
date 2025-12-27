@@ -14,9 +14,11 @@ import { extractPdfText } from '@/utils/pdfTextExtraction'
 import { parseWayfairInvoiceText, WayfairInvoiceLineItem, WayfairInvoiceParseResult } from '@/utils/wayfairInvoiceParser'
 import { normalizeMoneyToTwoDecimalString, parseMoneyToNumber } from '@/utils/money'
 import { getDefaultCategory } from '@/services/accountPresetsService'
-import { projectService, transactionService } from '@/services/inventoryService'
+import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
+import { ImageUploadService } from '@/services/imageService'
+import { extractPdfEmbeddedImages, type PdfEmbeddedImagePlacement } from '@/utils/pdfEmbeddedImageExtraction'
 import { COMPANY_NAME } from '@/constants/company'
-import type { TransactionItemFormData } from '@/types'
+import type { ItemImage, TransactionItemFormData } from '@/types'
 
 function getTodayIsoDate(): string {
   const today = new Date()
@@ -34,10 +36,14 @@ function sumLineTotals(lineItems: WayfairInvoiceLineItem[]): string {
   return sum.toFixed(2)
 }
 
-function buildTransactionItems(lineItems: WayfairInvoiceLineItem[]): TransactionItemFormData[] {
+function buildTransactionItemsWithSourceIndex(lineItemsWithIndex: Array<{ li: WayfairInvoiceLineItem; sourceIndex: number }>): {
+  items: TransactionItemFormData[]
+  formItemIdToSourceIndex: Map<string, number>
+} {
   const items: TransactionItemFormData[] = []
+  const formItemIdToSourceIndex = new Map<string, number>()
 
-  for (const li of lineItems) {
+  for (const { li, sourceIndex } of lineItemsWithIndex) {
     const qty = Math.max(1, Math.floor(li.qty || 1))
     const totalNum = parseMoneyToNumber(li.total)
     const unitPriceNum = li.unitPrice ? parseMoneyToNumber(li.unitPrice) : undefined
@@ -54,17 +60,32 @@ function buildTransactionItems(lineItems: WayfairInvoiceLineItem[]): Transaction
 
     for (let i = 0; i < qty; i++) {
       const suffix = qty > 1 ? ` (${i + 1}/${qty})` : ''
+      const formId = crypto.randomUUID()
       items.push({
-        id: crypto.randomUUID(),
+        id: formId,
         description: `${li.description}${suffix}`.trim(),
         purchasePrice: perUnitMoney,
         price: perUnitMoney,
         notes: baseNotes,
       })
+      formItemIdToSourceIndex.set(formId, sourceIndex)
     }
   }
 
-  return items
+  return { items, formItemIdToSourceIndex }
+}
+
+function createPreviewItemImageFromFile(file: File, isPrimary: boolean): ItemImage {
+  const url = URL.createObjectURL(file)
+  return {
+    url,
+    alt: file.name,
+    isPrimary,
+    uploadedAt: new Date(),
+    fileName: file.name,
+    size: file.size,
+    mimeType: file.type || 'image/png',
+  }
 }
 
 export default function ImportWayfairInvoice() {
@@ -112,6 +133,11 @@ export default function ImportWayfairInvoice() {
   const [items, setItems] = useState<TransactionItemFormData[]>([])
   const [generalError, setGeneralError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [isExtractingThumbnails, setIsExtractingThumbnails] = useState(false)
+  const [embeddedImagePlacements, setEmbeddedImagePlacements] = useState<PdfEmbeddedImagePlacement[]>([])
+  const [thumbnailWarning, setThumbnailWarning] = useState<string | null>(null)
+  const [formItemIdToSourceIndex, setFormItemIdToSourceIndex] = useState<Map<string, number>>(new Map())
+  const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
 
   useEffect(() => {
     const loadProject = async () => {
@@ -164,14 +190,69 @@ export default function ImportWayfairInvoice() {
     setTaxRatePreset(undefined)
     setSubtotal('')
     setItems([])
+    setIsExtractingThumbnails(false)
+    setEmbeddedImagePlacements([])
+    setThumbnailWarning(null)
+    setFormItemIdToSourceIndex(new Map())
+    setImageFilesMap(new Map())
     setGeneralError(null)
+  }
+
+  const applyThumbnailsToDraftItems = (
+    nextItems: TransactionItemFormData[],
+    nextFormItemIdToSourceIndex: Map<string, number>,
+    nextEmbeddedImages: PdfEmbeddedImagePlacement[],
+    sourceLineItems: WayfairInvoiceLineItem[]
+  ): { items: TransactionItemFormData[]; imageFilesMap: Map<string, File[]>; warning: string | null } => {
+    const warningParts: string[] = []
+
+    // Heuristic match: order embedded thumbnails in reading order, align with Wayfair line items order.
+    // This assumes Wayfair invoices place exactly one thumbnail per line item row.
+    const thumbnailFiles = nextEmbeddedImages.map(p => p.file)
+
+    if (thumbnailFiles.length === 0) {
+      warningParts.push('No embedded item thumbnails detected in the PDF.')
+    } else if (thumbnailFiles.length !== sourceLineItems.length) {
+      warningParts.push(`Detected ${thumbnailFiles.length} embedded thumbnail(s) but parsed ${sourceLineItems.length} line item(s). Matching will be partial; please review.`)
+    }
+
+    const newImageFilesMap = new Map<string, File[]>()
+    const updated = nextItems.map((it) => {
+      const sourceIndex = nextFormItemIdToSourceIndex.get(it.id)
+      if (sourceIndex === undefined) return it
+
+      const matchedThumb = thumbnailFiles[sourceIndex]
+      if (!matchedThumb) return it
+
+      // Attach as a single primary preview image and store the file for upload after creation.
+      const previewImage = createPreviewItemImageFromFile(matchedThumb, true)
+      const imageFiles = [matchedThumb]
+      newImageFilesMap.set(it.id, imageFiles)
+
+      return {
+        ...it,
+        imageFiles,
+        images: [previewImage],
+      }
+    })
+
+    return {
+      items: updated,
+      imageFilesMap: newImageFilesMap,
+      warning: warningParts.length > 0 ? warningParts.join(' ') : null,
+    }
   }
 
   const applyParsedInvoiceToDraft = (result: WayfairInvoiceParseResult, nextIncludeToBeShipped: boolean) => {
     const today = getTodayIsoDate()
     setTransactionDate(result.orderDate || today)
 
-    const lineItemsForAmount = nextIncludeToBeShipped ? result.lineItems : result.lineItems.filter(li => li.section !== 'to_be_shipped')
+    const lineItemsWithIndex = result.lineItems.map((li, idx) => ({ li, sourceIndex: idx }))
+    const includedLineItemsWithIndex = nextIncludeToBeShipped
+      ? lineItemsWithIndex
+      : lineItemsWithIndex.filter(({ li }) => li.section !== 'to_be_shipped')
+
+    const lineItemsForAmount = includedLineItemsWithIndex.map(x => x.li)
     const computedSum = sumLineTotals(lineItemsForAmount)
     const defaultAmount = (nextIncludeToBeShipped && result.orderTotal) ? result.orderTotal : computedSum
     setAmount(defaultAmount)
@@ -192,19 +273,76 @@ export default function ImportWayfairInvoice() {
     if (nextIncludeToBeShipped === false) notesParts.push('Excluded: Items to be Shipped section')
     setNotes(notesParts.join(' • '))
 
-    const nextItems = buildTransactionItems(lineItemsForAmount)
-    setItems(nextItems)
+    const built = buildTransactionItemsWithSourceIndex(includedLineItemsWithIndex)
+    setFormItemIdToSourceIndex(built.formItemIdToSourceIndex)
+
+    // If thumbnails were already extracted, attach them to the rebuilt item list.
+    if (embeddedImagePlacements.length > 0) {
+      const applied = applyThumbnailsToDraftItems(
+        built.items,
+        built.formItemIdToSourceIndex,
+        embeddedImagePlacements,
+        result.lineItems
+      )
+      setItems(applied.items)
+      setImageFilesMap(applied.imageFilesMap)
+      setThumbnailWarning(applied.warning)
+    } else {
+      setItems(built.items)
+    }
   }
 
   const parsePdf = async (file: File) => {
     if (!file) return
     setGeneralError(null)
+    setThumbnailWarning(null)
     setIsParsing(true)
     try {
-      const { fullText } = await extractPdfText(file)
+      const [{ fullText }, embeddedImages] = await Promise.all([
+        extractPdfText(file),
+        (async () => {
+          setIsExtractingThumbnails(true)
+          try {
+            try {
+              return await extractPdfEmbeddedImages(file, {
+                // tuned for Wayfair invoice thumbnails (small, left side)
+                pdfBoxSizeFilter: { min: 15, max: 180 },
+                xMinMax: 220,
+              })
+            } catch (e) {
+              console.warn('Thumbnail extraction failed; continuing without thumbnails.', e)
+              setThumbnailWarning('Thumbnail extraction failed for this PDF. Continuing without thumbnails.')
+              return [] as PdfEmbeddedImagePlacement[]
+            }
+          } finally {
+            setIsExtractingThumbnails(false)
+          }
+        })(),
+      ])
+
       const result = parseWayfairInvoiceText(fullText)
       setParseResult(result)
+      setEmbeddedImagePlacements(embeddedImages)
+
+      // Build draft items first
       applyParsedInvoiceToDraft(result, includeToBeShipped)
+
+      // Attach thumbnails onto the currently-built items (if any)
+      if (embeddedImages.length > 0) {
+        const builtLineItemsWithIndex = result.lineItems.map((li, idx) => ({ li, sourceIndex: idx }))
+        const included = includeToBeShipped
+          ? builtLineItemsWithIndex
+          : builtLineItemsWithIndex.filter(({ li }) => li.section !== 'to_be_shipped')
+        const built = buildTransactionItemsWithSourceIndex(included)
+        setFormItemIdToSourceIndex(built.formItemIdToSourceIndex)
+        const applied = applyThumbnailsToDraftItems(built.items, built.formItemIdToSourceIndex, embeddedImages, result.lineItems)
+        setItems(applied.items)
+        setImageFilesMap(applied.imageFilesMap)
+        setThumbnailWarning(applied.warning)
+      } else {
+        setThumbnailWarning('No embedded item thumbnails detected in this PDF.')
+      }
+
       if (result.warnings.length > 0) {
         showWarning(`Parsed with ${result.warnings.length} warning(s). Review before creating.`)
       } else {
@@ -275,6 +413,56 @@ export default function ImportWayfairInvoice() {
       }
 
       const transactionId = await transactionService.createTransaction(currentAccountId, projectId, transactionData as any, items)
+
+      // Upload item thumbnails/images (if any) and update created items.images
+      try {
+        if (imageFilesMap.size > 0 && items.length > 0) {
+          const createdItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
+          const createdByDescription = new Map<string, string>()
+          for (const it of createdItems) {
+            if (it.description) createdByDescription.set(it.description, it.itemId)
+          }
+
+          // Cache uploads so duplicates (qty split items) can reuse the same uploaded URL if the same File is used.
+          const uploadCache = new Map<string, Promise<{ url: string; fileName: string; size: number; mimeType: string }>>()
+
+          for (const formItem of items) {
+            const itemId = createdByDescription.get(formItem.description) || null
+            if (!itemId) continue
+
+            const imageFiles = imageFilesMap.get(formItem.id) || formItem.imageFiles || []
+            if (!imageFiles || imageFiles.length === 0) continue
+
+            const uploadedImages: ItemImage[] = []
+
+            for (let fileIndex = 0; fileIndex < imageFiles.length; fileIndex++) {
+              const f = imageFiles[fileIndex]
+              const cacheKey = `${f.name}_${f.size}_${f.type}`
+              if (!uploadCache.has(cacheKey)) {
+                uploadCache.set(cacheKey, ImageUploadService.uploadItemImage(f, projectName || 'Project', itemId))
+              }
+              const uploadResult = await uploadCache.get(cacheKey)!
+
+              uploadedImages.push({
+                url: uploadResult.url,
+                alt: f.name,
+                isPrimary: fileIndex === 0,
+                uploadedAt: new Date(),
+                fileName: uploadResult.fileName,
+                size: uploadResult.size,
+                mimeType: uploadResult.mimeType,
+              })
+            }
+
+            if (uploadedImages.length > 0) {
+              await unifiedItemsService.updateItem(currentAccountId, itemId, { images: uploadedImages })
+            }
+          }
+        }
+      } catch (imageErr) {
+        console.warn('Wayfair import: item thumbnail upload failed (non-fatal):', imageErr)
+      }
+
       showSuccess('Transaction created.')
       navigate(`/project/${projectId}/transaction/${transactionId}`)
     } catch (err) {
@@ -296,7 +484,20 @@ export default function ImportWayfairInvoice() {
     setSelectedFile(file)
     setParseResult(null)
     setItems([])
+    setEmbeddedImagePlacements([])
+    setThumbnailWarning(null)
+    setFormItemIdToSourceIndex(new Map())
+    setImageFilesMap(new Map())
     void parsePdf(file)
+  }
+
+  const handleImageFilesChange = (itemId: string, imageFiles: File[]) => {
+    setImageFilesMap(prev => {
+      const next = new Map(prev)
+      next.set(itemId, imageFiles)
+      return next
+    })
+    setItems(prevItems => prevItems.map(it => (it.id === itemId ? { ...it, imageFiles } : it)))
   }
 
   return (
@@ -381,6 +582,12 @@ export default function ImportWayfairInvoice() {
                     <p className="mt-2 text-xs text-gray-500 text-center">Parsing PDF…</p>
                   </div>
                 )}
+                {!isParsing && isExtractingThumbnails && (
+                  <div className="mt-4">
+                    <LoadingSpinner size="sm" />
+                    <p className="mt-2 text-xs text-gray-500 text-center">Extracting embedded item thumbnails…</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -416,6 +623,18 @@ export default function ImportWayfairInvoice() {
                         <li key={idx}>{w}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {thumbnailWarning && (
+                  <div className="mt-4 bg-amber-50 border border-amber-200 rounded-md p-3">
+                    <p className="text-sm font-medium text-amber-800">Thumbnail import</p>
+                    <p className="mt-2 text-sm text-amber-800">{thumbnailWarning}</p>
+                    {embeddedImagePlacements.length > 0 && (
+                      <p className="mt-1 text-xs text-amber-700">
+                        Detected {embeddedImagePlacements.length} embedded image(s). Thumbnails are matched to items by row order; verify by editing an item if needed.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -582,6 +801,7 @@ export default function ImportWayfairInvoice() {
                   onItemsChange={(next) => setItems(next)}
                   projectId={projectId}
                   projectName={projectName}
+                  onImageFilesChange={handleImageFilesChange}
                 />
 
                 <div className="flex justify-end">
