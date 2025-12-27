@@ -1,4 +1,4 @@
-import { Plus, Search, Filter } from 'lucide-react'
+import { Plus, Search, Filter, FileUp } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import ContextLink from '@/components/ContextLink'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
@@ -199,17 +199,35 @@ export default function TransactionsList({ projectId: propProjectId, transaction
     )
   }
 
+  if (!projectId) {
+    return (
+      <div className="text-sm text-gray-500">
+        No project selected.
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* Header - Add Transaction button */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-        <ContextLink
-          to={buildContextUrl(`/project/${projectId}/transaction/add`, { project: projectId })}
-          className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Transaction
-        </ContextLink>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <ContextLink
+            to={buildContextUrl(`/project/${projectId}/transaction/add`, { project: projectId })}
+            className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Transaction
+          </ContextLink>
+          <ContextLink
+            to={buildContextUrl(`/project/${projectId}/transaction/import-wayfair`, { project: projectId })}
+            className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors duration-200 w-full sm:w-auto"
+            title="Import a Wayfair invoice PDF"
+          >
+            <FileUp className="h-4 w-4 mr-2" />
+            Import Wayfair Invoice
+          </ContextLink>
+        </div>
       </div>
 
       {/* Search and Controls - Sticky Container */}

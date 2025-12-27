@@ -38,6 +38,7 @@ function App() {
                         <Route path="/project/:id/item/add" element={<AddItem />} />
                         <Route path="/project/:id/edit-item/:itemId" element={<EditItem />} />
                         <Route path="/project/:id/transaction/add" element={<AddTransaction />} />
+                        <Route path="/project/:id/transaction/import-wayfair" element={<ImportWayfairInvoice />} />
                         <Route path="/project/:id/transaction/:transactionId/edit" element={<EditTransaction />} />
                         <Route path="/project/:id/transaction/:transactionId" element={<TransactionDetail />} />
 
@@ -73,6 +74,7 @@ const ClientSummary = lazy(() => import('./pages/ClientSummary'))
 const AddItem = lazy(() => import('./pages/AddItem'))
 const EditItem = lazy(() => import('./pages/EditItem'))
 const AddTransaction = lazy(() => import('./pages/AddTransaction'))
+const ImportWayfairInvoice = lazy(() => import('./pages/ImportWayfairInvoice'))
 const EditTransaction = lazy(() => import('./pages/EditTransaction'))
 const TransactionDetail = lazy(() => import('./pages/TransactionDetail'))
 const Settings = lazy(() => import('./pages/Settings'))
