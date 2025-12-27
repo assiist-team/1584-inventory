@@ -91,25 +91,46 @@ function extractMoneyTokens(line: string): string[] {
     .filter(Boolean)
 }
 
-function parseLineItemFromLine(line: string, bufferedDescription: string): Omit<WayfairInvoiceLineItem, 'shippedOn' | 'section'> | undefined {
-  const moneyTokens = extractMoneyTokens(line)
-  if (moneyTokens.length === 0) return undefined
-
-  // Common case: "... <qty> <unitPrice> <total>"
-  const qtyWithTwoMoneyAtEnd = line.match(/^(.*)\b(\d{1,3})\b\s+\$?\s*[\d,]+\.\d{2}\s+\$?\s*[\d,]+\.\d{2}\s*$/)
-  let qty: number | undefined
-  if (qtyWithTwoMoneyAtEnd) {
-    qty = Number(qtyWithTwoMoneyAtEnd[2])
-  } else {
-    const qtyMatch = line.match(/\bQty\b\s*[:#]?\s*(\d{1,3})\b/i)
-    if (qtyMatch) qty = Number(qtyMatch[1])
+function extractQty(line: string): number | undefined {
+  // 1) Explicit qty label
+  const qtyMatch = line.match(/\bQty\b\s*[:#]?\s*(\d{1,3})\b/i)
+  if (qtyMatch) {
+    const q = Number(qtyMatch[1])
+    if (Number.isFinite(q) && q > 0) return q
   }
 
+  // 2) Table-ish pattern: "<unitPrice> <qty> <subtotal>" (qty between money columns)
+  const betweenMoneyMatch = line.match(/\$?\s*[\d,]+\.\d{2}\s+(\d{1,3})\s+\$?\s*[\d,]+\.\d{2}/)
+  if (betweenMoneyMatch) {
+    const q = Number(betweenMoneyMatch[1])
+    if (Number.isFinite(q) && q > 0) return q
+  }
+
+  // 3) Legacy/simple pattern: "... <qty> <unitPrice> <total>" (qty appears before trailing money)
+  const qtyWithTwoMoneyAtEnd = line.match(/^(.*)\b(\d{1,3})\b\s+\$?\s*[\d,]+\.\d{2}\s+\$?\s*[\d,]+\.\d{2}\s*$/)
+  if (qtyWithTwoMoneyAtEnd) {
+    const q = Number(qtyWithTwoMoneyAtEnd[2])
+    if (Number.isFinite(q) && q > 0) return q
+  }
+
+  return undefined
+}
+
+function parseLineItemFromLine(line: string, bufferedDescription: string): Omit<WayfairInvoiceLineItem, 'shippedOn' | 'section'> | undefined {
+  const moneyTokens = extractMoneyTokens(line)
+  if (moneyTokens.length < 2) return undefined
+
+  const qty = extractQty(line)
   if (!qty || qty <= 0) return undefined
 
+  // For Wayfair invoices, the first money token is typically unit price and the last is total.
+  // We keep additional fields best-effort since templates vary.
+  const unitPrice = moneyTokens[0]
   const total = moneyTokens[moneyTokens.length - 1]
-  const unitPrice = moneyTokens.length >= 2 ? moneyTokens[moneyTokens.length - 2] : undefined
-  const subtotal = moneyTokens.length >= 3 ? moneyTokens[moneyTokens.length - 3] : undefined
+
+  // Often: unitPrice, subtotal, shipping, adjustment, tax, total (or similar)
+  const subtotal = moneyTokens.length >= 3 ? moneyTokens[1] : undefined
+  const tax = moneyTokens.length >= 2 ? moneyTokens[moneyTokens.length - 2] : undefined
 
   const description = (bufferedDescription || '').trim() || line.replace(/\s+\$?\s*[\d,]+\.\d{2}.*$/, '').trim()
   if (!description) return undefined
@@ -119,6 +140,7 @@ function parseLineItemFromLine(line: string, bufferedDescription: string): Omit<
     qty,
     unitPrice,
     subtotal,
+    tax,
     total
   }
 }

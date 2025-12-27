@@ -42,6 +42,25 @@ describe('parseWayfairInvoiceText', () => {
     expect(lamp?.qty).toBe(2)
     expect(lamp?.total).toBe('299.50')
   })
+
+  it('detects table-style rows where qty sits between money columns', () => {
+    const tableFixture = `
+Wayfair
+Invoice # 4386128736
+Order Date: Dec 22, 2025
+Order Total $12,580.48
+
+Shipped On Dec 26, 2025
+Vintage Botanical Wall Art with Heron & Floral Landscape - Classic Chinoiserie Style Hanging Décor ATGT1623 Size: 45" H x 73" W $227.99 1 $227.99 $0.00 ($15.96) $14.31 $226.34
+`
+    const result = parseWayfairInvoiceText(tableFixture)
+    expect(result.lineItems.length).toBe(1)
+    expect(result.lineItems[0].qty).toBe(1)
+    expect(result.lineItems[0].unitPrice).toBe('227.99')
+    expect(result.lineItems[0].total).toBe('226.34')
+    expect(result.lineItems[0].section).toBe('shipped')
+    expect(result.lineItems[0].shippedOn).toBe('2025-12-26')
+  })
 })
 
 
