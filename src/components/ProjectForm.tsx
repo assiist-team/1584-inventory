@@ -29,6 +29,48 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
 
   const [availableCategories, setAvailableCategories] = useState<BudgetCategory[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
+
+  const normalizeLegacyBudgetCategoryKeys = (
+    raw: ProjectBudgetCategories | undefined,
+    categories: BudgetCategory[]
+  ): ProjectBudgetCategories => {
+    const input = raw || {}
+    const output: ProjectBudgetCategories = {}
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    for (const [key, amountRaw] of Object.entries(input)) {
+      const amount = typeof amountRaw === 'number' ? amountRaw : Number(amountRaw || 0)
+      if (!amount || amount <= 0) continue
+
+      // New format: already UUID-keyed
+      if (uuidRegex.test(key)) {
+        output[key] = amount
+        continue
+      }
+
+      // Legacy format: keys were slugs/camelCase identifiers
+      const legacySlug = (() => {
+        switch (key) {
+          case 'propertyManagement':
+            return 'property-management'
+          case 'storageReceiving':
+            return 'storage-receiving'
+          case 'designFee':
+            return 'design-fee'
+          default:
+            return key
+        }
+      })()
+
+      const match = categories.find(c => c.slug === legacySlug)
+      if (match) {
+        output[match.id] = amount
+      }
+    }
+
+    return output
+  }
+
   const [formData, setFormData] = useState<ProjectFormData>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -67,6 +109,20 @@ export default function ProjectForm({ onSubmit, onCancel, isLoading = false, ini
 
     loadCategories()
   }, [currentAccountId])
+
+  // If a project comes in with legacy `budgetCategories` keys, normalize them once categories are loaded.
+  useEffect(() => {
+    if (categoriesLoading) return
+    if (!availableCategories.length) return
+    if (!formData.budgetCategories) return
+
+    const normalized = normalizeLegacyBudgetCategoryKeys(formData.budgetCategories, availableCategories)
+    const oldKeys = Object.keys(formData.budgetCategories).sort().join('|')
+    const newKeys = Object.keys(normalized).sort().join('|')
+    if (oldKeys !== newKeys) {
+      setFormData(prev => ({ ...prev, budgetCategories: normalized }))
+    }
+  }, [categoriesLoading, availableCategories, formData.budgetCategories])
 
   // Calculate total budget from all budget categories
   const calculateTotalBudget = (): number => {
