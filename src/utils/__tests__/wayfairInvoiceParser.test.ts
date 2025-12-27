@@ -115,6 +115,43 @@ $586.99 1 $586.99 $99.99 ($17.61) $38.43 $707.80
     expect(result.lineItems[0].attributeLines).toEqual(['Fabric: Linen Blend', 'Color: Taupe', 'Size: King'])
   })
 
+  it('attaches standalone attribute lines that appear after the money row to the preceding item', () => {
+    const fixture = `
+Wayfair
+Invoice # 4444444444
+Order Date: 12/27/2025
+Order Total $1,630.11
+
+Shipped On Dec 24, 2025
+Shipping &
+Item Unit Price Qty Subtotal Adjustment Tax Total
+Delivery
+Keynote Upholstered Fabric Curved Platform Bed
+FOW21689 $586.99 1 $586.99 $99.99 ($17.61) $38.43 $707.80
+Color: Taupe
+Size: King
+Tilly Upholstered Bed
+W004323827
+$899.99 1 $899.99 $0.00 ($36.00) $58.32 $922.31
+Color: Zuma Laurel Textured Linen
+Size: King
+`
+    const result = parseWayfairInvoiceText(fixture)
+    expect(result.lineItems.length).toBe(2)
+
+    const firstItem = result.lineItems[0]
+    expect(firstItem.description).toContain('Keynote Upholstered Fabric Curved Platform Bed')
+    expect(firstItem.attributes?.color).toBe('Taupe')
+    expect(firstItem.attributes?.size).toBe('King')
+    expect(firstItem.attributeLines).toEqual(['Color: Taupe', 'Size: King'])
+
+    const secondItem = result.lineItems[1]
+    expect(secondItem.description).toContain('Tilly Upholstered Bed')
+    expect(secondItem.attributes?.color).toBe('Zuma Laurel Textured Linen')
+    expect(secondItem.attributes?.size).toBe('King')
+    expect(secondItem.attributeLines).toEqual(['Color: Zuma Laurel Textured Linen', 'Size: King'])
+  })
+
   it('does not drop an item when a table header row is merged into the same extracted line', () => {
     const fixture = `
 Wayfair

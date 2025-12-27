@@ -324,6 +324,20 @@ function extractStandaloneAttributeLine(line: string): { key?: 'color' | 'size';
   return undefined
 }
 
+function appendStandaloneAttributeToLineItem(
+  lineItem: WayfairInvoiceLineItem,
+  attribute: { key?: 'color' | 'size'; value: string; rawLine: string }
+): void {
+  const existingLines = lineItem.attributeLines || []
+  const normalizedLines = [...existingLines, attribute.rawLine.trim()].filter(Boolean)
+  lineItem.attributeLines = Array.from(new Set(normalizedLines))
+
+  if (attribute.key) {
+    if (!lineItem.attributes) lineItem.attributes = {}
+    lineItem.attributes[attribute.key] = attribute.value
+  }
+}
+
 function extractInlineAttributesFromDescription(description: string): {
   cleanedDescription: string
   attributes?: { color?: string; size?: string }
@@ -337,39 +351,37 @@ function extractInlineAttributesFromDescription(description: string): {
   // Keep conservative: only remove the single word "Delivery" when it is the leading token.
   s = s.replace(/^Delivery\s+/i, '')
 
-  // Capture inline Fabric when merged into the same line. We keep this scoped to the explicit key label.
-  const fabricInline = s.match(/\bFabric\s*:\s*([A-Za-z][A-Za-z0-9 /-]{0,60})\b/i)
-  if (fabricInline) {
-    const value = fabricInline[1].trim()
-    if (value) attributeLines.push(normalizeAttributeLine('Fabric', value))
-    s = s.replace(fabricInline[0], '').replace(/\s+/g, ' ').trim()
-  }
+  const inlineAttributePattern = /\b(Fabric|Color|Size)\s*:\s*([^:]+?)(?=\s+(?:Fabric|Color|Size)\b|$)/gi
+  const inlineMatches = Array.from(s.matchAll(inlineAttributePattern))
 
-  // Best-effort extraction of inline attributes (usually appear at the end, sometimes merged into the same line).
-  // Keep conservative to avoid stripping dimension-style sizes like `Size: 45" H x 73" W`.
-  const colorInline = s.match(/\bColor\s*:\s*([A-Za-z][A-Za-z0-9 /-]{0,40})\b/i)
-  if (colorInline) {
-    const value = colorInline[1].trim()
-    if (value) attributes.color = value
-    if (value) attributeLines.push(normalizeAttributeLine('Color', value))
-    s = s.replace(colorInline[0], '').replace(/\s+/g, ' ').trim()
-  }
+  if (inlineMatches.length > 0) {
+    for (const match of inlineMatches) {
+      const label = match[1]?.trim()
+      const rawValue = match[2]?.trim()
+      if (!label || !rawValue) continue
 
-  const sizeInline = s.match(/\bSize\s*:\s*([A-Za-z0-9][A-Za-z0-9 /-]{0,25})\b/i)
-  if (sizeInline) {
-    const value = sizeInline[1].trim()
-    // Skip dimension-y sizes (quotes or ' x ' patterns) even if they slipped into the capture.
-    if (value && !/["']/.test(value) && !/\b\d+\s*x\s*\d+/i.test(value)) {
-      attributes.size = value
-      attributeLines.push(normalizeAttributeLine('Size', value))
-      s = s.replace(sizeInline[0], '').replace(/\s+/g, ' ').trim()
+      const value = rawValue.replace(/[,\s]+$/g, '').trim()
+      if (!value) continue
+
+      attributeLines.push(normalizeAttributeLine(label, value))
+      const lower = label.toLowerCase()
+      if (lower === 'color') {
+        attributes.color = value
+      } else if (lower === 'size') {
+        if (!/["']/.test(value) && !/\b\d+\s*x\s*\d+/i.test(value)) {
+          attributes.size = value
+        }
+      }
     }
+
+    const inlineAttributeCleanupRegex = new RegExp(inlineAttributePattern.source, inlineAttributePattern.flags)
+    s = s.replace(inlineAttributeCleanupRegex, ' ').replace(/\s+/g, ' ').trim()
   }
 
   return {
     cleanedDescription: s,
     attributes: (attributes.color || attributes.size) ? attributes : undefined,
-    attributeLines: attributeLines.length > 0 ? attributeLines : undefined,
+    attributeLines: attributeLines.length > 0 ? Array.from(new Set(attributeLines)) : undefined,
   }
 }
 
@@ -462,7 +474,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
   const shippingDeliveryRaw = extractFirstMatch(fullText, /\bShipping(?:\s*(?:&|and)\s*Delivery)?\s*[:#]?\s*\$?\s*([\d,]+\.\d{2})\b/i) ||
     extractFirstMatch(fullText, /\bDelivery\s*[:#]?\s*\$?\s*([\d,]+\.\d{2})\b/i)
   const taxTotalRaw = extractFirstMatch(fullText, /\bTax(?:\s*Total)?\s*[:#]?\s*\$?\s*([\d,]+\.\d{2})\b/i)
-  const adjustmentsRaw = extractFirstMatch(fullText, /\bAdjustments?\s*[:#]?\s*\$?\s*([-]?[\d,]+\.\d{2})\b/i)
+  const adjustmentsRaw = extractFirstMatch(fullText, /\bAdjustments?\s*[:#]?\s*(\(?-?\$?\s*[\d,]+\.\d{2}\)?)/i)
 
   const orderTotal = orderTotalRaw ? normalizeMoneyToTwoDecimalString(orderTotalRaw) : undefined
   const subtotal = subtotalRaw ? normalizeMoneyToTwoDecimalString(subtotalRaw) : undefined
@@ -538,6 +550,18 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
     const standaloneAttr = extractStandaloneAttributeLine(line)
     if (standaloneAttr) {
+      const hasPendingDescription = bufferedDescriptionParts.some(part => part && part.trim())
+      const hasPendingSku = Boolean(pendingSku)
+      const hasPendingAttrState = pendingAttributeLines.length > 0 || !!pendingAttributes.color || !!pendingAttributes.size
+
+      if (!hasPendingDescription && !hasPendingSku && !hasPendingAttrState) {
+        const previousLineItem = lineItems[lineItems.length - 1]
+        if (previousLineItem) {
+          appendStandaloneAttributeToLineItem(previousLineItem, standaloneAttr)
+          continue
+        }
+      }
+
       pendingAttributeLines.push(standaloneAttr.rawLine)
       if (standaloneAttr.key) pendingAttributes[standaloneAttr.key] = standaloneAttr.value
       continue
@@ -641,8 +665,19 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       if (inline.attributes?.color) pendingAttributes.color = inline.attributes.color
       if (inline.attributes?.size) pendingAttributes.size = inline.attributes.size
 
-      bufferedDescriptionParts.push(inline.cleanedDescription)
-      if (bufferedDescriptionParts.length > 3) bufferedDescriptionParts.shift()
+      let descriptionForBuffer = inline.cleanedDescription
+      if (!pendingSku && descriptionForBuffer) {
+        const trailingSkuAfterInline = extractTrailingSkuFromDescriptionLine(descriptionForBuffer)
+        if (trailingSkuAfterInline.sku) {
+          pendingSku = trailingSkuAfterInline.sku
+          descriptionForBuffer = trailingSkuAfterInline.cleanedLine
+        }
+      }
+
+      if (descriptionForBuffer) {
+        bufferedDescriptionParts.push(descriptionForBuffer)
+        if (bufferedDescriptionParts.length > 3) bufferedDescriptionParts.shift()
+      }
     }
   }
 
