@@ -36,6 +36,12 @@ export function useDuplication<T extends { itemId: string }>({
         const { unifiedItemsService } = await import('@/services/inventoryService')
         newItemId = await unifiedItemsService.duplicateItem(accountId, projectId, itemId)
       } else {
+        console.error('No duplication service available:', {
+          itemId,
+          hasCustomDuplicationService: Boolean(duplicationService),
+          projectId,
+          accountId
+        })
         showError('No duplication service available')
         return
       }
