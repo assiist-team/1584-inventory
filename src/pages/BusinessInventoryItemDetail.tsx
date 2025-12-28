@@ -60,7 +60,7 @@ export default function BusinessInventoryItemDetail() {
         ...itemData,
         inventoryStatus: 'available',
         projectId: null,
-        disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
+        disposition: itemData.disposition || 'purchased' // Preserve existing disposition or default to 'purchased'
       })
     }
   })

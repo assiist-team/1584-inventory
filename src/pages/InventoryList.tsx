@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import ContextLink from '@/components/ContextLink'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { Item, ItemImage } from '@/types'
-import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel, DISPOSITION_OPTIONS } from '@/utils/dispositionUtils'
+import type { ItemDisposition } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
@@ -25,7 +25,6 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<Item[]>(propItems || [])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Show loading spinner only if account is loading - items come from props (parent handles that loading)
@@ -151,7 +150,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
   // Use navigation context for proper back navigation
   const { buildContextUrl } = useNavigationContext()
 
-  const updateDisposition = async (itemId: string, newDisposition: string) => {
+  const updateDisposition = async (itemId: string, newDisposition: ItemDisposition) => {
     console.log('🎯 InventoryList updateDisposition called:', itemId, newDisposition)
 
     try {
@@ -194,7 +193,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
         // For non-inventory dispositions, update local state optimistically
         setItems(items.map(item =>
           item.itemId === itemId
-            ? { ...item, disposition: newDisposition }
+            ? { ...item, disposition: newDisposition as ItemDisposition }
             : item
         ))
 
@@ -211,12 +210,14 @@ export default function InventoryList({ projectId, projectName, items: propItems
     setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
   }
 
-  const getDispositionBadgeClasses = (disposition?: string) => {
+  const getDispositionBadgeClasses = (disposition?: string | null) => {
     const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
     const d = normalizeDisposition(disposition)
 
     switch (d) {
-      case 'keep':
+      case 'to purchase':
+        return `${baseClasses} bg-amber-100 text-amber-800`
+      case 'purchased':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
         return `${baseClasses} bg-red-100 text-red-700`
@@ -602,7 +603,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                           {openDispositionMenu === item.itemId && (
                             <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                               <div className="py-1">
-                                {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                                {DISPOSITION_OPTIONS.map((disposition) => (
                                   <button
                                     key={disposition}
                                     onClick={(e) => {
@@ -615,7 +616,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                                     }`}
                                     disabled={!item.disposition}
                                   >
-                                    {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                                    {displayDispositionLabel(disposition)}
                                   </button>
                                 ))}
                               </div>

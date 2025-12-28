@@ -95,7 +95,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Design Business Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '45 days',
+      'Design Business Card', 'to purchase', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '45 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;
@@ -182,7 +182,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '42 days',
+      'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '42 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;
@@ -266,7 +266,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '38 days',
+      'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '38 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;
@@ -351,7 +351,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '32 days',
+      'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '32 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;
@@ -436,7 +436,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '28 days',
+      'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '28 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;
@@ -523,7 +523,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '25 days',
+      'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '25 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;
@@ -610,7 +610,7 @@ BEGIN
       item_data.sku, item_data.source,
       v_purchase::text, v_project_price::text, v_market::text,
       v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-      'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '22 days',
+      'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE - INTERVAL '22 days',
       v_created_by, NOW(), NOW()
     );
     v_item_ids := v_item_ids || v_item_id;

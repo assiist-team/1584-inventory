@@ -4,7 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import ContextLink from '@/components/ContextLink'
 import ContextBackLink from '@/components/ContextBackLink'
 import { Item, ItemImage } from '@/types'
-import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel, DISPOSITION_OPTIONS } from '@/utils/dispositionUtils'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
 import { unifiedItemsService, projectService, integrationService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
@@ -221,7 +221,7 @@ export default function ItemDetail() {
     }
   }
 
-  const updateDisposition = async (newDisposition: string) => {
+  const updateDisposition = async (newDisposition: ItemDisposition) => {
     console.log('🎯 updateDisposition called with:', newDisposition, 'Current item:', item?.itemId)
 
     if (!item || !currentAccountId) {
@@ -279,12 +279,14 @@ export default function ItemDetail() {
     setOpenDispositionMenu(!openDispositionMenu)
   }
 
-  const getDispositionBadgeClasses = (disposition: string) => {
+  const getDispositionBadgeClasses = (disposition?: string | null) => {
     const baseClasses = 'inline-flex items-center px-3 py-2 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
     const d = normalizeDisposition(disposition)
 
     switch (d) {
-      case 'keep':
+      case 'to purchase':
+        return `${baseClasses} bg-amber-100 text-amber-800`
+      case 'purchased':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
         return `${baseClasses} bg-red-100 text-red-700`
@@ -545,7 +547,7 @@ export default function ItemDetail() {
             <div className="relative">
               <span
                 onClick={toggleDispositionMenu}
-                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition || 'keep')}`}
+                className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
               >
                 {displayDispositionLabel(item.disposition)}
                 <ChevronDown className="h-3 w-3 ml-1" />
@@ -555,7 +557,7 @@ export default function ItemDetail() {
               {openDispositionMenu && (
                 <div className="disposition-menu absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-20">
                   <div className="py-2">
-                    {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                    {DISPOSITION_OPTIONS.map((disposition) => (
                       <button
                         key={disposition}
                         onClick={() => updateDisposition(disposition)}
@@ -563,7 +565,7 @@ export default function ItemDetail() {
                           dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
                         }`}
                       >
-                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                        {displayDispositionLabel(disposition)}
                       </button>
                     ))}
                   </div>

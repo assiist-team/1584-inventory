@@ -184,7 +184,7 @@ export const createMockItem = (overrides?: Partial<any>) => ({
   projectPrice: '150.00',
   marketValue: '120.00',
   paymentMethod: 'Credit Card',
-  disposition: 'Available',
+  disposition: 'purchased',
   notes: 'Test notes',
   space: 'Living Room',
   qrKey: 'test-qr-key',

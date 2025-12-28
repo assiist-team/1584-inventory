@@ -9,6 +9,9 @@ export interface TaxPreset {
   rate: number; // percentage, e.g., 8.375
 }
 
+// Item disposition union type - canonical values for item disposition
+export type ItemDisposition = 'to purchase' | 'purchased' | 'to return' | 'returned' | 'inventory'
+
 export interface BudgetCategory {
   id: string;
   accountId: string;
@@ -115,7 +118,7 @@ export interface Item {
   projectPrice?: string;       // What we sell it for (Design Business project price) - formerly resale_price
   marketValue?: string;        // Current market value - direct mapping
   paymentMethod: string;
-  disposition?: string;
+  disposition?: ItemDisposition | null;
   notes?: string;
   space?: string;               // Space/location where item is placed
   qrKey: string;
@@ -186,7 +189,7 @@ export interface QRCodeData {
 }
 
 export interface FilterOptions {
-  disposition?: string;
+  disposition?: ItemDisposition | string;
   source?: string;
   status?: string; // For filtering by item status
   category?: string; // For filtering by category

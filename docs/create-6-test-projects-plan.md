@@ -64,7 +64,7 @@ All seed scripts now live in `scripts/create-test-projects/`, and each file inse
 - `project_price` (TEXT, optional)
 - `market_value` (TEXT, optional)
 - `payment_method` (TEXT, default 'Client Card')
-- `disposition` (TEXT, default 'keep')
+- `disposition` (TEXT, default 'purchased')
 - `notes` (TEXT, optional)
 - `qr_key` (TEXT, required, format: 'QR-{timestamp}-{random}')
 - `tax_rate_pct` (DECIMAL(6,4), optional)

@@ -102,7 +102,7 @@ BEGIN
     'HG-SOFA-BOHO-001', 'Anthropologie',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -129,7 +129,7 @@ BEGIN
     'HG-RUG-KILIM-001', 'Etsy',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;

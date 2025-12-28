@@ -102,7 +102,7 @@ BEGIN
     'HG-SOFA-LEATHER-001', 'Restoration Hardware',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -147,7 +147,7 @@ BEGIN
     'HG-TABLE-RECLAIMED-001', 'Etsy',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -174,7 +174,7 @@ BEGIN
     'HG-TABLE-INDUSTRIAL-001', 'West Elm',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -201,7 +201,7 @@ BEGIN
     'HG-CHAIR-METAL-001', 'Homegoods',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -228,7 +228,7 @@ BEGIN
     'HG-RUG-PERSIAN-001', 'Rugs USA',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -255,7 +255,7 @@ BEGIN
     'HG-LIGHT-PENDANT-001', 'Home Depot',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -282,7 +282,7 @@ BEGIN
     'HG-CART-BAR-001', 'Homegoods',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -309,7 +309,7 @@ BEGIN
     'HG-SHELF-FLOATING-001', 'Etsy',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;
@@ -336,7 +336,7 @@ BEGIN
     'HG-PILLOW-INDUSTRIAL-001', 'Homegoods',
     v_purchase::text, v_project_price::text, v_market::text,
     v_tax_rate_pct, v_tax_purchase::text, v_tax_project::text,
-    'Client Card', 'keep', v_qr_key, 'allocated', CURRENT_DATE,
+    'Client Card', 'purchased', v_qr_key, 'allocated', CURRENT_DATE,
     v_created_by, NOW(), NOW()
   );
   v_item_ids := v_item_ids || v_item_id;

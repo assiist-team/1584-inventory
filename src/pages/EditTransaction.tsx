@@ -392,7 +392,7 @@ export default function EditTransaction() {
                 marketValue: item.marketValue || '',
                 notes: item.notes || '',
                 space: item.space || '',
-                disposition: 'keep'
+                disposition: 'purchased'
               }
               return await unifiedItemsService.createItem(currentAccountId, itemData)
             })

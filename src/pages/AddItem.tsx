@@ -8,7 +8,7 @@ import { transactionService, projectService, unifiedItemsService } from '@/servi
 import { ImageUploadService } from '@/services/imageService'
 import { TransactionSource } from '@/constants/transactionSources'
 import { getAvailableVendors } from '@/services/vendorDefaultsService'
-import { Transaction, ItemImage } from '@/types'
+import { Transaction, ItemImage, ItemDisposition } from '@/types'
 import { Select } from '@/components/ui/Select'
 import ImagePreview from '@/components/ui/ImagePreview'
 import { useAuth } from '../contexts/AuthContext'
@@ -17,6 +17,7 @@ import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
+import { DISPOSITION_OPTIONS, displayDispositionLabel } from '@/utils/dispositionUtils'
 
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, COMPANY_NAME } from '@/constants/company'
 
@@ -31,6 +32,20 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   }
   // Return the original source for non-canonical transactions
   return transaction.source
+}
+
+type AddItemFormData = {
+  description: string
+  source: string
+  sku: string
+  purchasePrice: string
+  projectPrice: string
+  marketValue: string
+  paymentMethod: string
+  space: string
+  notes: string
+  disposition: ItemDisposition
+  selectedTransactionId: string
 }
 
 export default function AddItem() {
@@ -66,19 +81,7 @@ export default function AddItem() {
     )
   }
 
-  const [formData, setFormData] = useState<{
-    description: string
-    source: string
-    sku: string
-    purchasePrice: string
-    projectPrice: string
-    marketValue: string
-    paymentMethod: string
-    space: string
-    notes: string
-    disposition: string
-    selectedTransactionId: string
-  }>({
+  const [formData, setFormData] = useState<AddItemFormData>({
     description: '',
     source: '',
     sku: '',
@@ -88,7 +91,7 @@ export default function AddItem() {
     paymentMethod: '',
     space: '',
     notes: '',
-    disposition: 'keep',
+    disposition: 'purchased',
     selectedTransactionId: ''
   })
 
@@ -193,7 +196,7 @@ export default function AddItem() {
         transactionId: formData.selectedTransactionId || '', // Use selected transaction or empty string
         dateCreated: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),
-        disposition: formData.disposition || 'keep',
+        disposition: formData.disposition || 'purchased',
         ...(images.length > 0 && { images }) // Only include images field if there are images
       }
 
@@ -211,7 +214,7 @@ export default function AddItem() {
     }
   }
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = <K extends keyof AddItemFormData>(field: K, value: AddItemFormData[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Mark project_price as manually edited if user is editing it
@@ -220,8 +223,8 @@ export default function AddItem() {
     }
 
     // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }))
+    if (errors[field as string]) {
+      setErrors(prev => ({ ...prev, [field as string]: '' }))
     }
   }
 
@@ -685,13 +688,14 @@ export default function AddItem() {
               <select
                 id="disposition"
                 value={formData.disposition}
-                onChange={(e) => handleInputChange('disposition', e.target.value)}
+                onChange={(e) => handleInputChange('disposition', e.target.value as ItemDisposition)}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               >
-                <option value="keep">Keep</option>
-                <option value="to return">To Return</option>
-                <option value="returned">Returned</option>
-                <option value="inventory">Inventory</option>
+                {DISPOSITION_OPTIONS.map(option => (
+                  <option key={option} value={option}>
+                    {displayDispositionLabel(option)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

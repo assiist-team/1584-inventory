@@ -4,6 +4,14 @@
 
 We are replacing every usage of `"keep"` with `"purchased"`, adding `"to purchase"` as a recognized value (not yet driving any automation), and keeping the existing `"to return"`, `"returned"`, and `"inventory"` flows intact. This document enumerates every code and content touch-point that must change so the new disposition set is consistent end-to-end.
 
+## Status Update (2025-12-28)
+
+- `AddItem` now seeds `'purchased'` via the canonical `DISPOSITION_OPTIONS` list and restricts the form state to `ItemDisposition`.
+- Inventory list, item detail, and business inventory dropdown menus pull their labels from `displayDispositionLabel`, eliminating the last bits of hand-crafted casing.
+- Supabase migration `20251228_update_item_dispositions` backfills legacy `'keep'` rows to `'purchased'` and enforces a check constraint to keep the column aligned going forward (also applied via the MCP tool).
+- Seed SQL in `scripts/create-test-projects/project-*.sql` writes only canonical values (with a representative `'to purchase'` row), preventing reintroduction of `'keep'` during local setup.
+- Test fixtures in `src/services/__tests__/test-utils.ts` now default to `'purchased'` so unit tests exercise supported values only.
+
 ## Canonical Values
 
 | Stored value    | Display label | Notes |

@@ -2119,6 +2119,12 @@ export const unifiedItemsService = {
 
     if (error) throw error
 
+    if (existingItem?.transactionId) {
+      _updateTransactionItemIds(accountId, existingItem.transactionId, itemId, 'remove').catch(e => {
+        console.warn('Failed to sync transaction item_ids after deleteItem:', e)
+      })
+    }
+
     // Adjust persisted sum and recompute for the transaction the item belonged to (if any)
     try {
       const txId = existingItem?.transactionId ?? null
@@ -2263,7 +2269,7 @@ export const unifiedItemsService = {
       projectId: projectId,
       inventoryStatus: 'allocated',
       transactionId: purchaseTransactionId,
-      disposition: 'keep',
+      disposition: 'purchased',
       space: space,
       previousProjectTransactionId: null,
       previousProjectId: null
@@ -2316,7 +2322,7 @@ export const unifiedItemsService = {
       projectId: projectId,
       inventoryStatus: 'allocated' as const,
       transactionId: null as string | null,
-      disposition: 'keep' as const,
+      disposition: 'purchased' as const,
       notes: notes,
       space: space ?? '',
       previousProjectTransactionId: null as string | null,
@@ -2459,7 +2465,7 @@ export const unifiedItemsService = {
       projectId: newProjectId,
       inventoryStatus: 'allocated',
       transactionId: purchaseTransactionId,
-      disposition: 'keep',
+      disposition: 'purchased',
       space: space,
       previousProjectTransactionId: null,
       previousProjectId: null
@@ -2616,7 +2622,7 @@ export const unifiedItemsService = {
       projectId: projectId,
       inventoryStatus: 'allocated',
       transactionId: purchaseTransactionId,
-      disposition: 'keep',
+      disposition: 'purchased',
       space: space,
       previousProjectTransactionId: null,
       previousProjectId: null
@@ -2963,7 +2969,7 @@ export const unifiedItemsService = {
             projectId: projectId,
             inventoryStatus: 'allocated',
             transactionId: canonicalTransactionId,
-            disposition: 'keep',
+            disposition: 'purchased',
             space: allocationData.space || '',
             previousProjectTransactionId: null,
             previousProjectId: null
@@ -2987,7 +2993,7 @@ export const unifiedItemsService = {
           projectId: projectId,
           inventoryStatus: 'allocated',
           transactionId: canonicalTransactionId,
-          disposition: 'keep',
+          disposition: 'purchased',
           space: allocationData.space || '',
           previousProjectTransactionId: null,
           previousProjectId: null
@@ -3009,7 +3015,7 @@ export const unifiedItemsService = {
         projectId: projectId,
         inventoryStatus: 'allocated',
         transactionId: canonicalTransactionId,
-        disposition: 'keep',
+        disposition: 'purchased',
         space: allocationData.space || '',
         previousProjectTransactionId: null,
         previousProjectId: null
@@ -3415,7 +3421,7 @@ export const unifiedItemsService = {
       project_price: originalItem.projectPrice || null,
       market_value: originalItem.marketValue || null,
       payment_method: originalItem.paymentMethod || '',
-      disposition: 'keep', // Default disposition for duplicates
+      disposition: 'purchased', // Default disposition for duplicates
       notes: originalItem.notes || null,
       space: originalItem.space || null,
       qr_key: newQrKey,
@@ -3518,7 +3524,7 @@ export const unifiedItemsService = {
         project_price: itemData.projectPrice || null,
         market_value: itemData.marketValue || null,
         payment_method: 'Client Card', // Default payment method
-        disposition: 'keep',
+        disposition: 'purchased',
         notes: itemData.notes || null,
         qr_key: qrKey,
         bookmark: false,

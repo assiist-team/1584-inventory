@@ -19,6 +19,7 @@ import { useAccount } from '@/contexts/AccountContext'
 import type { ItemLineageEdge } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import TransactionAudit from '@/components/ui/TransactionAudit'
+import { displayDispositionLabel, normalizeDisposition } from '@/utils/dispositionUtils'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -612,7 +613,7 @@ export default function TransactionDetail() {
         marketValue: item.marketValue || '',
         notes: item.notes || '',
         space: item.space || '',
-        disposition: 'keep'
+        disposition: 'purchased'
       }
       const itemId = await unifiedItemsService.createItem(currentAccountId, itemData)
 
@@ -784,17 +785,25 @@ export default function TransactionDetail() {
         {!isMovedOut && item.disposition && (
           <div className="absolute top-1 right-1 z-10">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-              item.disposition === 'keep'
-                ? 'bg-green-100 text-green-800'
-                : item.disposition === 'to return'
-                ? 'bg-red-100 text-red-700'
-                : item.disposition === 'returned'
-                ? 'bg-red-800 text-red-100'
-                : item.disposition === 'inventory'
-                ? 'bg-primary-100 text-primary-600'
-                : 'bg-gray-100 text-gray-800'
+              (() => {
+                const d = normalizeDisposition(item.disposition)
+                switch (d) {
+                  case 'to purchase':
+                    return 'bg-amber-100 text-amber-800'
+                  case 'purchased':
+                    return 'bg-green-100 text-green-800'
+                  case 'to return':
+                    return 'bg-red-100 text-red-700'
+                  case 'returned':
+                    return 'bg-red-800 text-red-100'
+                  case 'inventory':
+                    return 'bg-primary-100 text-primary-600'
+                  default:
+                    return 'bg-gray-100 text-gray-800'
+                }
+              })()
             }`}>
-              {item.disposition === 'to return' ? 'To Return' : item.disposition ? item.disposition.charAt(0).toUpperCase() + item.disposition.slice(1) : 'Not Set'}
+              {displayDispositionLabel(item.disposition) || 'Not Set'}
             </span>
           </div>
         )}

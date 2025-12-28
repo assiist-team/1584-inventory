@@ -3,10 +3,10 @@ import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import ContextLink from '@/components/ContextLink'
-import { Item, Transaction, ItemImage, Project } from '@/types'
+import { Item, Transaction, ItemImage, Project, ItemDisposition } from '@/types'
 import type { Transaction as TransactionType } from '@/types'
 import { unifiedItemsService, transactionService, projectService, integrationService } from '@/services/inventoryService'
-import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { normalizeDisposition, dispositionsEqual, displayDispositionLabel, DISPOSITION_OPTIONS } from '@/utils/dispositionUtils'
 import { useToast } from '@/components/ui/ToastContext'
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
@@ -105,7 +105,9 @@ export default function BusinessInventory() {
     const d = normalizeDisposition(disposition)
 
     switch (d) {
-      case 'keep':
+      case 'to purchase':
+        return `${baseClasses} bg-amber-100 text-amber-800`
+      case 'purchased':
         return `${baseClasses} bg-green-100 text-green-800`
       case 'to return':
         return `${baseClasses} bg-red-100 text-red-700`
@@ -118,7 +120,7 @@ export default function BusinessInventory() {
     }
   }
 
-  const updateDisposition = async (itemId: string, newDisposition: string) => {
+  const updateDisposition = async (itemId: string, newDisposition: ItemDisposition) => {
     try {
       const item = items.find((it: Item) => it.itemId === itemId)
       if (!item) {
@@ -412,7 +414,7 @@ export default function BusinessInventory() {
         ...itemData,
         inventoryStatus: 'available',
         projectId: null,
-        disposition: itemData.disposition || 'keep' // Preserve existing disposition or default to 'keep'
+        disposition: itemData.disposition || 'purchased' // Preserve existing disposition or default to 'purchased'
       })
     }
   })
@@ -883,7 +885,7 @@ export default function BusinessInventory() {
                               {openDispositionMenu === item.itemId && (
                                 <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                                   <div className="py-1">
-                                    {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
+                                    {DISPOSITION_OPTIONS.map((disposition) => (
                                       <button
                                         key={disposition}
                                         onClick={(e) => {
@@ -896,7 +898,7 @@ export default function BusinessInventory() {
                                         }`}
                                         disabled={!item.disposition}
                                       >
-                                        {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
+                                        {displayDispositionLabel(disposition)}
                                       </button>
                                     ))}
                                   </div>
