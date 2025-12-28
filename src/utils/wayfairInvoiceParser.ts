@@ -444,6 +444,28 @@ function extractTrailingSkuFromDescriptionLine(line: string): { cleanedLine: str
   return { cleanedLine, sku: last }
 }
 
+function hasUnclosedParenthesis(text: string | undefined): boolean {
+  if (!text) return false
+  let balance = 0
+  for (const char of text) {
+    if (char === '(') {
+      balance++
+    } else if (char === ')') {
+      if (balance > 0) balance--
+    }
+  }
+  return balance > 0
+}
+
+function isLikelyParentheticalContinuation(line: string): boolean {
+  const s = line.replace(/\s+/g, ' ').trim()
+  if (!s) return false
+  if (s.length > 60) return false
+  if (!s.includes(')')) return false
+  if (/[:@]/.test(s)) return false
+  return /^[A-Za-z0-9()[\] ,./'&-]+$/.test(s)
+}
+
 function parseLineItemFromLine(line: string, bufferedDescription: string): Omit<WayfairInvoiceLineItem, 'shippedOn' | 'section'> | undefined {
   const moneyTokens = extractMoneyTokens(line)
   if (moneyTokens.length < 2) return undefined
@@ -655,23 +677,26 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
     const hasPendingDescription = bufferedDescriptionParts.some(part => part && part.trim())
 
-    // Handle trailing bullet-style fragments that belong to the previously parsed line item.
+    const previousItem = lineItems[lineItems.length - 1]
+    const looksLikeParentheticalTail =
+      !!previousItem &&
+      hasUnclosedParenthesis(previousItem.description) &&
+      isLikelyParentheticalContinuation(line)
+
+    // Handle trailing bullet-style fragments or dangling parenthetical tails belonging to the previous item.
     const canAppendToPreviousDescription =
       !hasPendingDescription &&
       !pendingSku &&
-      lineItems.length > 0 &&
+      Boolean(previousItem) &&
       extractMoneyTokens(line).length === 0 &&
-      /^[-–•]/.test(line)
+      (/^[-–•]/.test(line) || looksLikeParentheticalTail)
 
-    if (canAppendToPreviousDescription) {
-      const previousItem = lineItems[lineItems.length - 1]
-      if (previousItem) {
-        const cleanedFragment = line.replace(/^[-–•]\s*/, '').trim()
-        if (cleanedFragment) {
-          const baseDescription = previousItem.description.trim()
-          const joiner = /[-–—]$/.test(baseDescription) ? ' ' : ' - '
-          previousItem.description = `${baseDescription}${joiner}${cleanedFragment}`.trim()
-        }
+    if (canAppendToPreviousDescription && previousItem) {
+      const cleanedFragment = /^[-–•]/.test(line) ? line.replace(/^[-–•]\s*/, '').trim() : line.trim()
+      if (cleanedFragment) {
+        const baseDescription = previousItem.description.trim()
+        const joiner = /[-–—]$/.test(baseDescription) ? ' ' : ' - '
+        previousItem.description = `${baseDescription}${joiner}${cleanedFragment}`.trim()
       }
       continue
     }

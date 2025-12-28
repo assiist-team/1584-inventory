@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ArrowLeft, FileUp, Save, Shield, Trash2 } from 'lucide-react'
 import ContextBackLink from '@/components/ContextBackLink'
@@ -34,6 +34,58 @@ function formatCurrencyFromString(amount: string): string {
 function sumLineTotals(lineItems: WayfairInvoiceLineItem[]): string {
   const sum = lineItems.reduce((acc, li) => acc + (parseMoneyToNumber(li.total) || 0), 0)
   return sum.toFixed(2)
+}
+
+const WAYFAIR_ASSET_UPLOAD_CONCURRENCY = 4
+
+type WayfairAssetItemPayload = {
+  description: string
+  files: File[]
+}
+
+type WayfairAssetFinalizePayload = {
+  accountId: string
+  projectId: string
+  transactionId: string
+  projectName: string
+  items: WayfairAssetItemPayload[]
+  receiptFile: File | null
+  totalUploads: number
+}
+
+function createConcurrencyLimiter(maxConcurrent: number) {
+  if (maxConcurrent < 1) {
+    throw new Error('Concurrency limiter requires at least one slot.')
+  }
+
+  let activeCount = 0
+  const queue: Array<() => void> = []
+
+  const next = () => {
+    activeCount = Math.max(0, activeCount - 1)
+    const task = queue.shift()
+    if (task) {
+      task()
+    }
+  }
+
+  return async function limit<T>(task: () => Promise<T>): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
+      const runTask = () => {
+        activeCount++
+        task()
+          .then(resolve)
+          .catch(reject)
+          .finally(next)
+      }
+
+      if (activeCount < maxConcurrent) {
+        runTask()
+      } else {
+        queue.push(runTask)
+      }
+    })
+  }
 }
 
 type WayfairItemDraft = {
@@ -364,6 +416,7 @@ export default function ImportWayfairInvoice() {
     setGeneralError(null)
     setThumbnailWarning(null)
     setIsParsing(true)
+    const parseStartedAt = performance.now()
     try {
       const [{ fullText, pages }, embeddedImages] = await Promise.all([
         extractPdfText(file),
@@ -410,6 +463,8 @@ export default function ImportWayfairInvoice() {
       showError('Failed to parse PDF.')
     } finally {
       setIsParsing(false)
+      const parseDurationMs = Math.round(performance.now() - parseStartedAt)
+      console.log(`[Wayfair importer] PDF parse flow finished in ${parseDurationMs}ms.`)
     }
   }
 
@@ -460,6 +515,139 @@ export default function ImportWayfairInvoice() {
     URL.revokeObjectURL(url)
   }
 
+  const finalizeWayfairImportAssets = useCallback(async (payload: WayfairAssetFinalizePayload) => {
+    const {
+      accountId,
+      projectId: workerProjectId,
+      transactionId,
+      projectName: workerProjectName,
+      items: itemsForUpload,
+      receiptFile,
+      totalUploads,
+    } = payload
+
+    if (!accountId || !workerProjectId) return
+    if (itemsForUpload.length === 0 && !receiptFile) return
+
+    const jobStartedAt = performance.now()
+    const assetLabel = totalUploads === 1 ? 'asset' : 'assets'
+    console.log(`[Wayfair importer] Queued ${totalUploads} ${assetLabel} for background upload on transaction ${transactionId}.`)
+    showInfo(`Uploading ${totalUploads} ${assetLabel} in the background. We'll notify you when done.`)
+
+    try {
+      const createdItems = await unifiedItemsService.getItemsForTransaction(accountId, workerProjectId, transactionId)
+      const itemsByDescription = new Map<string, string[]>()
+      for (const created of createdItems) {
+        const key = (created.description || '').trim().toLowerCase()
+        if (!itemsByDescription.has(key)) {
+          itemsByDescription.set(key, [])
+        }
+        itemsByDescription.get(key)!.push(created.itemId)
+      }
+
+      const limit = createConcurrencyLimiter(WAYFAIR_ASSET_UPLOAD_CONCURRENCY)
+      const uploadCache = new Map<string, Promise<{ url: string; fileName: string; size: number; mimeType: string }>>()
+
+      const imageUploadPromises = itemsForUpload.map(item =>
+        limit(async () => {
+          const descriptionKey = (item.description || '').trim().toLowerCase()
+          const bucket = itemsByDescription.get(descriptionKey)
+          const targetItemId = bucket?.shift()
+          if (!targetItemId) {
+            throw new Error(`No created item found for description "${item.description}"`)
+          }
+
+          const uploadedImages: ItemImage[] = []
+
+          for (let fileIndex = 0; fileIndex < item.files.length; fileIndex++) {
+            const file = item.files[fileIndex]
+            const cacheKey = `${file.name}_${file.size}_${file.type}`
+            if (!uploadCache.has(cacheKey)) {
+              uploadCache.set(cacheKey, ImageUploadService.uploadItemImage(file, workerProjectName || 'Project', targetItemId))
+            }
+            const uploadResult = await uploadCache.get(cacheKey)!
+            uploadedImages.push({
+              url: uploadResult.url,
+              alt: file.name,
+              isPrimary: fileIndex === 0,
+              uploadedAt: new Date(),
+              fileName: uploadResult.fileName,
+              size: uploadResult.size,
+              mimeType: uploadResult.mimeType,
+            })
+          }
+
+          return {
+            itemId: targetItemId,
+            images: uploadedImages,
+            description: item.description,
+          }
+        })
+      )
+
+      const settledImageUploads = await Promise.allSettled(imageUploadPromises)
+      const successfulUpdates: Array<{ itemId: string; images: ItemImage[] }> = []
+      const failedUploads: Array<{ description: string; reason: string }> = []
+
+      settledImageUploads.forEach((result, index) => {
+        const description = itemsForUpload[index]?.description ?? 'Unknown Wayfair item'
+        if (result.status === 'fulfilled') {
+          if (result.value.images.length > 0) {
+            successfulUpdates.push({ itemId: result.value.itemId, images: result.value.images })
+          }
+        } else {
+          const reason = result.reason instanceof Error ? result.reason.message : 'Unknown error'
+          failedUploads.push({ description, reason })
+        }
+      })
+
+      if (successfulUpdates.length > 0) {
+        await unifiedItemsService.bulkUpdateItemImages(accountId, successfulUpdates)
+      }
+
+      let receiptError: Error | null = null
+      if (receiptFile) {
+        try {
+          const receiptUpload = await limit(() =>
+            ImageUploadService.uploadReceiptAttachment(receiptFile, workerProjectName || 'Project', transactionId)
+          )
+          const receiptAttachment = [{
+            url: receiptUpload.url,
+            fileName: receiptUpload.fileName,
+            uploadedAt: new Date(),
+            size: receiptUpload.size,
+            mimeType: receiptUpload.mimeType
+          }]
+          await transactionService.updateTransaction(accountId, workerProjectId, transactionId, {
+            receiptImages: receiptAttachment,
+            transactionImages: receiptAttachment
+          })
+        } catch (err) {
+          receiptError = err instanceof Error ? err : new Error('Receipt upload failed')
+          console.warn('Wayfair import: receipt attachment upload failed (background):', err)
+        }
+      }
+
+      const durationMs = Math.round(performance.now() - jobStartedAt)
+      if (failedUploads.length === 0 && !receiptError) {
+        showSuccess(`Wayfair uploads finished in ${durationMs}ms.`)
+      } else {
+        const issueCount = failedUploads.length + (receiptError ? 1 : 0)
+        showWarning(`Wayfair uploads finished with ${issueCount} issue${issueCount === 1 ? '' : 's'}. Open the transaction to retry.`)
+        if (failedUploads.length > 0) {
+          console.warn('Wayfair import: failed thumbnail uploads:', failedUploads)
+        }
+      }
+
+      console.log(`[Wayfair importer] Asset worker completed in ${durationMs}ms (success:${successfulUpdates.length}, failed:${failedUploads.length + (receiptError ? 1 : 0)}).`)
+    } catch (err) {
+      const durationMs = Math.round(performance.now() - jobStartedAt)
+      console.error('Wayfair import: asset worker failed unexpectedly:', err)
+      console.log(`[Wayfair importer] Asset worker aborted after ${durationMs}ms due to error.`)
+      showError('Wayfair assets failed to upload. Please retry from the transaction detail page.')
+    }
+  }, [showError, showInfo, showSuccess, showWarning])
+
   const validateBeforeCreate = (): string | null => {
     if (!projectId) return 'Missing project ID.'
     if (!currentAccountId) return 'No account found.'
@@ -492,8 +680,24 @@ export default function ImportWayfairInvoice() {
     }
     if (!projectId || !currentAccountId || !user?.id) return
 
+    const assetItemsForUpload: WayfairAssetItemPayload[] = items
+      .map(item => {
+        const files = imageFilesMap.get(item.id) || item.imageFiles || []
+        if (!files || files.length === 0) return null
+        return {
+          description: item.description,
+          files: [...files],
+        }
+      })
+      .filter((payload): payload is WayfairAssetItemPayload => Boolean(payload))
+
+    const receiptFile = selectedFile
+    const totalUploads = assetItemsForUpload.reduce((sum, payload) => sum + payload.files.length, 0) + (receiptFile ? 1 : 0)
+    const hasBackgroundAssets = totalUploads > 0
+
     setGeneralError(null)
     setIsCreating(true)
+    const createStartedAt = performance.now()
     try {
       const transactionData = {
         projectId,
@@ -514,81 +718,19 @@ export default function ImportWayfairInvoice() {
       }
 
       const transactionId = await transactionService.createTransaction(currentAccountId, projectId, transactionData as any, items)
+      const creationDurationMs = Math.round(performance.now() - createStartedAt)
+      console.log(`[Wayfair importer] Transaction ${transactionId} created in ${creationDurationMs}ms with ${items.length} item(s).`)
 
-      // Upload item thumbnails/images (if any) and update created items.images
-      try {
-        if (imageFilesMap.size > 0 && items.length > 0) {
-          const createdItems = await unifiedItemsService.getItemsForTransaction(currentAccountId, projectId, transactionId)
-          const createdByDescription = new Map<string, string>()
-          for (const it of createdItems) {
-            if (it.description) createdByDescription.set(it.description, it.itemId)
-          }
-
-          // Cache uploads so duplicates (qty split items) can reuse the same uploaded URL if the same File is used.
-          const uploadCache = new Map<string, Promise<{ url: string; fileName: string; size: number; mimeType: string }>>()
-
-          for (const formItem of items) {
-            const itemId = createdByDescription.get(formItem.description) || null
-            if (!itemId) continue
-
-            const imageFiles = imageFilesMap.get(formItem.id) || formItem.imageFiles || []
-            if (!imageFiles || imageFiles.length === 0) continue
-
-            const uploadedImages: ItemImage[] = []
-
-            for (let fileIndex = 0; fileIndex < imageFiles.length; fileIndex++) {
-              const f = imageFiles[fileIndex]
-              const cacheKey = `${f.name}_${f.size}_${f.type}`
-              if (!uploadCache.has(cacheKey)) {
-                uploadCache.set(cacheKey, ImageUploadService.uploadItemImage(f, projectName || 'Project', itemId))
-              }
-              const uploadResult = await uploadCache.get(cacheKey)!
-
-              uploadedImages.push({
-                url: uploadResult.url,
-                alt: f.name,
-                isPrimary: fileIndex === 0,
-                uploadedAt: new Date(),
-                fileName: uploadResult.fileName,
-                size: uploadResult.size,
-                mimeType: uploadResult.mimeType,
-              })
-            }
-
-            if (uploadedImages.length > 0) {
-              await unifiedItemsService.updateItem(currentAccountId, itemId, { images: uploadedImages })
-            }
-          }
-        }
-      } catch (imageErr) {
-        console.warn('Wayfair import: item thumbnail upload failed (non-fatal):', imageErr)
-      }
-
-      // Upload original Wayfair invoice PDF as a receipt attachment (so we can reference it later).
-      // Note: this is stored alongside receipt uploads in the `receipt-images` storage bucket.
-      try {
-        if (selectedFile) {
-          const uploadResult = await ImageUploadService.uploadReceiptAttachment(
-            selectedFile,
-            projectName || 'Project',
-            transactionId
-          )
-
-          const receiptAttachment = [{
-            url: uploadResult.url,
-            fileName: uploadResult.fileName,
-            uploadedAt: new Date(),
-            size: uploadResult.size,
-            mimeType: uploadResult.mimeType
-          }]
-
-          await transactionService.updateTransaction(currentAccountId, projectId, transactionId, {
-            receiptImages: receiptAttachment,
-            transactionImages: receiptAttachment // legacy compatibility
-          })
-        }
-      } catch (receiptErr) {
-        console.warn('Wayfair import: attaching PDF receipt failed (non-fatal):', receiptErr)
+      if (hasBackgroundAssets && currentAccountId) {
+        void finalizeWayfairImportAssets({
+          accountId: currentAccountId,
+          projectId,
+          transactionId,
+          projectName: projectName || 'Project',
+          items: assetItemsForUpload,
+          receiptFile,
+          totalUploads,
+        })
       }
 
       showSuccess('Transaction created.')

@@ -4,7 +4,7 @@ import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { lineageService } from './lineageService'
-import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, TransactionCompleteness, CompletenessStatus } from '@/types'
+import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, TransactionCompleteness, CompletenessStatus, ItemImage } from '@/types'
 
 // Audit Logging Service for allocation/de-allocation events
 export const auditService = {
@@ -1601,6 +1601,31 @@ export const unifiedItemsService = {
     if (item.latestTransactionId !== undefined) dbItem.latest_transaction_id = item.latestTransactionId ?? null
     
     return dbItem
+  },
+
+  async bulkUpdateItemImages(
+    accountId: string,
+    updates: Array<{ itemId: string; images: ItemImage[] }>
+  ): Promise<void> {
+    await ensureAuthenticatedForDatabase()
+    if (!updates || updates.length === 0) return
+
+    await Promise.all(
+      updates.map(async update => {
+        const { error } = await supabase
+          .from('items')
+          .update({
+            images: update.images,
+            last_updated: new Date().toISOString()
+          })
+          .eq('account_id', accountId)
+          .eq('item_id', update.itemId)
+
+        if (error) {
+          throw error
+        }
+      })
+    )
   },
 
   // Get items for a project (project_id == projectId) (account-scoped)
