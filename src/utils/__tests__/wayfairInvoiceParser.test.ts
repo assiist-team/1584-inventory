@@ -189,6 +189,30 @@ Size: King
     expect(secondItem.attributeLines).toEqual(['Color: Zuma Laurel Textured Linen', 'Size: King'])
   })
 
+  it('does not treat order-level summary metadata as item attributes', () => {
+    const fixture = `
+Wayfair
+Invoice # 5555555555
+Order Date: 12/27/2025
+
+Shipped On Dec 26, 2025
+Modular Side Rails / Center Support Bar
+MRUT5513
+Color: Walnut
+$499.00 1 $499.00
+Payment Type: Credit Card
+Currency: USD
+Tax Exempt: No
+Order Country: United States
+Order State: Utah
+`
+    const result = parseWayfairInvoiceText(fixture)
+    expect(result.lineItems.length).toBe(1)
+    const item = result.lineItems[0]
+    expect(item.attributeLines).toEqual(['Color: Walnut'])
+    expect(item.attributes?.color).toBe('Walnut')
+  })
+
   it('does not drop an item when a table header row is merged into the same extracted line', () => {
     const fixture = `
 Wayfair

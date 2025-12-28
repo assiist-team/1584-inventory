@@ -10,9 +10,10 @@ interface TransactionItemsListProps {
   projectId?: string
   projectName?: string
   onImageFilesChange?: (itemId: string, imageFiles: File[]) => void
+  totalAmount?: string // Optional total amount to display instead of calculating from items
 }
 
-export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange }: TransactionItemsListProps) {
+export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange, totalAmount }: TransactionItemsListProps) {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
@@ -351,7 +352,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
             </div>
             <div className="text-lg font-semibold text-gray-900">
               Total: {formatCurrency(
-                items.reduce((sum, item) => sum + (parseFloat(item.projectPrice || item.purchasePrice || '0') || 0), 0).toString()
+                totalAmount || items.reduce((sum, item) => sum + (parseFloat(item.projectPrice || item.purchasePrice || '0') || 0), 0).toString()
               )}
             </div>
           </div>

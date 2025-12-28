@@ -903,7 +903,7 @@ export default function ImportWayfairInvoice() {
                       />
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
-                      Sum of included line totals: {formatCurrencyFromString(sumLineTotals(includedLineItems))}
+                      Sum of line items: {formatCurrencyFromString(sumLineTotals(includedLineItems))}
                     </p>
                   </div>
 
@@ -952,6 +952,7 @@ export default function ImportWayfairInvoice() {
                   projectId={projectId}
                   projectName={projectName}
                   onImageFilesChange={handleImageFilesChange}
+                  totalAmount={amount}
                 />
 
                 <div className="flex justify-end">

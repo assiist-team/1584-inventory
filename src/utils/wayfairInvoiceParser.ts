@@ -39,6 +39,39 @@ export type WayfairInvoiceParseResult = {
 
 const DESCRIPTION_BUFFER_LIMIT = 8
 
+const ORDER_LEVEL_ATTRIBUTE_PREFIXES = [
+  'order ',
+  'payment',
+  'currency',
+  'tax ',
+  'taxable ',
+  'tax-exempt',
+  'tax exempt',
+  'billing',
+  'bill to',
+  'ship to',
+  'shipping address',
+  'shipping country',
+  'shipping state',
+  'shipping city',
+  'shipping method',
+]
+
+const ORDER_LEVEL_ATTRIBUTE_EXACT = new Set([
+  'order country',
+  'order state',
+  'order city',
+  'order postal code',
+  'order zip',
+  'order id',
+  'order number',
+  'order total',
+  'payment type',
+  'currency',
+  'tax exempt',
+  'tax exemption certificate',
+])
+
 function toIsoDate(date: Date): string {
   const yyyy = date.getFullYear()
   const mm = String(date.getMonth() + 1).padStart(2, '0')
@@ -301,7 +334,14 @@ function splitSkuPrefixFromDescription(description: string): { sku?: string; cle
   }
 }
 
-function extractStandaloneAttributeLine(line: string): { key?: 'color' | 'size'; value: string; rawLine: string } | undefined {
+function isLikelyOrderLevelAttributeLabel(label: string): boolean {
+  const normalized = label.trim().toLowerCase()
+  if (!normalized) return false
+  if (ORDER_LEVEL_ATTRIBUTE_EXACT.has(normalized)) return true
+  return ORDER_LEVEL_ATTRIBUTE_PREFIXES.some(prefix => normalized.startsWith(prefix))
+}
+
+function extractStandaloneAttributeLine(line: string): { key?: 'color' | 'size'; value: string; rawLine: string; label: string } | undefined {
   const s = line.trim()
   if (!s) return undefined
 
@@ -316,11 +356,13 @@ function extractStandaloneAttributeLine(line: string): { key?: 'color' | 'size';
     const value = kvMatch[2].trim()
     if (!value) return undefined
 
-    const rawLine = normalizeAttributeLine(key, value)
+    const normalizedKey = key.replace(/\s+/g, ' ').trim()
+    const normalizedValue = value.replace(/\s+/g, ' ').trim()
+    const rawLine = `${normalizedKey}: ${normalizedValue}`.trim()
     const lowerKey = key.toLowerCase()
-    if (lowerKey === 'color') return { key: 'color', value, rawLine }
-    if (lowerKey === 'size') return { key: 'size', value, rawLine }
-    return { value, rawLine }
+    if (lowerKey === 'color') return { key: 'color', value: normalizedValue, rawLine, label: normalizedKey }
+    if (lowerKey === 'size') return { key: 'size', value: normalizedValue, rawLine, label: normalizedKey }
+    return { value: normalizedValue, rawLine, label: normalizedKey }
   }
 
   return undefined
@@ -552,6 +594,14 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
     const standaloneAttr = extractStandaloneAttributeLine(line)
     if (standaloneAttr) {
+      if (isLikelyOrderLevelAttributeLabel(standaloneAttr.label)) {
+        bufferedDescriptionParts = []
+        pendingSku = undefined
+        pendingAttributes = {}
+        pendingAttributeLines = []
+        continue
+      }
+
       const hasPendingDescription = bufferedDescriptionParts.some(part => part && part.trim())
       const hasPendingSku = Boolean(pendingSku)
       const hasPendingAttrState = pendingAttributeLines.length > 0 || !!pendingAttributes.color || !!pendingAttributes.size
@@ -618,7 +668,9 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       if (previousItem) {
         const cleanedFragment = line.replace(/^[-–•]\s*/, '').trim()
         if (cleanedFragment) {
-          previousItem.description = `${previousItem.description} ${cleanedFragment}`.trim()
+          const baseDescription = previousItem.description.trim()
+          const joiner = /[-–—]$/.test(baseDescription) ? ' ' : ' - '
+          previousItem.description = `${baseDescription}${joiner}${cleanedFragment}`.trim()
         }
       }
       continue
