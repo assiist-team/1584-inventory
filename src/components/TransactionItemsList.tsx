@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Edit, X, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Edit, X, Plus, GitMerge } from 'lucide-react'
 import { TransactionItemFormData } from '@/types'
 import TransactionItemForm from './TransactionItemForm'
+import { normalizeMoneyToTwoDecimalString } from '@/utils/money'
 
 interface TransactionItemsListProps {
   items: TransactionItemFormData[]
@@ -14,6 +15,24 @@ interface TransactionItemsListProps {
 export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange }: TransactionItemsListProps) {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
+  const [mergeMasterId, setMergeMasterId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setSelectedItemIds(prev => {
+      const valid = new Set<string>()
+      for (const item of items) {
+        if (prev.has(item.id)) valid.add(item.id)
+      }
+      return valid.size === prev.size ? prev : valid
+    })
+  }, [items])
+
+  const selectedItems = useMemo(
+    () => items.filter(item => selectedItemIds.has(item.id)),
+    [items, selectedItemIds]
+  )
 
   const handleSaveItem = (item: TransactionItemFormData) => {
     if (editingItemId) {
@@ -49,6 +68,12 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
   const handleDeleteItem = (itemId: string) => {
     const updatedItems = items.filter(item => item.id !== itemId)
     onItemsChange(updatedItems)
+    setSelectedItemIds(prev => {
+      if (!prev.has(itemId)) return prev
+      const next = new Set(prev)
+      next.delete(itemId)
+      return next
+    })
   }
 
   const getItemToEdit = () => {
@@ -69,6 +94,103 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     return Number.isFinite(n)
   }
 
+  const toggleItemSelection = (itemId: string, checked: boolean) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(itemId)
+      else next.delete(itemId)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedItemIds.size === items.length) {
+      setSelectedItemIds(new Set())
+      return
+    }
+    setSelectedItemIds(new Set(items.map(item => item.id)))
+  }
+
+  const closeMergeDialog = () => {
+    setIsMergeDialogOpen(false)
+    setMergeMasterId(null)
+  }
+
+  const openMergeDialog = () => {
+    const defaults = selectedItems
+    if (defaults.length < 2) return
+    setMergeMasterId(defaults[0]?.id ?? null)
+    setIsMergeDialogOpen(true)
+  }
+
+  const parseMoney = (value?: string): number => {
+    if (!value || !value.trim()) return 0
+    const parsed = Number.parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const formatMoney = (value: number): string => {
+    const normalized = normalizeMoneyToTwoDecimalString(value.toFixed(2))
+    return normalized ?? value.toFixed(2)
+  }
+
+  const aggregateMoneyField = (
+    field: keyof Pick<
+      TransactionItemFormData,
+      'purchasePrice' | 'projectPrice' | 'price' | 'taxAmountPurchasePrice' | 'taxAmountProjectPrice'
+    >,
+    master: TransactionItemFormData,
+    absorbed: TransactionItemFormData[]
+  ): string | undefined => {
+    const values = [master[field], ...absorbed.map(item => item[field])]
+    const hasValue = values.some(val => hasNonEmptyMoneyString(val))
+    if (!hasValue) return master[field]
+    const total = values.reduce((sum, val) => sum + parseMoney(val), 0)
+    return formatMoney(total)
+  }
+
+  const buildMergedNotes = (master: TransactionItemFormData, absorbed: TransactionItemFormData[]): string | undefined => {
+    if (absorbed.length === 0) return master.notes
+    const masterNotes = master.notes?.trim() ?? ''
+    const absorbedLines = absorbed.map(item => {
+      const description = item.description?.trim() || 'Unnamed item'
+      const sku = item.sku?.trim() ? ` (SKU ${item.sku.trim()})` : ''
+      return `- ${description}${sku}`
+    })
+    const mergedSection = ['Merged items:', ...absorbedLines].join('\n')
+    if (!masterNotes) return mergedSection
+    return `${masterNotes}\n\n${mergedSection}`
+  }
+
+  const handleConfirmMerge = () => {
+    if (!mergeMasterId) return
+    const masterItem = items.find(item => item.id === mergeMasterId)
+    if (!masterItem) return
+    const absorbedItems = selectedItems.filter(item => item.id !== mergeMasterId)
+    if (absorbedItems.length === 0) {
+      closeMergeDialog()
+      return
+    }
+
+    const updatedMaster: TransactionItemFormData = {
+      ...masterItem,
+      purchasePrice: aggregateMoneyField('purchasePrice', masterItem, absorbedItems),
+      price: aggregateMoneyField('price', masterItem, absorbedItems) ?? aggregateMoneyField('purchasePrice', masterItem, absorbedItems),
+      projectPrice: aggregateMoneyField('projectPrice', masterItem, absorbedItems),
+      taxAmountPurchasePrice: aggregateMoneyField('taxAmountPurchasePrice', masterItem, absorbedItems),
+      taxAmountProjectPrice: aggregateMoneyField('taxAmountProjectPrice', masterItem, absorbedItems),
+      notes: buildMergedNotes(masterItem, absorbedItems)
+    }
+
+    const updatedItems = items
+      .filter(item => !selectedItemIds.has(item.id) || item.id === mergeMasterId)
+      .map(item => (item.id === mergeMasterId ? updatedMaster : item))
+
+    onItemsChange(updatedItems)
+    setSelectedItemIds(new Set([mergeMasterId]))
+    closeMergeDialog()
+  }
+
   if (isAddingItem || editingItemId) {
     const itemToEdit = getItemToEdit()
     return (
@@ -86,14 +208,48 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium text-gray-900">Transaction Items</h3>
+      <div className="sticky top-0 z-10 bg-white py-3 border-b border-gray-200 mb-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-medium text-gray-900">Transaction Items</h3>
+          {items.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {selectedItemIds.size > 0 && (
+                <span className="text-gray-600">{selectedItemIds.size} selected</span>
+              )}
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                className="px-3 py-1 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+              >
+                {selectedItemIds.size === items.length ? 'Clear selection' : 'Select all'}
+              </button>
+              <button
+                type="button"
+                onClick={openMergeDialog}
+                disabled={selectedItemIds.size < 2}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-md border border-transparent text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <GitMerge className="h-4 w-4" />
+                Merge Selected
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3">
         {items.map((item, index) => (
           <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start gap-4">
+              <div className="pt-1">
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${item.description || `item ${index + 1}`}`}
+                  checked={selectedItemIds.has(item.id)}
+                  onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
+                  className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                />
+              </div>
               {item.images && item.images.length > 0 && (
                 <div className="mr-4">
                   <img
@@ -148,7 +304,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                 )}
               </div>
 
-              <div className="flex items-center space-x-2 ml-4">
+              <div className="flex items-center space-x-2 ml-auto">
                 <button
                   onClick={(e) => {
                     e.preventDefault()
@@ -201,6 +357,69 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
           </div>
         )}
       </div>
+
+      {isMergeDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900">Merge Items</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Select which item should remain. The others will be absorbed into it. Purchase price and tax amounts will be summed and the absorbed item names/SKUs will be appended to the notes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeMergeDialog}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-72 overflow-auto pr-1">
+              {selectedItems.map(item => (
+                <label
+                  key={item.id}
+                  className="flex items-start gap-3 rounded-md border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer"
+                >
+                  <input
+                    type="radio"
+                    name="merge-master"
+                    checked={mergeMasterId === item.id}
+                    onChange={() => setMergeMasterId(item.id)}
+                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{item.description || 'Untitled item'}</p>
+                    <p className="text-xs text-gray-600">
+                      SKU: {item.sku?.trim() || '—'} • Purchase price: {formatCurrency(item.purchasePrice || item.projectPrice || '0')}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeMergeDialog}
+                className="px-4 py-2 rounded-md border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!mergeMasterId}
+                onClick={handleConfirmMerge}
+                className="px-4 py-2 rounded-md border border-transparent bg-primary-600 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Merge Items
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
