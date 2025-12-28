@@ -37,6 +37,8 @@ export type WayfairInvoiceParseResult = {
   warnings: string[]
 }
 
+const DESCRIPTION_BUFFER_LIMIT = 8
+
 function toIsoDate(date: Date): string {
   const yyyy = date.getFullYear()
   const mm = String(date.getMonth() + 1).padStart(2, '0')
@@ -601,6 +603,27 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       }
     }
 
+    const hasPendingDescription = bufferedDescriptionParts.some(part => part && part.trim())
+
+    // Handle trailing bullet-style fragments that belong to the previously parsed line item.
+    const canAppendToPreviousDescription =
+      !hasPendingDescription &&
+      !pendingSku &&
+      lineItems.length > 0 &&
+      extractMoneyTokens(line).length === 0 &&
+      /^[-–•]/.test(line)
+
+    if (canAppendToPreviousDescription) {
+      const previousItem = lineItems[lineItems.length - 1]
+      if (previousItem) {
+        const cleanedFragment = line.replace(/^[-–•]\s*/, '').trim()
+        if (cleanedFragment) {
+          previousItem.description = `${previousItem.description} ${cleanedFragment}`.trim()
+        }
+      }
+      continue
+    }
+
     // Accumulate possible multi-line descriptions, then parse when we see a numeric row.
     const maybeParsed = parseLineItemFromLine(line, bufferedDescriptionParts.join(' '))
     if (maybeParsed) {
@@ -654,7 +677,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         if (split.sku) {
           pendingSku = split.sku
           bufferedDescriptionParts.push(split.cleanedDescription)
-          if (bufferedDescriptionParts.length > 3) bufferedDescriptionParts.shift()
+          if (bufferedDescriptionParts.length > DESCRIPTION_BUFFER_LIMIT) bufferedDescriptionParts.shift()
           continue
         }
       }
@@ -676,7 +699,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
       if (descriptionForBuffer) {
         bufferedDescriptionParts.push(descriptionForBuffer)
-        if (bufferedDescriptionParts.length > 3) bufferedDescriptionParts.shift()
+        if (bufferedDescriptionParts.length > DESCRIPTION_BUFFER_LIMIT) bufferedDescriptionParts.shift()
       }
     }
   }

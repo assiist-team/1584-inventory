@@ -43,6 +43,43 @@ describe('parseWayfairInvoiceText', () => {
     expect(lamp?.total).toBe('299.50')
   })
 
+  it('retains full multi-line descriptions before qty rows', () => {
+    const text = `
+Wayfair
+Invoice # 1111111111
+Shipped On Dec 27, 2025
+43" Round Dining Table For 4-6,
+Mid Century Modern Farmhouse
+Kitchen Table With Pedestal Base
+- Rustic Wooden Circle Table
+W113748988
+Color: Light Brown
+$629.99 1 $629.99 $0.00 ($50.40) $39.12 $618.71
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(1)
+    expect(result.lineItems[0].description.startsWith('43" Round Dining Table For 4-6,')).toBe(true)
+    expect(result.lineItems[0].description.includes('Rustic Wooden Circle Table')).toBe(true)
+    expect(result.lineItems[0].attributes?.color).toBe('Light Brown')
+  })
+
+  it('attaches bullet fragments that appear after a money row back onto the previous item description', () => {
+    const text = `
+Wayfair
+Invoice # 2222222222
+Shipped On Dec 27, 2025
+Serenity Dining Table
+1 $500.00 $500.00
+- Matching Bench
+Rahul Rustic Nightstand with USB
+1 $250.00 $250.00
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(2)
+    expect(result.lineItems[0].description).toContain('Serenity Dining Table - Matching Bench')
+    expect(result.lineItems[1].description).toBe('Rahul Rustic Nightstand with USB')
+  })
+
   it('detects table-style rows where qty sits between money columns', () => {
     const tableFixture = `
 Wayfair
