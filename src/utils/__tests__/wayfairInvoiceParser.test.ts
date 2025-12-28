@@ -80,6 +80,54 @@ Rahul Rustic Nightstand with USB
     expect(result.lineItems[1].description).toBe('Rahul Rustic Nightstand with USB')
   })
 
+  it('keeps parenthetical fragments that show up after header fragments between the money row and SKU', () => {
+    const text = `
+Wayfair
+Invoice # 3333333333
+Shipped On Dec 19, 2025
+Modern Upholstered Swivel
+Counter Stool With Wood
+Frame,Counter Height Bar Stool
+$222.99 4 $891.96 $0.00 ($89.20) $54.19 $856.95
+Shipping &
+Item Unit Price Qty Subtotal Adjustment Tax Total
+Delivery
+For Kitchen Island,Coffee Bar (Set
+of 2)
+W112013734
+Color/Pattern: Beige/Brown
+Bisto Modern Upholstered 27.1'' Swivel Bar Stool With Solid Wood
+Frame
+$265.99 4 $1,063.96 $0.00 ($95.76) $65.35 $1,033.55
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(2)
+    const first = result.lineItems[0]
+    expect(first.description).toContain('Modern Upholstered Swivel Counter Stool With Wood Frame,Counter Height Bar Stool')
+    expect(first.description).toContain('For Kitchen Island,Coffee Bar (Set of 2)')
+    expect(first.sku).toBe('W112013734')
+  })
+
+  it('retains description fragments that share a line with the money row', () => {
+    const text = `
+Wayfair
+Invoice # 4444444444
+Shipped On Dec 19, 2025
+Modern Upholstered Swivel
+Counter Stool With Wood
+Frame,Counter Height Bar Stool
+For Kitchen Island,Coffee Bar (Set $222.99 4 $891.96 $0.00 ($89.20) $54.19 $856.95
+of 2)
+W112013734
+Color/Pattern: Beige/Brown
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(1)
+    const first = result.lineItems[0]
+    expect(first.description).toContain('For Kitchen Island,Coffee Bar (Set of 2)')
+    expect(first.description.startsWith('Modern Upholstered Swivel Counter Stool With Wood Frame')).toBe(true)
+  })
+
   it('detects table-style rows where qty sits between money columns', () => {
     const tableFixture = `
 Wayfair

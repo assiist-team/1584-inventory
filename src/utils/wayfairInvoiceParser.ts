@@ -334,6 +334,31 @@ function splitSkuPrefixFromDescription(description: string): { sku?: string; cle
   }
 }
 
+function extractDescriptionFragmentBeforeMoney(line: string): { fragment?: string; remainder: string } {
+  if (!line) return { remainder: line }
+  const moneyMatch = line.match(/\$?\s*[\d,]+\.\d{2}/)
+  if (!moneyMatch || moneyMatch.index === undefined || moneyMatch.index <= 0) return { remainder: line }
+
+  const fragment = line.slice(0, moneyMatch.index).trim()
+  const remainder = line.slice(moneyMatch.index).trim()
+  if (!fragment || !remainder) return { remainder: line }
+
+  const normalizedFragment = fragment.replace(/\s+/g, ' ').trim()
+  if (!/[A-Za-z]/.test(normalizedFragment)) return { remainder: line }
+
+  const alphaTokens = normalizedFragment.split(/\s+/).filter(token => /[A-Za-z]/.test(token))
+  if (alphaTokens.length < 2) {
+    // Avoid treating standalone SKU tokens or short prefixes (e.g., "SKU") as description fragments.
+    if (isLikelyWayfairSkuToken(normalizedFragment)) return { remainder: line }
+    if (normalizedFragment.length < 6) return { remainder: line }
+  }
+
+  return {
+    fragment: normalizedFragment,
+    remainder,
+  }
+}
+
 function isLikelyOrderLevelAttributeLabel(label: string): boolean {
   const normalized = label.trim().toLowerCase()
   if (!normalized) return false
@@ -444,6 +469,63 @@ function extractTrailingSkuFromDescriptionLine(line: string): { cleanedLine: str
   return { cleanedLine, sku: last }
 }
 
+const CONTINUATION_LEADING_WORDS = new Set([
+  'and',
+  'for',
+  'with',
+  'of',
+  'set',
+  'pair',
+  'per',
+  'by',
+  'in',
+  'on',
+  'to',
+  'the',
+])
+
+function isSoftLeadingWordContinuation(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed) return false
+  const cleaned = trimmed.replace(/^[^A-Za-z0-9(]+/, '')
+  if (!cleaned) return false
+  const firstToken = cleaned.split(/\s+/)[0]?.toLowerCase()
+  if (!firstToken) return false
+  if (firstToken.startsWith('(')) return true
+  return CONTINUATION_LEADING_WORDS.has(firstToken)
+}
+
+const lineItemsWithDanglingParenthesis = new WeakSet<WayfairInvoiceLineItem>()
+
+function isLikelyParentheticalLead(line: string): boolean {
+  const s = line.replace(/\s+/g, ' ').trim()
+  if (!s) return false
+  if (s.length > 120) return false
+  if (!s.includes('(')) return false
+  if (s.includes(')')) return false
+  if (/[:@]/.test(s)) return false
+  // Reject lines that look like attribute lines (e.g., "Color: Red (Set")
+  if (/^[A-Za-z][^:]*:\s*/.test(s)) return false
+  // Allow lines that contain opening parenthesis (catches cases like "For Kitchen Island,Coffee Bar (Set")
+  return true
+}
+
+function shouldPreserveContinuationOnReset(
+  allowLooseContinuationForPreviousItem: boolean,
+  awaitingPostMoneyContinuation: boolean,
+  bufferedDescriptionParts: string[],
+  pendingSku: string | undefined,
+  pendingAttributes: { color?: string; size?: string },
+  pendingAttributeLines: string[],
+): boolean {
+  if (!allowLooseContinuationForPreviousItem && !awaitingPostMoneyContinuation) return false
+  const hasBufferedDescription = bufferedDescriptionParts.some(part => part && part.trim())
+  if (hasBufferedDescription) return false
+  if (pendingSku) return false
+  if (pendingAttributeLines.length > 0) return false
+  if (pendingAttributes.color || pendingAttributes.size) return false
+  return true
+}
 function hasUnclosedParenthesis(text: string | undefined): boolean {
   if (!text) return false
   let balance = 0
@@ -569,6 +651,8 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
   let pendingSku: string | undefined
   let pendingAttributes: { color?: string; size?: string } = {}
   let pendingAttributeLines: string[] = []
+  let allowLooseContinuationForPreviousItem = false
+  let awaitingPostMoneyContinuation = false
 
   const lineItems: WayfairInvoiceLineItem[] = []
 
@@ -584,6 +668,8 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       pendingSku = undefined
       pendingAttributes = {}
       pendingAttributeLines = []
+      allowLooseContinuationForPreviousItem = false
+      awaitingPostMoneyContinuation = false
       continue
     }
 
@@ -594,6 +680,8 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       pendingSku = undefined
       pendingAttributes = {}
       pendingAttributeLines = []
+      allowLooseContinuationForPreviousItem = false
+      awaitingPostMoneyContinuation = false
       continue
     }
 
@@ -603,12 +691,16 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
     if (standaloneSku) {
       if (bufferedDescriptionParts.length > 0) {
         pendingSku = standaloneSku
+        allowLooseContinuationForPreviousItem = false
+        awaitingPostMoneyContinuation = false
       } else {
         const previousLineItem = lineItems[lineItems.length - 1]
         if (previousLineItem && !previousLineItem.sku) {
           previousLineItem.sku = standaloneSku
         } else {
           pendingSku = standaloneSku
+          allowLooseContinuationForPreviousItem = false
+          awaitingPostMoneyContinuation = false
         }
       }
       continue
@@ -621,6 +713,8 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         pendingSku = undefined
         pendingAttributes = {}
         pendingAttributeLines = []
+        allowLooseContinuationForPreviousItem = false
+        awaitingPostMoneyContinuation = false
         continue
       }
 
@@ -636,17 +730,30 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         }
       }
 
+      awaitingPostMoneyContinuation = false
       pendingAttributeLines.push(standaloneAttr.rawLine)
       if (standaloneAttr.key) pendingAttributes[standaloneAttr.key] = standaloneAttr.value
       continue
     }
 
     if (isLikelyWayfairTableHeaderLine(line)) {
+      const preserveContinuation = shouldPreserveContinuationOnReset(
+        allowLooseContinuationForPreviousItem,
+        awaitingPostMoneyContinuation,
+        bufferedDescriptionParts,
+        pendingSku,
+        pendingAttributes,
+        pendingAttributeLines,
+      )
       const payload = stripLeadingMergedWayfairTableHeader(line)
       bufferedDescriptionParts = []
       pendingSku = undefined
       pendingAttributes = {}
       pendingAttributeLines = []
+      if (!preserveContinuation) {
+        allowLooseContinuationForPreviousItem = false
+        awaitingPostMoneyContinuation = false
+      }
       if (payload) {
         line = payload
         // fall through and process payload as a normal line
@@ -660,10 +767,70 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       /\b(Order Total|Subtotal|Tax Total|Tax|Adjustments?|Invoice|Order Date)\b/i.test(line) ||
       /\b(Ship(?:ping)?|Handling|Payment|Bill(?:ing)?|Address)\b/i.test(line)
     ) {
+      const preserveContinuation = shouldPreserveContinuationOnReset(
+        allowLooseContinuationForPreviousItem,
+        awaitingPostMoneyContinuation,
+        bufferedDescriptionParts,
+        pendingSku,
+        pendingAttributes,
+        pendingAttributeLines,
+      )
       bufferedDescriptionParts = []
       pendingSku = undefined
       pendingAttributes = {}
       pendingAttributeLines = []
+      if (!preserveContinuation) {
+        allowLooseContinuationForPreviousItem = false
+        awaitingPostMoneyContinuation = false
+      }
+      continue
+    }
+
+    const hasPendingDescription = bufferedDescriptionParts.some(part => part && part.trim())
+    const previousItem = lineItems[lineItems.length - 1]
+    
+    // Check for continuation BEFORE extracting SKU, so continuation lines aren't misclassified
+    const looksLikeParentheticalTail =
+      !!previousItem &&
+      lineItemsWithDanglingParenthesis.has(previousItem) &&
+      isLikelyParentheticalContinuation(line)
+    const looksLikeParentheticalLead =
+      !!previousItem &&
+      (allowLooseContinuationForPreviousItem || awaitingPostMoneyContinuation) &&
+      isLikelyParentheticalLead(line)
+    const startsWithBullet = /^[-–•]/.test(line)
+    const looksLikeSoftContinuation =
+      !!previousItem &&
+      (allowLooseContinuationForPreviousItem || awaitingPostMoneyContinuation) &&
+      isSoftLeadingWordContinuation(line)
+
+    // Handle trailing bullet fragments, dangling parenthetical tails, or soft continuations belonging to the previous item.
+    const canAppendToPreviousDescription =
+      !hasPendingDescription &&
+      !pendingSku &&
+      Boolean(previousItem) &&
+      extractMoneyTokens(line).length === 0 &&
+      (startsWithBullet || looksLikeParentheticalTail || looksLikeParentheticalLead || looksLikeSoftContinuation)
+
+    if (canAppendToPreviousDescription && previousItem) {
+      const cleanedFragment = startsWithBullet ? line.replace(/^[-–•]\s*/, '').trim() : line.trim()
+      if (cleanedFragment) {
+        const baseDescription = previousItem.description.trim()
+        const joiner = (looksLikeParentheticalTail || looksLikeParentheticalLead)
+          ? ' '
+          : /[-–—]$/.test(baseDescription)
+            ? ' '
+            : ' - '
+        previousItem.description = `${baseDescription}${joiner}${cleanedFragment}`.trim()
+        awaitingPostMoneyContinuation = false
+        if (hasUnclosedParenthesis(previousItem.description)) {
+          lineItemsWithDanglingParenthesis.add(previousItem)
+          // Keep allowLooseContinuationForPreviousItem true so next line (e.g., "of 2)") can also be appended
+        } else {
+          lineItemsWithDanglingParenthesis.delete(previousItem)
+          allowLooseContinuationForPreviousItem = false
+        }
+      }
       continue
     }
 
@@ -675,34 +842,19 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       }
     }
 
-    const hasPendingDescription = bufferedDescriptionParts.some(part => part && part.trim())
-
-    const previousItem = lineItems[lineItems.length - 1]
-    const looksLikeParentheticalTail =
-      !!previousItem &&
-      hasUnclosedParenthesis(previousItem.description) &&
-      isLikelyParentheticalContinuation(line)
-
-    // Handle trailing bullet-style fragments or dangling parenthetical tails belonging to the previous item.
-    const canAppendToPreviousDescription =
-      !hasPendingDescription &&
-      !pendingSku &&
-      Boolean(previousItem) &&
-      extractMoneyTokens(line).length === 0 &&
-      (/^[-–•]/.test(line) || looksLikeParentheticalTail)
-
-    if (canAppendToPreviousDescription && previousItem) {
-      const cleanedFragment = /^[-–•]/.test(line) ? line.replace(/^[-–•]\s*/, '').trim() : line.trim()
-      if (cleanedFragment) {
-        const baseDescription = previousItem.description.trim()
-        const joiner = /[-–—]$/.test(baseDescription) ? ' ' : ' - '
-        previousItem.description = `${baseDescription}${joiner}${cleanedFragment}`.trim()
-      }
-      continue
+    // Capture description fragments that were merged in front of the money columns on the same line.
+    const preMoneyFragment = extractDescriptionFragmentBeforeMoney(line)
+    if (preMoneyFragment.fragment) {
+      allowLooseContinuationForPreviousItem = false
+      awaitingPostMoneyContinuation = false
+      bufferedDescriptionParts.push(preMoneyFragment.fragment)
+      if (bufferedDescriptionParts.length > DESCRIPTION_BUFFER_LIMIT) bufferedDescriptionParts.shift()
+      line = preMoneyFragment.remainder
     }
 
     // Accumulate possible multi-line descriptions, then parse when we see a numeric row.
-    const maybeParsed = parseLineItemFromLine(line, bufferedDescriptionParts.join(' '))
+    const bufferedDescriptionText = bufferedDescriptionParts.join(' ').trim()
+    const maybeParsed = parseLineItemFromLine(line, bufferedDescriptionText)
     if (maybeParsed) {
       const extracted = extractInlineAttributesFromDescription(maybeParsed.description)
       const skuSplit = pendingSku
@@ -721,7 +873,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         ? Array.from(new Set(allAttributeLines))
         : undefined
 
-      lineItems.push({
+      const newItem: WayfairInvoiceLineItem = {
         ...maybeParsed,
         sku: skuSplit.sku,
         description: skuSplit.cleanedDescription,
@@ -729,7 +881,16 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         attributes: (mergedAttributes.color || mergedAttributes.size) ? mergedAttributes : undefined,
         shippedOn: currentShippedOn,
         section: currentSection,
-      })
+      }
+      lineItems.push(newItem)
+      const descriptionSource = bufferedDescriptionText || maybeParsed.description
+      if (hasUnclosedParenthesis(descriptionSource)) {
+        lineItemsWithDanglingParenthesis.add(newItem)
+      } else {
+        lineItemsWithDanglingParenthesis.delete(newItem)
+      }
+      allowLooseContinuationForPreviousItem = true
+      awaitingPostMoneyContinuation = true
       bufferedDescriptionParts = []
       pendingSku = undefined
       pendingAttributes = {}
@@ -745,6 +906,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         if (trailingSku.sku) {
           pendingSku = trailingSku.sku
           line = trailingSku.cleanedLine
+          awaitingPostMoneyContinuation = false
         }
       }
 
@@ -753,6 +915,8 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         const split = splitSkuPrefixFromDescription(line)
         if (split.sku) {
           pendingSku = split.sku
+          allowLooseContinuationForPreviousItem = false
+          awaitingPostMoneyContinuation = false
           bufferedDescriptionParts.push(split.cleanedDescription)
           if (bufferedDescriptionParts.length > DESCRIPTION_BUFFER_LIMIT) bufferedDescriptionParts.shift()
           continue
@@ -761,7 +925,10 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
       // If PDF extraction merged inline attribute key/value pairs into the description line, strip them and capture.
       const inline = extractInlineAttributesFromDescription(line)
-      if (inline.attributeLines) pendingAttributeLines.push(...inline.attributeLines)
+      if (inline.attributeLines) {
+        awaitingPostMoneyContinuation = false
+        pendingAttributeLines.push(...inline.attributeLines)
+      }
       if (inline.attributes?.color) pendingAttributes.color = inline.attributes.color
       if (inline.attributes?.size) pendingAttributes.size = inline.attributes.size
 
@@ -771,10 +938,13 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         if (trailingSkuAfterInline.sku) {
           pendingSku = trailingSkuAfterInline.sku
           descriptionForBuffer = trailingSkuAfterInline.cleanedLine
+          awaitingPostMoneyContinuation = false
         }
       }
 
       if (descriptionForBuffer) {
+        allowLooseContinuationForPreviousItem = false
+        awaitingPostMoneyContinuation = false
         bufferedDescriptionParts.push(descriptionForBuffer)
         if (bufferedDescriptionParts.length > DESCRIPTION_BUFFER_LIMIT) bufferedDescriptionParts.shift()
       }

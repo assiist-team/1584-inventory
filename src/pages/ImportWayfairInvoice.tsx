@@ -37,6 +37,15 @@ function sumLineTotals(lineItems: WayfairInvoiceLineItem[]): string {
 }
 
 const WAYFAIR_ASSET_UPLOAD_CONCURRENCY = 4
+const DEFAULT_RAW_TEXT_LINE_LIMIT = 400
+const RAW_TEXT_PREVIEW_OPTIONS: Array<{ label: string; value: number }> = [
+  { label: '200', value: 200 },
+  { label: '400', value: 400 },
+  { label: '800', value: 800 },
+  { label: '1600', value: 1600 },
+  { label: 'All', value: 0 },
+]
+const PARSE_REPORT_FIRST_LINE_LIMIT = 600
 
 type WayfairAssetItemPayload = {
   description: string
@@ -279,6 +288,7 @@ export default function ImportWayfairInvoice() {
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
   const [extractedPdfText, setExtractedPdfText] = useState<string | null>(null)
   const [extractedPdfPages, setExtractedPdfPages] = useState<string[] | null>(null)
+  const [rawTextLineLimit, setRawTextLineLimit] = useState<number>(DEFAULT_RAW_TEXT_LINE_LIMIT)
 
   const debugStats = useMemo(() => {
     if (!parseResult) return null
@@ -343,6 +353,31 @@ export default function ImportWayfairInvoice() {
     return { shipped, toBeShipped, unknown, total: parseResult.lineItems.length }
   }, [parseResult])
 
+  const normalizedRawTextLines = useMemo(() => {
+    if (!extractedPdfText) return []
+    return extractedPdfText
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean)
+  }, [extractedPdfText])
+
+  const rawTextPreviewLines = useMemo(() => {
+    if (rawTextLineLimit <= 0) return normalizedRawTextLines
+    return normalizedRawTextLines.slice(0, rawTextLineLimit)
+  }, [normalizedRawTextLines, rawTextLineLimit])
+
+  const formattedRawTextPreview = useMemo(() => {
+    if (rawTextPreviewLines.length === 0) return ''
+    return rawTextPreviewLines
+      .map((line, idx) => `${String(idx + 1).padStart(3, '0')}: ${line}`)
+      .join('\n')
+  }, [rawTextPreviewLines])
+
+  const parseReportPreviewCount = useMemo(() => {
+    if (normalizedRawTextLines.length === 0) return PARSE_REPORT_FIRST_LINE_LIMIT
+    return Math.min(PARSE_REPORT_FIRST_LINE_LIMIT, normalizedRawTextLines.length)
+  }, [normalizedRawTextLines])
+
   const handleReset = () => {
     setSelectedFile(null)
     setParseResult(null)
@@ -360,6 +395,7 @@ export default function ImportWayfairInvoice() {
     setThumbnailWarning(null)
     setImageFilesMap(new Map())
     setGeneralError(null)
+    setRawTextLineLimit(DEFAULT_RAW_TEXT_LINE_LIMIT)
   }
 
   const applyParsedInvoiceToDraft = (
@@ -479,7 +515,7 @@ export default function ImportWayfairInvoice() {
         pageCount: extractedPdfPages?.length ?? null,
         charCount: rawText.length,
         nonEmptyLineCount: rawLines.length,
-        firstLines: rawLines.slice(0, 120),
+        firstLines: rawLines.slice(0, PARSE_REPORT_FIRST_LINE_LIMIT),
       },
       parse: parseResult,
       debug: debugStats,
@@ -966,20 +1002,40 @@ export default function ImportWayfairInvoice() {
                       </div>
 
                       <div className="bg-white border border-gray-200 rounded-md p-3">
-                        <p className="text-xs text-gray-500">Raw extracted text (first ~200 lines)</p>
+                        <p className="text-xs text-gray-500">
+                          {normalizedRawTextLines.length > 0
+                            ? `Raw extracted text (${rawTextLineLimit <= 0
+                                ? `showing all ${normalizedRawTextLines.length}`
+                                : `showing first ${Math.min(rawTextLineLimit, normalizedRawTextLines.length)} of ${normalizedRawTextLines.length}`
+                              } non-empty lines)`
+                            : 'Raw extracted text (no lines extracted yet)'}
+                        </p>
+                        {normalizedRawTextLines.length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
+                            <span>Line limit:</span>
+                            {RAW_TEXT_PREVIEW_OPTIONS.map(option => (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => setRawTextLineLimit(option.value)}
+                                className={`px-2 py-0.5 rounded border text-xs font-medium transition ${
+                                  rawTextLineLimit === option.value
+                                    ? 'bg-primary-50 border-primary-300 text-primary-800'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <div className="mt-2 max-h-64 overflow-auto">
                           <pre className="text-[11px] leading-4 whitespace-pre-wrap break-words text-gray-800">
-                            {(extractedPdfText || '')
-                              .split(/\r?\n/)
-                              .map(l => l.trim())
-                              .filter(Boolean)
-                              .slice(0, 200)
-                              .map((l, i) => `${String(i + 1).padStart(3, '0')}: ${l}`)
-                              .join('\n')}
+                            {formattedRawTextPreview || 'No extracted text available.'}
                           </pre>
                         </div>
                         <p className="mt-2 text-xs text-gray-500">
-                          If parsing fails, download the JSON report and send it—this includes the first lines of extracted text and the parsed output.
+                          If parsing fails, download the JSON report and send it—this now includes the first {parseReportPreviewCount} lines of extracted text plus the parsed output.
                         </p>
                       </div>
                     </div>
