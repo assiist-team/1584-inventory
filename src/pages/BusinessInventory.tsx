@@ -414,7 +414,7 @@ export default function BusinessInventory() {
         ...itemData,
         inventoryStatus: 'available',
         projectId: null,
-        disposition: itemData.disposition || 'purchased' // Preserve existing disposition or default to 'purchased'
+        disposition: 'inventory' // Business inventory duplicates should always be marked inventory
       })
     }
   })
