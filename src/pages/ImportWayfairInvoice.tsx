@@ -182,12 +182,25 @@ function expandWayfairItemDrafts(drafts: WayfairItemDraft[]): {
 
   for (const draft of drafts) {
     const qty = Math.max(1, Math.floor(draft.qty || 1))
+
+    // Compute uiGroupKey for grouping identical items (same as getTransactionFormGroupKey logic)
+    let uiGroupKey: string | undefined
+    const normalizedSku = (draft.template.sku || '').trim().toLowerCase()
+
+    if (normalizedSku) {
+      // Only group items with non-empty SKU
+      const normalizedPrice = (draft.template.purchasePrice || draft.template.price || '').trim().toLowerCase().replace(/[^0-9.-]/g, '')
+      uiGroupKey = [normalizedSku, normalizedPrice].join('|')
+    } else {
+      // Items with null/empty SKU get unique keys (no grouping)
+      uiGroupKey = `unique-${Math.random()}`
+    }
+
     for (let i = 0; i < qty; i++) {
-      const suffix = qty > 1 ? ` (${i + 1}/${qty})` : ''
       const id = crypto.randomUUID()
       const templateImages = draft.template.images ? draft.template.images.map(img => ({ ...img })) : undefined
       const templateImageFiles = draft.template.imageFiles ? [...draft.template.imageFiles] : undefined
-      const description = `${draft.template.description}${suffix}`.trim()
+      const description = draft.template.description || ''
 
       items.push({
         id,
@@ -195,6 +208,7 @@ function expandWayfairItemDrafts(drafts: WayfairItemDraft[]): {
         description,
         images: templateImages,
         imageFiles: templateImageFiles,
+        uiGroupKey,
       })
 
       if (templateImageFiles?.length) {

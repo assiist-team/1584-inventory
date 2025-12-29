@@ -3,6 +3,8 @@ import { Edit, X, Plus, GitMerge } from 'lucide-react'
 import { TransactionItemFormData } from '@/types'
 import TransactionItemForm from './TransactionItemForm'
 import { normalizeMoneyToTwoDecimalString } from '@/utils/money'
+import { getTransactionFormGroupKey } from '@/utils/itemGrouping'
+import CollapsedDuplicateGroup from './ui/CollapsedDuplicateGroup'
 
 interface TransactionItemsListProps {
   items: TransactionItemFormData[]
@@ -34,6 +36,28 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     () => items.filter(item => selectedItemIds.has(item.id)),
     [items, selectedItemIds]
   )
+
+  // Group items by their grouping key for collapsed duplicate display
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, TransactionItemFormData[]>()
+
+    items.forEach(item => {
+      const groupKey = getTransactionFormGroupKey(item)
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, [])
+      }
+      groups.get(groupKey)!.push(item)
+    })
+
+    // Convert to array and sort groups by the first item's position in original list
+    return Array.from(groups.entries())
+      .map(([groupKey, items]) => ({ groupKey, items }))
+      .sort((a, b) => {
+        const aIndex = items.indexOf(a.items[0])
+        const bIndex = items.indexOf(b.items[0])
+        return aIndex - bIndex
+      })
+  }, [items])
 
   const handleSaveItem = (item: TransactionItemFormData) => {
     if (editingItemId) {
@@ -111,6 +135,119 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     }
     setSelectedItemIds(new Set(items.map(item => item.id)))
   }
+
+  const getGroupSelectionState = (groupItems: TransactionItemFormData[]) => {
+    const selectedInGroup = groupItems.filter(item => selectedItemIds.has(item.id)).length
+    if (selectedInGroup === 0) return 'unchecked' as const
+    if (selectedInGroup === groupItems.length) return 'checked' as const
+    return 'indeterminate' as const
+  }
+
+  const handleSelectGroup = (groupItems: TransactionItemFormData[], checked: boolean) => {
+    const newSelected = new Set(selectedItemIds)
+    groupItems.forEach(item => {
+      if (checked) {
+        newSelected.add(item.id)
+      } else {
+        newSelected.delete(item.id)
+      }
+    })
+    setSelectedItemIds(newSelected)
+  }
+
+  const renderTransactionItem = (item: TransactionItemFormData, index: number) => (
+    <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <div className="flex items-start gap-4">
+        <div className="pt-1">
+          <input
+            type="checkbox"
+            aria-label={`Select ${item.description || `item ${index + 1}`}`}
+            checked={selectedItemIds.has(item.id)}
+            onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
+            className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+          />
+        </div>
+        {item.images && item.images.length > 0 && (
+          <div className="mr-4">
+            <img
+              src={item.images.find(img => img.isPrimary)?.url || item.images[0].url}
+              alt={item.images[0].alt || item.images[0].fileName}
+              className="h-12 w-12 rounded-md object-cover border border-gray-200"
+            />
+          </div>
+        )}
+        <div className="flex-1">
+          <div className="flex items-center space-x-4 mb-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+              Item {index + 1}
+            </span>
+            <span className="text-sm text-gray-500">
+              {formatCurrency(item.projectPrice || item.purchasePrice || '')}
+              {hasNonEmptyMoneyString(item.taxAmountPurchasePrice) && (
+                <>
+                  {' • Tax: '}
+                  {formatCurrency(item.taxAmountPurchasePrice as string)}
+                </>
+              )}
+            </span>
+          </div>
+
+          <h4 className="text-sm font-medium text-gray-900 mb-1">
+            {item.description || 'No description'}
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+            {item.sku && (
+              <div>
+                <span className="font-medium">SKU:</span> {item.sku}
+              </div>
+            )}
+            {item.marketValue && (
+              <div>
+                <span className="font-medium">Market Value:</span> ${item.marketValue}
+              </div>
+            )}
+            {hasNonEmptyMoneyString(item.taxAmountProjectPrice) && (
+              <div>
+                <span className="font-medium">Tax on project:</span> {formatCurrency(item.taxAmountProjectPrice as string)}
+              </div>
+            )}
+          </div>
+
+          {item.notes && (
+            <div className="mt-2 text-sm text-gray-600">
+              <span className="font-medium">Notes:</span> {item.notes}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center space-x-2 ml-auto">
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleEditItem(item.id)
+            }}
+            className="text-primary-600 hover:text-primary-900 p-1"
+            title="Edit item"
+          >
+            <Edit className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleDeleteItem(item.id)
+            }}
+            className="text-red-600 hover:text-red-900 p-1"
+            title="Delete item"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   const closeMergeDialog = () => {
     setIsMergeDialogOpen(false)
@@ -239,99 +376,116 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
       </div>
 
       <div className="space-y-3">
-        {items.map((item, index) => (
-          <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <div className="flex items-start gap-4">
-              <div className="pt-1">
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${item.description || `item ${index + 1}`}`}
-                  checked={selectedItemIds.has(item.id)}
-                  onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
-                  className="h-4 w-4 text-primary-600 border-gray-300 rounded"
-                />
-              </div>
-              {item.images && item.images.length > 0 && (
-                <div className="mr-4">
-                  <img
-                    src={item.images.find(img => img.isPrimary)?.url || item.images[0].url}
-                    alt={item.images[0].alt || item.images[0].fileName}
-                    className="h-12 w-12 rounded-md object-cover border border-gray-200"
-                  />
-                </div>
-              )}
-              <div className="flex-1">
-                <div className="flex items-center space-x-4 mb-2">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                    Item {index + 1}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {formatCurrency(item.projectPrice || item.purchasePrice || '')}
-                    {hasNonEmptyMoneyString(item.taxAmountPurchasePrice) && (
-                      <>
-                        {' • Tax: '}
-                        {formatCurrency(item.taxAmountPurchasePrice as string)}
-                      </>
+        {groupedItems.map(({ groupKey, items: groupItems }) => {
+          // Single item - render directly
+          if (groupItems.length === 1) {
+            const item = groupItems[0]
+            const itemIndex = items.indexOf(item)
+            return renderTransactionItem(item, itemIndex)
+          }
+
+          // Multiple items - render as collapsed group
+          const firstItem = groupItems[0]
+          const groupSelectionState = getGroupSelectionState(groupItems)
+
+          // Calculate group totals for prices and taxes
+          const totalProjectPrice = groupItems.reduce((sum, item) => sum + (parseFloat(item.projectPrice || item.purchasePrice || '0') || 0), 0)
+          const totalTaxPurchase = groupItems.reduce((sum, item) => sum + (parseFloat(item.taxAmountPurchasePrice || '0') || 0), 0)
+          const totalTaxProject = groupItems.reduce((sum, item) => sum + (parseFloat(item.taxAmountProjectPrice || '0') || 0), 0)
+
+          const hasAnyTaxPurchase = groupItems.some(item => hasNonEmptyMoneyString(item.taxAmountPurchasePrice))
+          const hasAnyTaxProject = groupItems.some(item => hasNonEmptyMoneyString(item.taxAmountProjectPrice))
+
+          return (
+            <CollapsedDuplicateGroup
+              key={groupKey}
+              groupId={groupKey}
+              count={groupItems.length}
+              selectionState={groupSelectionState}
+              onToggleSelection={(checked) => handleSelectGroup(groupItems, checked)}
+              summary={
+                <div className="flex items-start gap-4 py-3">
+                  {firstItem.images && firstItem.images.length > 0 && (
+                    <div className="flex-shrink-0">
+                      <img
+                        src={firstItem.images.find(img => img.isPrimary)?.url || firstItem.images[0].url}
+                        alt={firstItem.images[0].alt || firstItem.images[0].fileName}
+                        className="h-12 w-12 rounded-md object-cover border border-gray-200"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-4 mb-2">
+                      <span className="text-sm text-gray-500">
+                        {formatCurrency(totalProjectPrice.toString())}
+                        {totalProjectPrice !== parseFloat(firstItem.projectPrice || firstItem.purchasePrice || '0') && (
+                          <span className="text-xs text-gray-400">
+                            {' ('}{formatCurrency((totalProjectPrice / groupItems.length).toString())}{' each)'}
+                          </span>
+                        )}
+                        {hasAnyTaxPurchase && totalTaxPurchase > 0 && (
+                          <>
+                            {' • Tax: '}
+                            {formatCurrency(totalTaxPurchase.toString())}
+                            {totalTaxPurchase !== (parseFloat(firstItem.taxAmountPurchasePrice || '0') || 0) && (
+                              <span className="text-xs text-gray-400">
+                                {' ('}{formatCurrency((totalTaxPurchase / groupItems.length).toString())}{' each)'}
+                              </span>
+                            )}
+                          </>
+                        )}
+                        {hasAnyTaxProject && totalTaxProject > 0 && !hasAnyTaxPurchase && (
+                          <>
+                            {' • Tax: '}
+                            {formatCurrency(totalTaxProject.toString())}
+                            {totalTaxProject !== (parseFloat(firstItem.taxAmountProjectPrice || '0') || 0) && (
+                              <span className="text-xs text-gray-400">
+                                {' ('}{formatCurrency((totalTaxProject / groupItems.length).toString())}{' each)'}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </div>
+
+                    <h4 className="text-sm font-medium text-gray-900 mb-1">
+                      {firstItem.description || 'No description'}
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                      {firstItem.sku && (
+                        <div>
+                          <span className="font-medium">SKU:</span> {firstItem.sku}
+                        </div>
+                      )}
+                      {firstItem.marketValue && (
+                        <div>
+                          <span className="font-medium">Market Value:</span> ${firstItem.marketValue}
+                        </div>
+                      )}
+                      {hasNonEmptyMoneyString(firstItem.taxAmountProjectPrice) && (
+                        <div>
+                          <span className="font-medium">Tax on project:</span> {formatCurrency(firstItem.taxAmountProjectPrice as string)}
+                        </div>
+                      )}
+                    </div>
+
+                    {firstItem.notes && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        <span className="font-medium">Notes:</span> {firstItem.notes}
+                      </div>
                     )}
-                  </span>
-                </div>
-
-                <h4 className="text-sm font-medium text-gray-900 mb-1">
-                  {item.description || 'No description'}
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-                  {item.sku && (
-                    <div>
-                      <span className="font-medium">SKU:</span> {item.sku}
-                    </div>
-                  )}
-                  {item.marketValue && (
-                    <div>
-                      <span className="font-medium">Market Value:</span> ${item.marketValue}
-                    </div>
-                  )}
-                  {hasNonEmptyMoneyString(item.taxAmountProjectPrice) && (
-                    <div>
-                      <span className="font-medium">Tax on project:</span> {formatCurrency(item.taxAmountProjectPrice as string)}
-                    </div>
-                  )}
-                </div>
-
-                {item.notes && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    <span className="font-medium">Notes:</span> {item.notes}
                   </div>
-                )}
-              </div>
-
-              <div className="flex items-center space-x-2 ml-auto">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleEditItem(item.id)
-                  }}
-                  className="text-primary-600 hover:text-primary-900 p-1"
-                  title="Edit item"
-                >
-                  <Edit className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleDeleteItem(item.id)
-                  }}
-                  className="text-red-600 hover:text-red-900 p-1"
-                  title="Delete item"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+                </div>
+              }
+            >
+              {groupItems.map((item) => {
+                const itemIndex = items.indexOf(item)
+                return renderTransactionItem(item, itemIndex)
+              })}
+            </CollapsedDuplicateGroup>
+          )
+        })}
 
         {/* Add Item Button - Always visible */}
         <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">

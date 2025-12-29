@@ -52,7 +52,7 @@ export default function CollapsedDuplicateGroup({
       <button
         type="button"
         onClick={toggleExpanded}
-        className="w-full text-left cursor-pointer hover:bg-gray-50 transition-colors duration-200 focus:outline-none"
+        className="w-full text-left cursor-pointer bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors duration-200 focus:outline-none"
         aria-expanded={isExpanded}
         aria-controls={`group-${groupId}-content`}
         aria-label={`Expand group: ${count} items`}
@@ -63,13 +63,13 @@ export default function CollapsedDuplicateGroup({
           }
         }}
       >
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             {onToggleSelection && (
               <input
                 ref={checkboxRef}
                 type="checkbox"
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4 flex-shrink-0"
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-600 h-4 w-4 flex-shrink-0"
                 checked={selectionState === 'checked'}
                 onChange={(e) => {
                   e.stopPropagation()
@@ -117,7 +117,7 @@ export default function CollapsedDuplicateGroup({
       {isExpanded && (
         <div
           id={`group-${groupId}-content`}
-          className="border-l-2 border-gray-200 ml-4 pl-4 space-y-0"
+          className="border-l-2 border-gray-200 ml-4 pl-4 pt-3 space-y-3"
         >
           {children}
         </div>
