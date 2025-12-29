@@ -53,7 +53,8 @@ This document defines:
 
 ### Visual structure (collapsed state)
 One visual card/row representing a group:
-- **Primary content**: same as existing item card summary (image, description, secondary fields)
+- **Primary content**: representative image + description, plus the same price/source/SKU row shown in the individual item row.
+  - Do **not** surface location, bookmark, disposition badges, or notes in the collapsed header; expanding is required to see them.
 - **Quantity badge**: “×N” (N = number of items in group)
   - Placed near top-right (or aligned with existing status/disposition badges).
 - **Chevron**: indicates expand/collapse.
@@ -67,6 +68,7 @@ Expanding a group reveals the **existing per-item UI** (the same cards/rows as t
 
 ### Interactions & accessibility
 - Entire group header is clickable to toggle, except for explicit controls.
+- Group-level checkbox lives inside the header and mirrors the per-item checkbox styling/behavior (checked, unchecked, indeterminate). Toggling it selects/deselects all children without forcing an expand.
 - Keyboard and a11y:
   - Toggle button uses `button` element
   - `aria-expanded`, `aria-controls`
@@ -91,8 +93,7 @@ Only group items that are **visually identical in the collapsed summary**, so ex
 Group key should include the fields we show in the row summary, so “different looking” items don’t collapse together.
 
 Recommended grouping key (v1):
-- `normalizedDescription` (trim, collapse whitespace)
-- `sku` (or empty)
+- **Primary grouping**: `sku` (non-null only - items with null/empty SKU are not grouped)
 - `source` (or empty)
 - `effectivePrice` = `projectPrice ?? purchasePrice ?? ''` (string normalized)
 - `locationField`
@@ -102,8 +103,10 @@ Recommended grouping key (v1):
 - `bookmark` (boolean)
 
 Notes:
+- Items with null/empty SKU are **not grouped** (each appears individually).
 - We intentionally do **not** include `itemId` (would defeat grouping).
 - We intentionally do **not** include image URLs; the group header can show the first item’s primary image as a representative.
+- Grouping is based on SKU rather than description to ensure items with the same SKU are grouped together regardless of description variations.
 
 ### Context: TransactionItemsList (form `TransactionItemFormData`)
 Transaction items can be duplicated (especially from Wayfair imports). They are not persisted yet, so we can add a **UI-only group key** reliably.
@@ -111,7 +114,7 @@ Transaction items can be duplicated (especially from Wayfair imports). They are 
 Recommended approach:
 - Add optional UI-only field: `uiGroupKey?: string` on `TransactionItemFormData`.
   - For Wayfair: set `uiGroupKey` from the line item identity (e.g., source line index + sku + base description), so grouping doesn’t depend on parsing “(1/24)” suffix.
-  - For manual items: default `uiGroupKey` computed from description + sku + price fields.
+  - For manual items: default `uiGroupKey` computed from sku + price fields (items with null/empty SKU are not grouped).
 
 ### Context: TransactionDetail (persisted `Item`)
 Same as inventory lists, but we must **not** group across sections:

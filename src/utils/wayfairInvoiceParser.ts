@@ -685,6 +685,14 @@ function isLikelyDimensionContinuation(line: string): boolean {
   return /^x\s+\d+(?:\.\d+)?(?:\s*(?:"|'|inch|inches|cm|mm|ft|feet|in|L|W|H|D))?\s*$/i.test(s)
 }
 
+function isLikelyItemPositionIndicator(line: string): boolean {
+  const s = line.replace(/\s+/g, ' ').trim()
+  if (!s) return false
+  // Match patterns like "1 of 3", "2 of 3", "(1 of 2)", etc.
+  // These indicate item positioning in a set and shouldn't be part of the description
+  return /^\(?\d+\s+of\s+\d+\)?\.?$/.test(s)
+}
+
 function parseLineItemFromLine(line: string, bufferedDescription: string): Omit<WayfairInvoiceLineItem, 'shippedOn' | 'section'> | undefined {
   const moneyTokens = extractMoneyTokens(line)
   if (moneyTokens.length < 2) return undefined
@@ -1022,6 +1030,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       !pendingSku &&
       Boolean(previousItem) &&
       extractMoneyTokens(line).length === 0 &&
+      !isLikelyItemPositionIndicator(line) &&
       (
         startsWithBullet ||
         looksLikeParentheticalTail ||

@@ -306,6 +306,8 @@ export interface TransactionItemFormData {
   taxAmountProjectPrice?: string;
   images?: ItemImage[]; // Images associated with this item
   imageFiles?: File[]; // File objects for upload (not persisted)
+  // UI-only field for grouping duplicate items (not persisted)
+  uiGroupKey?: string;
 }
 
 export interface TransactionValidationErrors {
