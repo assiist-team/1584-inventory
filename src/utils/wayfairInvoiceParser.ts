@@ -274,6 +274,94 @@ function normalizeAttributeLine(key: string, value: string): string {
   return `${normalizedKey}: ${normalizedValue}`.trim()
 }
 
+const WAYFAIR_DOUBLE_QUOTE_CHARS = '"\u201c\u201d\u201e\u2033\u2036\uFF02'
+const WAYFAIR_DOUBLE_QUOTE_NORMALIZER = new RegExp(`[${WAYFAIR_DOUBLE_QUOTE_CHARS}]`, 'g')
+const WAYFAIR_DOUBLE_QUOTE_EDGE_STRIPPER = new RegExp(
+  `^[${WAYFAIR_DOUBLE_QUOTE_CHARS}]+|[${WAYFAIR_DOUBLE_QUOTE_CHARS}]+$`,
+  'g',
+)
+
+function stripOuterWayfairQuotes(input: string): string {
+  return input.replace(WAYFAIR_DOUBLE_QUOTE_EDGE_STRIPPER, '').trim()
+}
+
+function normalizeDescriptionFragment(input: string | undefined): string | undefined {
+  const s = (input || '').replace(/\s+/g, ' ').trim()
+  if (!s) return undefined
+  // If a fragment is entirely wrapped in quotes, strip them. This is common for product titles.
+  const stripped = stripOuterWayfairQuotes(s)
+  return stripped || s
+}
+
+function splitAttributeSpillover(label: string, value: string): { cleanedValue: string; spillover?: string } {
+  const trimmedLabel = label.trim().toLowerCase()
+  const trimmedValue = value.replace(/\s+/g, ' ').trim()
+  if (!trimmedValue) return { cleanedValue: trimmedValue }
+
+  const canonicalValue = trimmedValue.replace(WAYFAIR_DOUBLE_QUOTE_NORMALIZER, '"')
+
+  const looksLikeMeasurement = (text: string): boolean => {
+    return /[\d]/.test(text) || /\b(?:cm|mm|inch|inches|ft|foot|feet|x)\b/i.test(text)
+  }
+  const looksDescriptive = (text: string): boolean => text.length >= 4 && /[A-Za-z]/.test(text)
+
+  if (trimmedLabel === 'size') {
+    // Common failure mode: value contains inches quotes and the *next* item's title got merged into this row,
+    // e.g. `138" L x 105.96" W " Vintage Landscape - DCXXXIV "`.
+    // Prefer splitting the trailing quoted descriptive segment from the measurement.
+    const trailingQuotedDescriptorWithSpaces = canonicalValue.match(/"\s*([^"]*[A-Za-z][^"]*)\s*"\s*$/)
+    if (trailingQuotedDescriptorWithSpaces && trailingQuotedDescriptorWithSpaces.index !== undefined) {
+      const base = trimmedValue.slice(0, trailingQuotedDescriptorWithSpaces.index).trim()
+      const candidate = stripOuterWayfairQuotes(trailingQuotedDescriptorWithSpaces[1].trim())
+      if (base && looksLikeMeasurement(base) && looksDescriptive(candidate)) {
+        return {
+          cleanedValue: base,
+          spillover: candidate,
+        }
+      }
+    }
+
+    const whitespaceSeparatedDescriptor = canonicalValue.match(/\s"([^"]*[A-Za-z][^"]*)"\s*$/)
+    if (whitespaceSeparatedDescriptor && whitespaceSeparatedDescriptor.index !== undefined) {
+      const base = trimmedValue.slice(0, whitespaceSeparatedDescriptor.index).trim()
+      const candidate = stripOuterWayfairQuotes(whitespaceSeparatedDescriptor[1].trim())
+      if (base && looksLikeMeasurement(base) && looksDescriptive(candidate)) {
+        return {
+          cleanedValue: base,
+          spillover: candidate,
+        }
+      }
+    }
+
+    const trailingQuotedDescriptor = canonicalValue.match(/"([^"]*[A-Za-z][^"]*)"\s*$/)
+    if (trailingQuotedDescriptor && trailingQuotedDescriptor.index !== undefined) {
+      const base = trimmedValue.slice(0, trailingQuotedDescriptor.index).trim()
+      const candidate = stripOuterWayfairQuotes(trailingQuotedDescriptor[1].trim())
+      if (base && looksLikeMeasurement(base) && looksDescriptive(candidate)) {
+        return {
+          cleanedValue: base,
+          spillover: candidate,
+        }
+      }
+    }
+
+    const quotedTailMatch = canonicalValue.match(/^(.*?)(?:\s+"([^"]+)"\s*)$/)
+    if (quotedTailMatch) {
+      const canonicalBase = quotedTailMatch[1]
+      const base = trimmedValue.slice(0, canonicalBase.length).trim()
+      const candidate = stripOuterWayfairQuotes(quotedTailMatch[2].trim())
+      if (base && looksLikeMeasurement(base) && looksDescriptive(candidate)) {
+        return {
+          cleanedValue: base,
+          spillover: candidate,
+        }
+      }
+    }
+  }
+
+  return { cleanedValue: trimmedValue }
+}
+
 function isLikelyWayfairSkuToken(token: string): boolean {
   const t = token.trim()
   if (!t) return false
@@ -366,7 +454,13 @@ function isLikelyOrderLevelAttributeLabel(label: string): boolean {
   return ORDER_LEVEL_ATTRIBUTE_PREFIXES.some(prefix => normalized.startsWith(prefix))
 }
 
-function extractStandaloneAttributeLine(line: string): { key?: 'color' | 'size'; value: string; rawLine: string; label: string } | undefined {
+function extractStandaloneAttributeLine(line: string): {
+  key?: 'color' | 'size'
+  value: string
+  rawLine: string
+  label: string
+  spillover?: string
+} | undefined {
   const s = line.trim()
   if (!s) return undefined
 
@@ -382,12 +476,12 @@ function extractStandaloneAttributeLine(line: string): { key?: 'color' | 'size';
     if (!value) return undefined
 
     const normalizedKey = key.replace(/\s+/g, ' ').trim()
-    const normalizedValue = value.replace(/\s+/g, ' ').trim()
-    const rawLine = `${normalizedKey}: ${normalizedValue}`.trim()
-    const lowerKey = key.toLowerCase()
-    if (lowerKey === 'color') return { key: 'color', value: normalizedValue, rawLine, label: normalizedKey }
-    if (lowerKey === 'size') return { key: 'size', value: normalizedValue, rawLine, label: normalizedKey }
-    return { value: normalizedValue, rawLine, label: normalizedKey }
+    const { cleanedValue, spillover } = splitAttributeSpillover(normalizedKey, value)
+    const rawLine = `${normalizedKey}: ${cleanedValue}`.trim()
+    const lowerKey = normalizedKey.toLowerCase()
+    if (lowerKey === 'color') return { key: 'color', value: cleanedValue, rawLine, label: normalizedKey, spillover }
+    if (lowerKey === 'size') return { key: 'size', value: cleanedValue, rawLine, label: normalizedKey, spillover }
+    return { value: cleanedValue, rawLine, label: normalizedKey, spillover }
   }
 
   return undefined
@@ -404,6 +498,31 @@ function appendStandaloneAttributeToLineItem(
   if (attribute.key) {
     if (!lineItem.attributes) lineItem.attributes = {}
     lineItem.attributes[attribute.key] = attribute.value
+  }
+}
+
+function trySplitSizeAttributeLineWithSpillover(line: string): { cleanedSizeLine: string; spillover: string; cleanedSizeValue: string } | undefined {
+  const s = line.replace(/\s+/g, ' ').trim()
+  if (!s) return undefined
+  const m = s.match(/^Size\s*:\s*(.+)$/i)
+  if (!m?.[1]) return undefined
+
+  // Some Wayfair PDFs merge the *next* item's title into the previous item's `Size:` row, e.g.
+  // `Size: 138" L x 105.96" W " Vintage Landscape - DCXXXIV "`.
+  // We want to:
+  // - keep the measurement as a `Size:` attribute line (usually belongs to the previous item)
+  // - treat the quoted title as a description seed for the next item (spillover)
+  const { cleanedValue, spillover } = splitAttributeSpillover('Size', m[1])
+  const normalizedSpillover = normalizeDescriptionFragment(spillover)
+  if (!normalizedSpillover) return undefined
+
+  const cleanedSizeValue = cleanedValue.replace(/\s+/g, ' ').trim()
+  if (!cleanedSizeValue) return undefined
+
+  return {
+    cleanedSizeLine: `Size: ${cleanedSizeValue}`,
+    spillover: normalizedSpillover,
+    cleanedSizeValue,
   }
 }
 
@@ -506,7 +625,13 @@ function isLikelyParentheticalLead(line: string): boolean {
   if (/[:@]/.test(s)) return false
   // Reject lines that look like attribute lines (e.g., "Color: Red (Set")
   if (/^[A-Za-z][^:]*:\s*/.test(s)) return false
-  // Allow lines that contain opening parenthesis (catches cases like "For Kitchen Island,Coffee Bar (Set")
+
+  const prefix = s.slice(0, s.indexOf('(')).trim()
+  if (!prefix) return false
+  const prefixWords = prefix.split(/\s+/).filter(Boolean)
+  if (prefixWords.length > 4) return false
+  if (prefix.length > 30) return false
+
   return true
 }
 
@@ -647,12 +772,52 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
   let currentSection: 'shipped' | 'to_be_shipped' | 'unknown' = 'unknown'
   let currentShippedOn: string | undefined
+  /**
+   * Parser model:
+   * - The “money row” (unit price / qty / totals) is the only hard anchor.
+   * - Description/SKU/attribute lines are soft-attached to the nearest money row.
+   *
+   * Important: pdf text extraction can reorder or merge visual rows, so this state machine
+   * is intentionally defensive and includes recovery heuristics below.
+   */
   let bufferedDescriptionParts: string[] = []
+  /**
+   * The SKU is often emitted on its own line, but it can appear either:
+   * - after the description lines, or
+   * - after the money row (ordering drift).
+   */
   let pendingSku: string | undefined
+  /**
+   * We keep both:
+   * - `pendingAttributeLines` for display/notes fidelity
+   * - `pendingAttributes` for structured fields (color/size)
+   */
   let pendingAttributes: { color?: string; size?: string } = {}
   let pendingAttributeLines: string[] = []
+  /**
+   * After parsing a money row we allow some “loose” continuation lines (bullets, parenthetical fragments, etc.)
+   * to be appended to the previous item.
+   */
   let allowLooseContinuationForPreviousItem = false
+  /**
+   * Indicates we’ve just parsed a money row and are still within the trailing block where
+   * SKUs/attributes/continuations may arrive slightly out-of-order.
+   */
   let awaitingPostMoneyContinuation = false
+  /**
+   * Pointer to the most recent item created from a money row that did not yet receive a SKU.
+   * (pdf extraction can emit the SKU after the money row)
+   */
+  let lastItemAwaitingSku: WayfairInvoiceLineItem | undefined
+
+  const enqueueDescriptionFragment = (fragment?: string) => {
+    const normalized = normalizeDescriptionFragment(fragment)
+    if (!normalized) return
+    allowLooseContinuationForPreviousItem = false
+    awaitingPostMoneyContinuation = false
+    bufferedDescriptionParts.push(normalized)
+    if (bufferedDescriptionParts.length > DESCRIPTION_BUFFER_LIMIT) bufferedDescriptionParts.shift()
+  }
 
   const lineItems: WayfairInvoiceLineItem[] = []
 
@@ -670,6 +835,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       pendingAttributeLines = []
       allowLooseContinuationForPreviousItem = false
       awaitingPostMoneyContinuation = false
+      lastItemAwaitingSku = undefined
       continue
     }
 
@@ -682,6 +848,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       pendingAttributeLines = []
       allowLooseContinuationForPreviousItem = false
       awaitingPostMoneyContinuation = false
+      lastItemAwaitingSku = undefined
       continue
     }
 
@@ -689,14 +856,24 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
     // Capture the SKU line and don't let it get merged into the description buffer.
     const standaloneSku = extractStandaloneSkuLine(line)
     if (standaloneSku) {
+      // Highest priority: if the last parsed item is explicitly awaiting its SKU, attach it there,
+      // even if we've already buffered spillover description text (common when Size lines include
+      // a quoted title for the *next* item).
+      const previousLineItem = lineItems[lineItems.length - 1]
+      if (previousLineItem && lastItemAwaitingSku === previousLineItem && !previousLineItem.sku) {
+        previousLineItem.sku = standaloneSku
+        lastItemAwaitingSku = undefined
+        continue
+      }
+
       if (bufferedDescriptionParts.length > 0) {
         pendingSku = standaloneSku
         allowLooseContinuationForPreviousItem = false
         awaitingPostMoneyContinuation = false
       } else {
-        const previousLineItem = lineItems[lineItems.length - 1]
         if (previousLineItem && !previousLineItem.sku) {
           previousLineItem.sku = standaloneSku
+          if (lastItemAwaitingSku === previousLineItem) lastItemAwaitingSku = undefined
         } else {
           pendingSku = standaloneSku
           allowLooseContinuationForPreviousItem = false
@@ -708,6 +885,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
 
     const standaloneAttr = extractStandaloneAttributeLine(line)
     if (standaloneAttr) {
+      const attrSpillover = normalizeDescriptionFragment(standaloneAttr.spillover)
       if (isLikelyOrderLevelAttributeLabel(standaloneAttr.label)) {
         bufferedDescriptionParts = []
         pendingSku = undefined
@@ -715,6 +893,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         pendingAttributeLines = []
         allowLooseContinuationForPreviousItem = false
         awaitingPostMoneyContinuation = false
+        enqueueDescriptionFragment(attrSpillover)
         continue
       }
 
@@ -722,10 +901,22 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       const hasPendingSku = Boolean(pendingSku)
       const hasPendingAttrState = pendingAttributeLines.length > 0 || !!pendingAttributes.color || !!pendingAttributes.size
 
+      // If we *just* parsed an item (awaitingPostMoneyContinuation), prefer attaching attributes
+      // to the previous item, even if the next SKU was encountered slightly early due to PDF token ordering.
+      if (!hasPendingDescription && awaitingPostMoneyContinuation) {
+        const previousLineItem = lineItems[lineItems.length - 1]
+        if (previousLineItem) {
+          appendStandaloneAttributeToLineItem(previousLineItem, standaloneAttr)
+          enqueueDescriptionFragment(attrSpillover)
+          continue
+        }
+      }
+
       if (!hasPendingDescription && !hasPendingSku && !hasPendingAttrState) {
         const previousLineItem = lineItems[lineItems.length - 1]
         if (previousLineItem) {
           appendStandaloneAttributeToLineItem(previousLineItem, standaloneAttr)
+          enqueueDescriptionFragment(attrSpillover)
           continue
         }
       }
@@ -733,6 +924,7 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       awaitingPostMoneyContinuation = false
       pendingAttributeLines.push(standaloneAttr.rawLine)
       if (standaloneAttr.key) pendingAttributes[standaloneAttr.key] = standaloneAttr.value
+      enqueueDescriptionFragment(attrSpillover)
       continue
     }
 
@@ -790,12 +982,14 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
     const previousItem = lineItems[lineItems.length - 1]
     
     // Check for continuation BEFORE extracting SKU, so continuation lines aren't misclassified
+    const previousHasDanglingParenthesis = !!previousItem && lineItemsWithDanglingParenthesis.has(previousItem)
     const looksLikeParentheticalTail =
       !!previousItem &&
-      lineItemsWithDanglingParenthesis.has(previousItem) &&
+      previousHasDanglingParenthesis &&
       isLikelyParentheticalContinuation(line)
     const looksLikeParentheticalLead =
       !!previousItem &&
+      previousHasDanglingParenthesis &&
       (allowLooseContinuationForPreviousItem || awaitingPostMoneyContinuation) &&
       isLikelyParentheticalLead(line)
     const startsWithBullet = /^[-–•]/.test(line)
@@ -803,6 +997,12 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       !!previousItem &&
       (allowLooseContinuationForPreviousItem || awaitingPostMoneyContinuation) &&
       isSoftLeadingWordContinuation(line)
+    const looksLikeAwaitingSkuContinuation =
+      !!previousItem &&
+      previousItem === lastItemAwaitingSku &&
+      awaitingPostMoneyContinuation &&
+      extractMoneyTokens(line).length === 0 &&
+      line.length > 0
 
     // Handle trailing bullet fragments, dangling parenthetical tails, or soft continuations belonging to the previous item.
     const canAppendToPreviousDescription =
@@ -810,7 +1010,13 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
       !pendingSku &&
       Boolean(previousItem) &&
       extractMoneyTokens(line).length === 0 &&
-      (startsWithBullet || looksLikeParentheticalTail || looksLikeParentheticalLead || looksLikeSoftContinuation)
+      (
+        startsWithBullet ||
+        looksLikeParentheticalTail ||
+        looksLikeParentheticalLead ||
+        looksLikeSoftContinuation ||
+        looksLikeAwaitingSkuContinuation
+      )
 
     if (canAppendToPreviousDescription && previousItem) {
       const cleanedFragment = startsWithBullet ? line.replace(/^[-–•]\s*/, '').trim() : line.trim()
@@ -822,7 +1028,9 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
             ? ' '
             : ' - '
         previousItem.description = `${baseDescription}${joiner}${cleanedFragment}`.trim()
-        awaitingPostMoneyContinuation = false
+        if (!looksLikeAwaitingSkuContinuation) {
+          awaitingPostMoneyContinuation = false
+        }
         if (hasUnclosedParenthesis(previousItem.description)) {
           lineItemsWithDanglingParenthesis.add(previousItem)
           // Keep allowLooseContinuationForPreviousItem true so next line (e.g., "of 2)") can also be appended
@@ -869,20 +1077,74 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         ...(pendingAttributeLines || []),
         ...(extracted.attributeLines || []),
       ].map(l => l.trim()).filter(Boolean)
+
+      // Recovery: if a PDF merged the next item's title into a `Size:` attribute line,
+      // we can split it back out and use the spillover as the item's description seed.
+      //
+      // Why this exists:
+      // - Our primary description buffer depends on line ordering.
+      // - In some extractions, the title is not emitted as its own line; it only exists inside a `Size:` row.
+      // - Without this, we can produce `description: ""` for the next SKU.
+      let recoveredDescription: string | undefined
+      if (!skuSplit.cleanedDescription.trim() && allAttributeLines.length > 0) {
+        for (let i = 0; i < allAttributeLines.length; i++) {
+          const candidate = allAttributeLines[i]
+          if (!/^Size\s*:/i.test(candidate)) continue
+          const split = trySplitSizeAttributeLineWithSpillover(candidate)
+          if (!split) continue
+
+          recoveredDescription = split.spillover
+          allAttributeLines[i] = split.cleanedSizeLine
+          mergedAttributes.size = mergedAttributes.size || split.cleanedSizeValue
+          break
+        }
+      }
+
       const dedupedAttributeLines = allAttributeLines.length > 0
         ? Array.from(new Set(allAttributeLines))
         : undefined
 
+      const finalDescription = (skuSplit.cleanedDescription.trim() || recoveredDescription || '').trim()
+
       const newItem: WayfairInvoiceLineItem = {
         ...maybeParsed,
         sku: skuSplit.sku,
-        description: skuSplit.cleanedDescription,
+        description: finalDescription,
         attributeLines: dedupedAttributeLines,
         attributes: (mergedAttributes.color || mergedAttributes.size) ? mergedAttributes : undefined,
         shippedOn: currentShippedOn,
         section: currentSection,
       }
+
+      // If we recovered the description from a `Size:` spillover, the cleaned size almost certainly belongs
+      // to the *previous* item row (the size line visually sits under the previous SKU). Move it back when safe.
+      if (recoveredDescription && newItem.attributeLines?.length) {
+        const previousItem = lineItems[lineItems.length - 1]
+        const sizeLineIdx = newItem.attributeLines.findIndex(l => /^Size\s*:/i.test(l))
+        const sizeLine = sizeLineIdx >= 0 ? newItem.attributeLines[sizeLineIdx] : undefined
+
+        const previousAlreadyHasSize = Boolean(previousItem?.attributeLines?.some(l => /^Size\s*:/i.test(l)) || previousItem?.attributes?.size)
+        const canTransferToPrevious =
+          Boolean(previousItem) &&
+          Boolean(sizeLine) &&
+          !previousAlreadyHasSize &&
+          previousItem?.section === currentSection
+
+        if (canTransferToPrevious && previousItem && sizeLine) {
+          appendStandaloneAttributeToLineItem(previousItem, { key: 'size', value: sizeLine.replace(/^Size\s*:\s*/i, '').trim(), rawLine: sizeLine })
+          const nextAttributeLines = newItem.attributeLines.filter((_, idx) => idx !== sizeLineIdx)
+          newItem.attributeLines = nextAttributeLines.length > 0 ? nextAttributeLines : undefined
+          if (newItem.attributes?.size) {
+            delete newItem.attributes.size
+            if (!newItem.attributes.color && !newItem.attributes.size) {
+              newItem.attributes = undefined
+            }
+          }
+        }
+      }
+
       lineItems.push(newItem)
+      lastItemAwaitingSku = newItem.sku ? undefined : newItem
       const descriptionSource = bufferedDescriptionText || maybeParsed.description
       if (hasUnclosedParenthesis(descriptionSource)) {
         lineItemsWithDanglingParenthesis.add(newItem)

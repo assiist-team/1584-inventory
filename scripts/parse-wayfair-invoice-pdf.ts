@@ -8,12 +8,40 @@ import { buildTextLinesFromPdfTextItems } from '@/utils/pdfTextExtraction'
 import { parseWayfairInvoiceText } from '@/utils/wayfairInvoiceParser'
 import { parseMoneyToNumber } from '@/utils/money'
 
+function normalizeLinesForDebug(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map(l => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+function findExistingPdfPath(repoRoot: string, explicitPath?: string): string {
+  const candidates = [
+    explicitPath,
+    path.resolve(repoRoot, 'Invoice_4386128736.pdf'),
+    path.resolve(repoRoot, 'dev_docs', 'Invoice_4386128736.pdf'),
+  ].filter(Boolean) as string[]
+
+  for (const candidate of candidates) {
+    try {
+      // eslint-disable-next-line no-sync
+      require('node:fs').accessSync(candidate)
+      return candidate
+    } catch {
+      // continue
+    }
+  }
+
+  return candidates[0] || path.resolve(repoRoot, 'Invoice_4386128736.pdf')
+}
+
 async function main() {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = path.dirname(__filename)
   const repoRoot = path.resolve(__dirname, '..')
 
-  const pdfPath = path.resolve(repoRoot, 'dev_docs', 'Invoice_4386128736.pdf')
+  const cliPdfArg = process.argv.slice(2).find(arg => arg && !arg.startsWith('-'))
+  const pdfPath = findExistingPdfPath(repoRoot, cliPdfArg)
   const pdfBuffer = await fs.readFile(pdfPath)
   // pdfjs-dist (Node) requires a plain Uint8Array, not a Buffer.
   const pdfBytes = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength)
@@ -37,6 +65,21 @@ async function main() {
   const fullText = pages.join('\n\n')
   const result = parseWayfairInvoiceText(fullText)
 
+  const debugLines = normalizeLinesForDebug(fullText)
+  const debugNeedles = ['W116993316', 'W110704773', 'Items to be Shipped']
+  const debugWindows = debugNeedles.map(needle => {
+    const idx = debugLines.findIndex(l => l.includes(needle))
+    if (idx < 0) return { needle, idx, window: [] as string[] }
+    const start = Math.max(0, idx - 8)
+    const end = Math.min(debugLines.length, idx + 12)
+    return { needle, idx, window: debugLines.slice(start, end) }
+  })
+
+  const debugLineMatches = {
+    size138Lines: debugLines.filter(l => l.includes('Size: 138')),
+    vintageDcxxxivLines: debugLines.filter(l => l.includes('Vintage Landscape - DCXXXIV')),
+  }
+
   const sumLineTotals = result.lineItems.reduce((sum, li) => sum + (parseMoneyToNumber(li.total) || 0), 0)
   const orderTotalNum = result.orderTotal ? (parseMoneyToNumber(result.orderTotal) || 0) : 0
 
@@ -53,6 +96,19 @@ async function main() {
     sku: li.sku,
     description: li.description.length > 80 ? `${li.description.slice(0, 77)}...` : li.description,
   }))
+
+  const debugTargetSkus = ['W116993316', 'W110704773']
+  const debugTargetLineItems = debugTargetSkus.map(sku => {
+    const match = result.lineItems.find(li => li.sku === sku)
+    return {
+      sku,
+      found: Boolean(match),
+      section: match?.section,
+      shippedOn: match?.shippedOn,
+      description: match?.description,
+      attributeLines: match?.attributeLines,
+    }
+  })
 
   const skuCount = result.lineItems.filter(li => Boolean(li.sku && li.sku.trim())).length
   const skuSamples = result.lineItems
@@ -76,6 +132,12 @@ async function main() {
       diff: Number(Math.abs(sumLineTotals - orderTotalNum).toFixed(2)),
     },
     warnings: result.warnings,
+    debug: {
+      pdfPath,
+      debugWindows,
+      debugTargetLineItems,
+      debugLineMatches,
+    },
     sampleLineItems: topItems,
     sampleSkus: skuSamples,
   }

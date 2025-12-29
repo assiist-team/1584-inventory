@@ -108,6 +108,72 @@ $265.99 4 $1,063.96 $0.00 ($95.76) $65.35 $1,033.55
     expect(first.sku).toBe('W112013734')
   })
 
+  it('does not treat the next item name as a parenthetical continuation after header fragments', () => {
+    const text = `
+Wayfair
+Invoice # 7777777777
+Shipped On Dec 23, 2025
+Vintage Landscape Wall Art - 20x60 inches Framed Canvas Set of 2
+W114090352
+$237.99 1 $237.99 $0.00 ($16.66) $14.94 $236.27
+Shipping &
+Item Unit Price Qty Subtotal Adjustment Tax Total
+Delivery
+Folding Iron Luggage Rack (Set of
+4) $109.75 3 $329.25 $0.00 ($23.05) $20.67 $326.87
+CSWY3181
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(2)
+    expect(result.lineItems[0].description).toContain('Vintage Landscape Wall Art - 20x60 inches Framed Canvas Set of 2')
+    expect(result.lineItems[0].description).not.toContain('Folding Iron Luggage Rack')
+    expect(result.lineItems[1].description.startsWith('Folding Iron Luggage Rack (Set of 4)')).toBe(true)
+    expect(result.lineItems[1].sku).toBe('CSWY3181')
+  })
+
+  it('keeps description lines that appear between the money row and the delayed SKU with the same item', () => {
+    const text = `
+Wayfair
+Invoice # 6666666666
+Shipped On Dec 22, 2025
+Royal Gourmet 2-Burner Gas and Charcoal Combo Grill with Cover
+$269.91 1 $269.91 $0.00 ($18.89) $16.94 $267.96
+Fuel Grill for Outdoor Patio Garden Backyard Cooking, Black
+Perfect for tailgates and cookouts
+RGTC1141
+Colyt 47"-60" Upholstered Bench
+FALK1679 $389.99 2 $779.98 $0.00 ($54.60) $48.96 $774.34
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(2)
+    expect(result.lineItems[0].description).toContain('Fuel Grill for Outdoor Patio Garden Backyard Cooking, Black')
+    expect(result.lineItems[0].description).toContain('Perfect for tailgates and cookouts')
+    expect(result.lineItems[0].sku).toBe('RGTC1141')
+    expect(result.lineItems[1].description).toBe('Colyt 47"-60" Upholstered Bench')
+  })
+
+  it('splits trailing quoted descriptors out of size attribute lines so the next item keeps its description', () => {
+    const text = `
+Wayfair
+Invoice # 5656565656
+Items to be Shipped
+Tranquil Sepia Landscape With Tree And Hills
+$534.99 1 $534.99 $0.00 ($37.45) $33.58 $531.12
+Size: 138" L x 105.96" W " Vintage Landscape - DCXXXIV "
+W116993316
+" Vintage Landscape - DCXXXIV "
+W110704773
+$186.99 1 $186.99 $0.00 ($13.09) $11.74 $185.64
+Format: Wrapped Canvas
+`
+    const result = parseWayfairInvoiceText(text)
+    expect(result.lineItems.length).toBe(2)
+    expect(result.lineItems[0].attributeLines).toEqual(['Size: 138" L x 105.96" W'])
+    expect(result.lineItems[1].description).toContain('Vintage Landscape - DCXXXIV')
+    expect(result.lineItems[1].sku).toBe('W110704773')
+    expect(result.lineItems[1].attributeLines).toEqual(['Format: Wrapped Canvas'])
+  })
+
   it('retains description fragments that share a line with the money row', () => {
     const text = `
 Wayfair

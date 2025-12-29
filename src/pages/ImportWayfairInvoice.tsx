@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ArrowLeft, FileUp, Save, Shield, Trash2 } from 'lucide-react'
 import ContextBackLink from '@/components/ContextBackLink'
@@ -104,6 +104,21 @@ type WayfairItemDraft = {
   template: Omit<TransactionItemFormData, 'id'>
 }
 
+type WayfairThumbnailDebugInfo = {
+  extractedCount: number
+  headerDropCount: number
+  extraDropCount: number
+  finalMatchCount: number
+  placements: Array<{
+    pageNumber: number
+    bbox: PdfEmbeddedImagePlacement['bbox']
+    pageHeight: number
+    width: number
+    height: number
+    score: number
+  }>
+}
+
 function buildWayfairItemDrafts(lineItemsWithIndex: Array<{ li: WayfairInvoiceLineItem; sourceIndex: number }>): WayfairItemDraft[] {
   const drafts: WayfairItemDraft[] = []
 
@@ -191,19 +206,123 @@ function expandWayfairItemDrafts(drafts: WayfairItemDraft[]): {
   return { items, imageFilesMap }
 }
 
+function scoreEmbeddedImagePlacement(placement: PdfEmbeddedImagePlacement): number {
+  const width = Math.abs(placement.bbox.xMax - placement.bbox.xMin)
+  const height = Math.abs(placement.bbox.yMax - placement.bbox.yMin)
+  const area = width * height
+  const aspectRatio = height > 0 ? width / height : 0
+
+  let score = 0
+
+  if (area >= 4000) score += 2
+  if (area >= 9000) score += 1
+  if (width >= 40 && height >= 40) score += 1
+  if (placement.bbox.xMin <= 240) score += 1
+
+  if (aspectRatio >= 0.7 && aspectRatio <= 1.5) {
+    score += 2
+  } else if (aspectRatio >= 2.2 || aspectRatio <= 0.5) {
+    score -= 3
+  }
+
+  if (placement.pageNumber === 1 && placement.bbox.yMax >= 650) score -= 4
+  if (height < 35 || width < 35) score -= 2
+
+  return score
+}
+
+function filterPageAnchoredDecorativeImages(
+  placements: PdfEmbeddedImagePlacement[]
+): { filteredPlacements: PdfEmbeddedImagePlacement[]; droppedCount: number } {
+  if (placements.length === 0) {
+    return { filteredPlacements: placements, droppedCount: 0 }
+  }
+
+  const filteredPlacements = placements.filter(placement => {
+    if (placement.pageNumber !== 1) return true
+    const pageHeight = placement.pageHeight || 792
+    const width = Math.abs(placement.bbox.xMax - placement.bbox.xMin)
+    const height = Math.abs(placement.bbox.yMax - placement.bbox.yMin)
+    const aspectRatio = height > 0 ? width / height : 0
+    const nearTopHeaderBand = placement.bbox.yMin >= pageHeight - 180
+    const touchesTopMargin = placement.bbox.yMax >= pageHeight - 30
+    const extremelyWide = width >= 140 || aspectRatio >= 2.2
+    const veryShort = height <= 70
+
+    if ((nearTopHeaderBand || touchesTopMargin) && (extremelyWide || veryShort)) {
+      return false
+    }
+    return true
+  })
+
+  return {
+    filteredPlacements,
+    droppedCount: placements.length - filteredPlacements.length,
+  }
+}
+
+function normalizeEmbeddedImagesForLineItems(
+  embeddedImages: PdfEmbeddedImagePlacement[],
+  lineItemCount: number
+): { normalizedImages: PdfEmbeddedImagePlacement[]; droppedCount: number } {
+  if (embeddedImages.length <= lineItemCount) {
+    return { normalizedImages: embeddedImages, droppedCount: 0 }
+  }
+
+  const extras = embeddedImages.length - lineItemCount
+  const scored = embeddedImages.map((placement, idx) => ({
+    placement,
+    idx,
+    score: scoreEmbeddedImagePlacement(placement),
+  }))
+
+  scored.sort((a, b) => {
+    if (a.score === b.score) return a.idx - b.idx
+    return a.score - b.score
+  })
+
+  const indicesToDrop = new Set(scored.slice(0, extras).map(entry => entry.idx))
+  const normalizedImages = embeddedImages.filter((_, idx) => !indicesToDrop.has(idx))
+
+  return {
+    normalizedImages,
+    droppedCount: indicesToDrop.size,
+  }
+}
+
 function applyThumbnailsToDrafts(
   drafts: WayfairItemDraft[],
   embeddedImages: PdfEmbeddedImagePlacement[],
   sourceLineItems: WayfairInvoiceLineItem[]
-): { drafts: WayfairItemDraft[]; warning: string | null } {
+): { drafts: WayfairItemDraft[]; warning: string | null; debug: WayfairThumbnailDebugInfo } {
   const warningParts: string[] = []
-  const thumbnailFiles = embeddedImages.map(p => p.file)
+  const { filteredPlacements, droppedCount: headerDrops } = filterPageAnchoredDecorativeImages(embeddedImages)
+  const { normalizedImages, droppedCount } = normalizeEmbeddedImagesForLineItems(filteredPlacements, sourceLineItems.length)
+  const thumbnailFiles = normalizedImages.map(p => p.file)
 
   if (thumbnailFiles.length === 0) {
     warningParts.push('No embedded item thumbnails detected in the PDF.')
   } else if (thumbnailFiles.length !== sourceLineItems.length) {
     warningParts.push(`Detected ${thumbnailFiles.length} embedded thumbnail(s) but parsed ${sourceLineItems.length} line item(s). Matching will be partial; please review.`)
   }
+
+  const totalDropped = headerDrops + droppedCount
+  if (totalDropped > 0) {
+    warningParts.push(`Ignored ${totalDropped} decorative image${totalDropped === 1 ? '' : 's'} that did not match any line items.`)
+  }
+
+  const placementsWithScore = normalizedImages.map(placement => {
+    const width = Math.abs(placement.bbox.xMax - placement.bbox.xMin)
+    const height = Math.abs(placement.bbox.yMax - placement.bbox.yMin)
+    return {
+      pageNumber: placement.pageNumber,
+      bbox: placement.bbox,
+      pageHeight: placement.pageHeight,
+      width,
+      height,
+      score: scoreEmbeddedImagePlacement(placement),
+    }
+  })
 
   const updatedDrafts = drafts.map(draft => {
     const matchedThumb = thumbnailFiles[draft.sourceIndex]
@@ -223,6 +342,13 @@ function applyThumbnailsToDrafts(
   return {
     drafts: updatedDrafts,
     warning: warningParts.length > 0 ? warningParts.join(' ') : null,
+    debug: {
+      extractedCount: embeddedImages.length,
+      headerDropCount: headerDrops,
+      extraDropCount: droppedCount,
+      finalMatchCount: thumbnailFiles.length,
+      placements: placementsWithScore,
+    },
   }
 }
 
@@ -247,6 +373,8 @@ export default function ImportWayfairInvoice() {
   const { currentAccountId } = useAccount()
   const { getBackDestination } = useNavigationContext()
   const { showError, showInfo, showSuccess, showWarning } = useToast()
+  const activeParseRunRef = useRef(0)
+  const invoiceFileInputRef = useRef<HTMLInputElement | null>(null)
 
   if (!currentAccountId && !isOwner()) {
     return (
@@ -290,6 +418,7 @@ export default function ImportWayfairInvoice() {
   const [embeddedImagePlacements, setEmbeddedImagePlacements] = useState<PdfEmbeddedImagePlacement[]>([])
   const [thumbnailWarning, setThumbnailWarning] = useState<string | null>(null)
   const [imageFilesMap, setImageFilesMap] = useState<Map<string, File[]>>(new Map())
+  const [thumbnailDebugInfo, setThumbnailDebugInfo] = useState<WayfairThumbnailDebugInfo | null>(null)
   const [extractedPdfText, setExtractedPdfText] = useState<string | null>(null)
   const [extractedPdfPages, setExtractedPdfPages] = useState<string[] | null>(null)
   const [rawTextLineLimit, setRawTextLineLimit] = useState<number>(DEFAULT_RAW_TEXT_LINE_LIMIT)
@@ -383,7 +512,11 @@ export default function ImportWayfairInvoice() {
   }, [normalizedRawTextLines])
 
   const handleReset = () => {
+    activeParseRunRef.current += 1
     setSelectedFile(null)
+    if (invoiceFileInputRef.current) {
+      invoiceFileInputRef.current.value = ''
+    }
     setParseResult(null)
     setExtractedPdfText(null)
     setExtractedPdfPages(null)
@@ -394,10 +527,12 @@ export default function ImportWayfairInvoice() {
     setTaxRatePreset(undefined)
     setSubtotal('')
     setItems([])
+    setIsParsing(false)
     setIsExtractingThumbnails(false)
     setEmbeddedImagePlacements([])
     setThumbnailWarning(null)
     setImageFilesMap(new Map())
+    setThumbnailDebugInfo(null)
     setGeneralError(null)
     setRawTextLineLimit(DEFAULT_RAW_TEXT_LINE_LIMIT)
   }
@@ -439,8 +574,18 @@ export default function ImportWayfairInvoice() {
       const applied = applyThumbnailsToDrafts(drafts, thumbnailsToUse, result.lineItems)
       drafts = applied.drafts
       warning = applied.warning
+      setThumbnailDebugInfo(applied.debug)
     } else if (thumbnailsOverride) {
       warning = 'No embedded item thumbnails detected in this PDF.'
+      setThumbnailDebugInfo({
+        extractedCount: thumbnailsOverride.length,
+        headerDropCount: 0,
+        extraDropCount: 0,
+        finalMatchCount: 0,
+        placements: [],
+      })
+    } else {
+      setThumbnailDebugInfo(null)
     }
 
     const expanded = expandWayfairItemDrafts(drafts)
@@ -453,15 +598,22 @@ export default function ImportWayfairInvoice() {
 
   const parsePdf = async (file: File) => {
     if (!file) return
+    const parseRunId = activeParseRunRef.current + 1
+    activeParseRunRef.current = parseRunId
+    const isLatestRun = () => activeParseRunRef.current === parseRunId
+
     setGeneralError(null)
     setThumbnailWarning(null)
     setIsParsing(true)
+
     const parseStartedAt = performance.now()
     try {
       const [{ fullText, pages }, embeddedImages] = await Promise.all([
         extractPdfText(file),
         (async () => {
-          setIsExtractingThumbnails(true)
+          if (isLatestRun()) {
+            setIsExtractingThumbnails(true)
+          }
           try {
             try {
               return await extractPdfEmbeddedImages(file, {
@@ -471,14 +623,20 @@ export default function ImportWayfairInvoice() {
               })
             } catch (e) {
               console.warn('Thumbnail extraction failed; continuing without thumbnails.', e)
-              setThumbnailWarning('Thumbnail extraction failed for this PDF. Continuing without thumbnails.')
+              if (isLatestRun()) {
+                setThumbnailWarning('Thumbnail extraction failed for this PDF. Continuing without thumbnails.')
+              }
               return [] as PdfEmbeddedImagePlacement[]
             }
           } finally {
-            setIsExtractingThumbnails(false)
+            if (isLatestRun()) {
+              setIsExtractingThumbnails(false)
+            }
           }
         })(),
       ])
+
+      if (!isLatestRun()) return
 
       setExtractedPdfText(fullText)
       setExtractedPdfPages(pages)
@@ -494,6 +652,7 @@ export default function ImportWayfairInvoice() {
         showSuccess('Parsed successfully. Review and create when ready.')
       }
     } catch (err) {
+      if (!isLatestRun()) return
       console.error('Failed to parse PDF:', err)
       setParseResult(null)
       setItems([])
@@ -502,9 +661,11 @@ export default function ImportWayfairInvoice() {
       setGeneralError(err instanceof Error ? err.message : 'Failed to parse PDF. Please try again.')
       showError('Failed to parse PDF.')
     } finally {
-      setIsParsing(false)
-      const parseDurationMs = Math.round(performance.now() - parseStartedAt)
-      console.log(`[Wayfair importer] PDF parse flow finished in ${parseDurationMs}ms.`)
+      if (isLatestRun()) {
+        setIsParsing(false)
+        const parseDurationMs = Math.round(performance.now() - parseStartedAt)
+        console.log(`[Wayfair importer] PDF parse flow finished in ${parseDurationMs}ms.`)
+      }
     }
   }
 
@@ -520,6 +681,10 @@ export default function ImportWayfairInvoice() {
         charCount: rawText.length,
         nonEmptyLineCount: rawLines.length,
         firstLines: rawLines.slice(0, PARSE_REPORT_FIRST_LINE_LIMIT),
+      },
+      images: {
+        embeddedPlacementsCount: embeddedImagePlacements.length,
+        thumbnailDebug: thumbnailDebugInfo,
       },
       parse: parseResult,
       debug: debugStats,
@@ -886,6 +1051,7 @@ export default function ImportWayfairInvoice() {
                     <input
                       type="file"
                       accept="application/pdf"
+                      ref={invoiceFileInputRef}
                       onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
                       className="block w-full text-sm text-gray-700"
                     />

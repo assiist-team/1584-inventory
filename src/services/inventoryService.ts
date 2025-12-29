@@ -465,10 +465,14 @@ async function _adjustSumItemPurchasePrices(accountId: string, transactionId: st
 async function _updateTransactionItemIds(
   accountId: string,
   transactionId: string | null | undefined,
-  itemId: string,
+  itemIdsInput: string | string[],
   action: 'add' | 'remove'
 ): Promise<void> {
   if (!transactionId) return
+
+  const pendingItemIds = (Array.isArray(itemIdsInput) ? itemIdsInput : [itemIdsInput])
+    .filter((id): id is string => Boolean(id && id.trim()))
+  if (pendingItemIds.length === 0) return
 
   await ensureAuthenticatedForDatabase()
 
@@ -485,15 +489,22 @@ async function _updateTransactionItemIds(
   }
 
   const currentItemIds: string[] = Array.isArray(data.item_ids) ? data.item_ids : []
-  const hasItem = currentItemIds.includes(itemId)
-
   let updatedItemIds: string[] = currentItemIds
+
   if (action === 'add') {
-    if (hasItem) return
-    updatedItemIds = [...currentItemIds, itemId]
+    let mutated = false
+    updatedItemIds = [...currentItemIds]
+    for (const id of pendingItemIds) {
+      if (!updatedItemIds.includes(id)) {
+        updatedItemIds.push(id)
+        mutated = true
+      }
+    }
+    if (!mutated) return
   } else {
-    if (!hasItem) return
-    updatedItemIds = currentItemIds.filter(id => id !== itemId)
+    const removalSet = new Set(pendingItemIds)
+    updatedItemIds = currentItemIds.filter(id => !removalSet.has(id))
+    if (updatedItemIds.length === currentItemIds.length) return
   }
 
   const { error: updateError } = await supabase
@@ -3453,6 +3464,14 @@ export const unifiedItemsService = {
 
     if (error) throw error
 
+    try {
+      if (duplicatedItem.transaction_id) {
+        await _updateTransactionItemIds(accountId, duplicatedItem.transaction_id, newItemId, 'add')
+      }
+    } catch (e) {
+      console.warn('Failed to sync transaction item_ids after duplicateItem:', e)
+    }
+
     return newItemId
   },
 
@@ -3560,6 +3579,14 @@ export const unifiedItemsService = {
         .insert(itemsToInsert)
 
       if (error) throw error
+
+      if (transactionId && createdItemIds.length > 0) {
+        try {
+          await _updateTransactionItemIds(accountId, transactionId, createdItemIds, 'add')
+        } catch (e) {
+          console.warn('Failed to sync transaction item_ids after createTransactionItems:', e)
+        }
+      }
     }
     // Recompute and persist needs_review for the transaction we just mutated (fire-and-forget,
     // but skip if a top-level batch is active for this transaction).

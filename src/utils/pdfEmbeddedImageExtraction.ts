@@ -5,6 +5,7 @@ export type PdfEmbeddedImagePlacement = {
   bbox: { xMin: number; yMin: number; xMax: number; yMax: number }
   pixelWidth: number
   pixelHeight: number
+  pageHeight: number
   file: File
 }
 
@@ -262,9 +263,16 @@ export type PdfEmbeddedImageExtractionOptions = {
   pdfBoxSizeFilter?: { min: number; max: number }
   /** Keep only images whose left edge (xMin) is left of this threshold (PDF points). */
   xMinMax?: number
+  /**
+   * Reject images that are too wide or tall compared to their height/width.
+   * Helps drop wordmarks/logos (e.g., the Wayfair logo) that otherwise match the size filter.
+   */
+  maxAspectRatio?: number
   /** Scale used when rendering pages for cropping thumbnails. Higher = sharper but slower. */
   renderScale?: number
 }
+
+const DEFAULT_MAX_THUMBNAIL_ASPECT_RATIO = 2.3
 
 export async function extractPdfEmbeddedImages(
   file: File,
@@ -279,6 +287,7 @@ export async function extractPdfEmbeddedImages(
   const pdfBoxSizeFilter = options.pdfBoxSizeFilter ?? { min: 15, max: 180 }
   const xMinMax = options.xMinMax ?? 220
   const renderScale = options.renderScale ?? 2
+  const maxAspectRatio = options.maxAspectRatio ?? DEFAULT_MAX_THUMBNAIL_ASPECT_RATIO
 
   const placements: PdfEmbeddedImagePlacement[] = []
 
@@ -320,12 +329,14 @@ export async function extractPdfEmbeddedImages(
         const hPts = Math.abs(bbox.yMax - bbox.yMin)
 
         // Thumbnail-ish heuristics (Wayfair invoice thumbnails are small and sit on the left of the line item row)
+        const aspectRatio = Math.max(wPts, hPts) / Math.max(1, Math.min(wPts, hPts))
         if (
           wPts >= pdfBoxSizeFilter.min &&
           wPts <= pdfBoxSizeFilter.max &&
           hPts >= pdfBoxSizeFilter.min &&
           hPts <= pdfBoxSizeFilter.max &&
-          bbox.xMin <= xMinMax
+          bbox.xMin <= xMinMax &&
+          aspectRatio <= maxAspectRatio
         ) {
           candidateBboxes.push({ bbox })
         }
@@ -375,6 +386,7 @@ export async function extractPdfEmbeddedImages(
             bbox,
             pixelWidth: cropW,
             pixelHeight: cropH,
+            pageHeight: viewport.height,
             file: imageFile,
           })
         }
