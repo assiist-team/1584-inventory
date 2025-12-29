@@ -36,13 +36,17 @@ function App() {
                         <Route path="items" element={withRouteSuspense(<ProjectItemsPage />)} />
                         <Route path="transactions" element={withRouteSuspense(<ProjectTransactionsPage />)} />
                         <Route path="budget" element={withRouteSuspense(<ProjectBudgetPage />)} />
-                        <Route path="invoice" element={withRouteSuspense(<ProjectInvoice />)} />
-                        <Route
-                          path="property-management-summary"
-                          element={withRouteSuspense(<PropertyManagementSummary />)}
-                        />
-                        <Route path="client-summary" element={withRouteSuspense(<ClientSummary />)} />
                       </Route>
+
+                      <Route path="/project/:projectId/invoice" element={withRouteSuspense(<ProjectInvoice />)} />
+                      <Route
+                        path="/project/:projectId/property-management-summary"
+                        element={withRouteSuspense(<PropertyManagementSummary />)}
+                      />
+                      <Route
+                        path="/project/:projectId/client-summary"
+                        element={withRouteSuspense(<ClientSummary />)}
+                      />
 
                       <Route path="/project/:projectId/items/new" element={withRouteSuspense(<AddItem />)} />
                       <Route path="/project/:projectId/items/:itemId" element={withRouteSuspense(<ItemDetail />)} />
