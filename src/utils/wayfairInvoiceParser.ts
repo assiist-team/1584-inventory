@@ -303,7 +303,13 @@ function splitAttributeSpillover(label: string, value: string): { cleanedValue: 
   const looksLikeMeasurement = (text: string): boolean => {
     return /[\d]/.test(text) || /\b(?:cm|mm|inch|inches|ft|foot|feet|x)\b/i.test(text)
   }
-  const looksDescriptive = (text: string): boolean => text.length >= 4 && /[A-Za-z]/.test(text)
+  const looksDescriptive = (text: string): boolean => {
+    // Must be at least 4 chars and have letters
+    if (text.length < 4 || !/[A-Za-z]/.test(text)) return false
+    // Don't treat dimension continuations like " x 36" as descriptive text
+    if (/^\s*x\s+\d+(?:\.\d+)?(?:\s*(?:"|'|inch|inches|cm|mm|ft|feet|in|L|W|H|D))?\s*$/i.test(text)) return false
+    return true
+  }
 
   if (trimmedLabel === 'size') {
     // Common failure mode: value contains inches quotes and the *next* item's title got merged into this row,
@@ -556,9 +562,8 @@ function extractInlineAttributesFromDescription(description: string): {
       if (lower === 'color') {
         attributes.color = value
       } else if (lower === 'size') {
-        if (!/["']/.test(value) && !/\b\d+\s*x\s*\d+/i.test(value)) {
-          attributes.size = value
-        }
+        // Always capture size attributes - they commonly contain quotes and dimension patterns
+        attributes.size = value
       }
     }
 
@@ -671,6 +676,13 @@ function isLikelyParentheticalContinuation(line: string): boolean {
   if (!s.includes(')')) return false
   if (/[:@]/.test(s)) return false
   return /^[A-Za-z0-9()[\] ,./'&-]+$/.test(s)
+}
+
+function isLikelyDimensionContinuation(line: string): boolean {
+  const s = line.replace(/\s+/g, ' ').trim()
+  if (!s) return false
+  // Match patterns like "x 30\"", "x 36\"", "x 20 cm", etc.
+  return /^x\s+\d+(?:\.\d+)?(?:\s*(?:"|'|inch|inches|cm|mm|ft|feet|in|L|W|H|D))?\s*$/i.test(s)
 }
 
 function parseLineItemFromLine(line: string, bufferedDescription: string): Omit<WayfairInvoiceLineItem, 'shippedOn' | 'section'> | undefined {
@@ -1037,6 +1049,25 @@ export function parseWayfairInvoiceText(fullText: string): WayfairInvoiceParseRe
         } else {
           lineItemsWithDanglingParenthesis.delete(previousItem)
           allowLooseContinuationForPreviousItem = false
+        }
+      }
+      continue
+    }
+
+    // Handle dimension continuation lines (e.g., "x 30\"", "x 36\"") that should be appended to Size attributes
+    const looksLikeDimensionContinuation =
+      !!previousItem &&
+      previousItem.attributeLines?.some(l => /^Size:/i.test(l)) &&
+      extractMoneyTokens(line).length === 0 &&
+      isLikelyDimensionContinuation(line)
+
+    if (looksLikeDimensionContinuation && previousItem && previousItem.attributeLines) {
+      const sizeLineIdx = previousItem.attributeLines.findIndex(l => /^Size:/i.test(l))
+      if (sizeLineIdx >= 0) {
+        const cleanedFragment = line.trim()
+        previousItem.attributeLines[sizeLineIdx] = `${previousItem.attributeLines[sizeLineIdx]} ${cleanedFragment}`
+        if (previousItem.attributes?.size) {
+          previousItem.attributes.size = `${previousItem.attributes.size} ${cleanedFragment}`
         }
       }
       continue
