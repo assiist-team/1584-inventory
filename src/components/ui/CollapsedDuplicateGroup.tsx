@@ -63,31 +63,26 @@ export default function CollapsedDuplicateGroup({
           }
         }}
       >
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
+        <div className="flex items-start justify-between p-4">
+          <div className="flex items-start gap-4 flex-1 min-w-0">
             {onToggleSelection && (
-              <input
-                ref={checkboxRef}
-                type="checkbox"
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-600 h-4 w-4 flex-shrink-0"
-                checked={selectionState === 'checked'}
-                onChange={(e) => {
-                  e.stopPropagation()
-                  onToggleSelection(e.target.checked)
-                }}
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Select group of ${count} items`}
-              />
+              <div className="pt-1">
+                <input
+                  ref={checkboxRef}
+                  type="checkbox"
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-600 h-4 w-4 flex-shrink-0"
+                  checked={selectionState === 'checked'}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    onToggleSelection(e.target.checked)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Select group of ${count} items`}
+                />
+              </div>
             )}
 
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              {/* Quantity Badge */}
-              <div className="flex-shrink-0">
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
-                  ×{count}
-                </span>
-              </div>
-
+            <div className="flex items-start gap-3 flex-1 min-w-0">
               {/* Summary Content */}
               <div className="flex-1 min-w-0">
                 {summary}

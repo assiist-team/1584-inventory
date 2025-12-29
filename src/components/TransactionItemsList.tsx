@@ -155,13 +155,13 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     setSelectedItemIds(newSelected)
   }
 
-  const renderTransactionItem = (item: TransactionItemFormData, index: number) => (
+  const renderTransactionItem = (item: TransactionItemFormData, groupIndex: number, groupSize?: number, itemIndexInGroup?: number) => (
     <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
       <div className="flex items-start gap-4">
         <div className="pt-1">
           <input
             type="checkbox"
-            aria-label={`Select ${item.description || `item ${index + 1}`}`}
+            aria-label={`Select ${item.description || `item ${groupIndex + 1}`}`}
             checked={selectedItemIds.has(item.id)}
             onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
             className="h-4 w-4 text-primary-600 border-gray-300 rounded"
@@ -179,7 +179,10 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
         <div className="flex-1">
           <div className="flex items-center space-x-4 mb-2">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-              Item {index + 1}
+              Item {groupIndex + 1}
+              {groupSize && groupSize > 1 && itemIndexInGroup && (
+                <span className="ml-1 text-primary-600">×{itemIndexInGroup}/{groupSize}</span>
+              )}
             </span>
             <span className="text-sm text-gray-500">
               {formatCurrency(item.projectPrice || item.purchasePrice || '')}
@@ -376,12 +379,11 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
       </div>
 
       <div className="space-y-3">
-        {groupedItems.map(({ groupKey, items: groupItems }) => {
+        {groupedItems.map(({ groupKey, items: groupItems }, groupIndex) => {
           // Single item - render directly
           if (groupItems.length === 1) {
             const item = groupItems[0]
-            const itemIndex = items.indexOf(item)
-            return renderTransactionItem(item, itemIndex)
+            return renderTransactionItem(item, groupIndex)
           }
 
           // Multiple items - render as collapsed group
@@ -404,7 +406,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
               selectionState={groupSelectionState}
               onToggleSelection={(checked) => handleSelectGroup(groupItems, checked)}
               summary={
-                <div className="flex items-start gap-4 py-3">
+                <div className="flex items-start gap-4">
                   {firstItem.images && firstItem.images.length > 0 && (
                     <div className="flex-shrink-0">
                       <img
@@ -416,6 +418,9 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-4 mb-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                        Item {groupIndex + 1} ×{groupItems.length}
+                      </span>
                       <span className="text-sm text-gray-500">
                         {formatCurrency(totalProjectPrice.toString())}
                         {totalProjectPrice !== parseFloat(firstItem.projectPrice || firstItem.purchasePrice || '0') && (
@@ -479,9 +484,8 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                 </div>
               }
             >
-              {groupItems.map((item) => {
-                const itemIndex = items.indexOf(item)
-                return renderTransactionItem(item, itemIndex)
+              {groupItems.map((item, itemIndexInGroup) => {
+                return renderTransactionItem(item, groupIndex, groupItems.length, itemIndexInGroup + 1)
               })}
             </CollapsedDuplicateGroup>
           )
