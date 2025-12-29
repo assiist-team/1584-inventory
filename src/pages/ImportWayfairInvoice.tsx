@@ -19,6 +19,7 @@ import { budgetCategoriesService } from '@/services/budgetCategoriesService'
 import { extractPdfEmbeddedImages, type PdfEmbeddedImagePlacement } from '@/utils/pdfEmbeddedImageExtraction'
 import { COMPANY_NAME } from '@/constants/company'
 import type { ItemImage, TransactionItemFormData } from '@/types'
+import { projectTransactionDetail, projectTransactions } from '@/utils/routes'
 
 function getTodayIsoDate(): string {
   const today = new Date()
@@ -239,7 +240,8 @@ function createPreviewItemImageFromFile(file: File, isPrimary: boolean): ItemIma
 }
 
 export default function ImportWayfairInvoice() {
-  const { id: projectId } = useParams<{ id: string }>()
+  const { id, projectId: routeProjectId } = useParams<{ id?: string; projectId?: string }>()
+  const resolvedProjectId = routeProjectId || id
   const navigate = useStackedNavigate()
   const { user, isOwner } = useAuth()
   const { currentAccountId } = useAccount()
@@ -258,7 +260,9 @@ export default function ImportWayfairInvoice() {
             You don&apos;t have permission to import transactions. Please contact an administrator if you need access.
           </p>
           <ContextBackLink
-            fallback={getBackDestination(`/project/${projectId}`)}
+            fallback={getBackDestination(
+              resolvedProjectId ? projectTransactions(resolvedProjectId) : '/projects'
+            )}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
@@ -304,16 +308,16 @@ export default function ImportWayfairInvoice() {
 
   useEffect(() => {
     const loadProject = async () => {
-      if (!projectId || !currentAccountId) return
+      if (!resolvedProjectId || !currentAccountId) return
       try {
-        const project = await projectService.getProject(currentAccountId, projectId)
+        const project = await projectService.getProject(currentAccountId, resolvedProjectId)
         if (project?.name) setProjectName(project.name)
       } catch (e) {
         console.error('Failed to load project:', e)
       }
     }
     loadProject()
-  }, [projectId, currentAccountId])
+  }, [resolvedProjectId, currentAccountId])
 
   useEffect(() => {
     const loadWayfairDefaultCategory = async () => {
@@ -685,7 +689,7 @@ export default function ImportWayfairInvoice() {
   }, [showError, showInfo, showSuccess, showWarning])
 
   const validateBeforeCreate = (): string | null => {
-    if (!projectId) return 'Missing project ID.'
+    if (!resolvedProjectId) return 'Missing project ID.'
     if (!currentAccountId) return 'No account found.'
     if (!user?.id) return 'You must be signed in to create a transaction.'
     if (!parseResult) return 'No parsed invoice data. Upload and parse a PDF first.'
@@ -714,7 +718,7 @@ export default function ImportWayfairInvoice() {
       showError(validationError)
       return
     }
-    if (!projectId || !currentAccountId || !user?.id) return
+    if (!resolvedProjectId || !currentAccountId || !user?.id) return
 
     const assetItemsForUpload: WayfairAssetItemPayload[] = items
       .map(item => {
@@ -736,7 +740,7 @@ export default function ImportWayfairInvoice() {
     const createStartedAt = performance.now()
     try {
       const transactionData = {
-        projectId,
+        projectId: resolvedProjectId,
         projectName,
         transactionDate,
         source: 'Wayfair',
@@ -753,14 +757,19 @@ export default function ImportWayfairInvoice() {
         subtotal: taxRatePreset === 'Other' ? (normalizeMoneyToTwoDecimalString(subtotal) || subtotal) : undefined,
       }
 
-      const transactionId = await transactionService.createTransaction(currentAccountId, projectId, transactionData as any, items)
+      const transactionId = await transactionService.createTransaction(
+        currentAccountId,
+        resolvedProjectId,
+        transactionData as any,
+        items
+      )
       const creationDurationMs = Math.round(performance.now() - createStartedAt)
       console.log(`[Wayfair importer] Transaction ${transactionId} created in ${creationDurationMs}ms with ${items.length} item(s).`)
 
       if (hasBackgroundAssets && currentAccountId) {
         void finalizeWayfairImportAssets({
           accountId: currentAccountId,
-          projectId,
+          projectId: resolvedProjectId,
           transactionId,
           projectName: projectName || 'Project',
           items: assetItemsForUpload,
@@ -770,7 +779,7 @@ export default function ImportWayfairInvoice() {
       }
 
       showSuccess('Transaction created.')
-      navigate(`/project/${projectId}/transaction/${transactionId}`)
+      navigate(projectTransactionDetail(resolvedProjectId, transactionId))
     } catch (err) {
       console.error('Failed to create transaction from Wayfair invoice:', err)
       const message = err instanceof Error ? err.message : 'Failed to create transaction. Please try again.'
@@ -810,7 +819,9 @@ export default function ImportWayfairInvoice() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <ContextBackLink
-            fallback={getBackDestination(`/project/${projectId}?tab=transactions`)}
+            fallback={getBackDestination(
+              resolvedProjectId ? projectTransactions(resolvedProjectId) : '/projects'
+            )}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -1147,7 +1158,7 @@ export default function ImportWayfairInvoice() {
                 <TransactionItemsList
                   items={items}
                   onItemsChange={(next) => setItems(next)}
-                  projectId={projectId}
+                  projectId={resolvedProjectId || ''}
                   projectName={projectName}
                   onImageFilesChange={handleImageFilesChange}
                   totalAmount={amount}

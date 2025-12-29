@@ -17,9 +17,10 @@ import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useAccount } from '@/contexts/AccountContext'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { projectItemEdit, projectItems, projectTransactionDetail } from '@/utils/routes'
 
 export default function ItemDetail() {
-  const { id, itemId } = useParams<{ id?: string; itemId?: string }>()
+  const { id, projectId: routeProjectId, itemId } = useParams<{ id?: string; projectId?: string; itemId?: string }>()
   const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
   const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
@@ -34,12 +35,13 @@ export default function ItemDetail() {
   const { buildContextUrl, getBackDestination } = useNavigationContext()
   const stickyRef = useRef<HTMLDivElement>(null)
 
-  // Use itemId if available (from /project/:id/item/:itemId), otherwise use id (from /item/:id)
+  // Use itemId if available (from /project/:projectId/items/:itemId), otherwise use id (from /item/:id)
   const actualItemId = itemId || id
 
-  // Get project ID from URL path (for /project/:id/item/:itemId) or search parameters (for /item/:id)
-  // For business inventory items, the URL structure is /business-inventory/:id
-  const projectId = searchParams.get('project') || id
+  const queryProjectId = searchParams.get('project') || ''
+
+  // Determine project context from nested routes or search params (legacy deep links)
+  const projectId = routeProjectId || queryProjectId || ''
 
   // Check if this is a business inventory item (no project context)
   const isBusinessInventoryItem = !projectId && location.pathname.startsWith('/business-inventory/')
@@ -60,13 +62,13 @@ export default function ItemDetail() {
 
   // Determine back navigation destination using navigation context
   const backDestination = useMemo(() => {
-    // If item is not loaded yet (null), use appropriate default
-    if (!item) {
-      return isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`
-    }
+    const defaultPath = isBusinessInventoryItem
+      ? '/business-inventory'
+      : projectId
+        ? projectItems(projectId)
+        : '/projects'
 
-    // Use navigation context's getBackDestination function
-    const defaultPath = isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`
+    if (!item) return defaultPath
     return getBackDestination(defaultPath)
   }, [item, projectId, getBackDestination, isBusinessInventoryItem])
 
@@ -125,18 +127,19 @@ export default function ItemDetail() {
     }
 
     fetchItem()
-  }, [actualItemId, id, searchParams, currentAccountId])
+  }, [actualItemId, id, projectId, currentAccountId, isBusinessInventoryItem])
 
   // Set up real-time listener for item updates
+  const subscriptionProjectId = id || queryProjectId
+
   useEffect(() => {
-    const currentProjectId = id || searchParams.get('project')
-    if (!currentProjectId || !actualItemId || !currentAccountId) return
+    if (!subscriptionProjectId || !actualItemId || !currentAccountId) return
 
     console.log('Setting up real-time listener for item:', actualItemId)
 
     const unsubscribe = unifiedItemsService.subscribeToProjectItems(
       currentAccountId,
-      currentProjectId,
+      subscriptionProjectId,
       (items: Item[]) => {
         console.log('Real-time items update:', items.length, 'items')
         const updatedItem = items.find((item: Item) => item.itemId === actualItemId)
@@ -151,7 +154,7 @@ export default function ItemDetail() {
       console.log('Cleaning up real-time listener for item:', actualItemId)
       unsubscribe()
     }
-  }, [searchParams, actualItemId, id, currentAccountId])
+  }, [subscriptionProjectId, actualItemId, currentAccountId])
 
   // Subscribe to item-lineage edges for this item and refetch the item when an edge arrives
   useEffect(() => {
@@ -308,7 +311,13 @@ export default function ItemDetail() {
 
     try {
       await unifiedItemsService.deleteItem(currentAccountId, item.itemId)
-      navigate(isBusinessInventoryItem ? '/business-inventory' : `/project/${projectId}?tab=inventory`)
+      if (isBusinessInventoryItem) {
+        navigate('/business-inventory')
+      } else if (projectId) {
+        navigate(projectItems(projectId))
+      } else {
+        navigate('/projects')
+      }
     } catch (error) {
       console.error('Failed to delete item:', error)
       showError('Failed to delete item. Please try again.')
@@ -517,7 +526,9 @@ export default function ItemDetail() {
             <ContextLink
               to={isBusinessInventoryItem
                 ? buildContextUrl(`/business-inventory/${item.itemId}/edit`)
-              : buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId || '' })
+              : projectId
+                ? buildContextUrl(projectItemEdit(projectId, item.itemId), { project: projectId })
+                : buildContextUrl(`/business-inventory/${item.itemId}/edit`)
               }
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               title="Edit Item"
@@ -725,7 +736,11 @@ export default function ItemDetail() {
                     <ContextLink
                       to={isBusinessInventoryItem
                         ? buildContextUrl(`/business-inventory/transaction/${item.transactionId}`)
-                        : buildContextUrl(`/project/${projectId}/transaction/${item.transactionId}`)
+                        : projectId
+                          ? buildContextUrl(projectTransactionDetail(projectId, item.transactionId))
+                          : item.projectId
+                            ? buildContextUrl(projectTransactionDetail(item.projectId, item.transactionId))
+                            : buildContextUrl('/projects')
                       }
                       className="text-primary-600 hover:text-primary-800 underline"
                     >

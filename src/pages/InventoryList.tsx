@@ -12,6 +12,7 @@ import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useAccount } from '@/contexts/AccountContext'
+import { projectItemEdit, projectItemNew } from '@/utils/routes'
 
 interface InventoryListProps {
   projectId: string
@@ -320,6 +321,23 @@ export default function InventoryList({ projectId, projectName, items: propItems
     }
   }
 
+  const handleRetry = async () => {
+    if (!currentAccountId) {
+      setError('Account ID is required to reload inventory.')
+      return
+    }
+
+    setError(null)
+
+    try {
+      const refreshedItems = await unifiedItemsService.getItemsByProject(currentAccountId, projectId)
+      setItems(refreshedItems)
+    } catch (retryError) {
+      console.error('Failed to reload inventory:', retryError)
+      setError('Failed to reload inventory. Please try again.')
+    }
+  }
+
   const filteredItems = items.filter(item => {
     // Apply search filter
     const matchesSearch = item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -354,8 +372,8 @@ export default function InventoryList({ projectId, projectName, items: propItems
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
-        <ContextLink
-          to={buildContextUrl(`/project/${projectId}/item/add`, { project: projectId })}
+          <ContextLink
+            to={buildContextUrl(projectItemNew(projectId), { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -516,7 +534,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
           <h3 className="text-lg font-medium text-red-900 mb-2">Error loading inventory</h3>
           <p className="text-sm text-red-500 mb-6 max-w-sm mx-auto">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleRetry}
             className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors duration-200 w-full sm:w-auto max-w-xs"
           >
             <RotateCcw className="h-5 w-5 mr-2" />
@@ -568,7 +586,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                         <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
                       </button>
                       <ContextLink
-                        to={buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId })}
+                        to={buildContextUrl(projectItemEdit(projectId, item.itemId), { project: projectId })}
                         onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
                         title="Edit item"

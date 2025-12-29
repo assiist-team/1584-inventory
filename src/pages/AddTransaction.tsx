@@ -18,9 +18,11 @@ import { getTaxPresets } from '@/services/taxPresetsService'
 import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { getDefaultCategory } from '@/services/accountPresetsService'
 import CategorySelect from '@/components/CategorySelect'
+import { projectTransactions } from '@/utils/routes'
 
 export default function AddTransaction() {
-  const { id: projectId } = useParams<{ id: string }>()
+  const { id, projectId: routeProjectId } = useParams<{ id?: string; projectId?: string }>()
+  const projectId = routeProjectId || id
   const navigate = useStackedNavigate()
   const { user, isOwner } = useAuth()
   const { currentAccountId } = useAccount()
@@ -40,7 +42,7 @@ export default function AddTransaction() {
             You don't have permission to add transactions. Please contact an administrator if you need access.
           </p>
           <ContextBackLink
-            fallback={getBackDestination(`/project/${projectId}`)}
+            fallback={getBackDestination(projectId ? projectTransactions(projectId) : '/projects')}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
           >
             Back to Project
@@ -447,7 +449,11 @@ export default function AddTransaction() {
         }
       }
 
-      navigate(`/project/${projectId}?tab=transactions`)
+      if (projectId) {
+        navigate(projectTransactions(projectId))
+      } else {
+        navigate('/projects')
+      }
     } catch (error) {
       console.error('Error creating transaction:', error)
       setErrors({ general: error instanceof Error ? error.message : 'Failed to create transaction. Please try again.' })
@@ -517,7 +523,7 @@ export default function AddTransaction() {
         {/* Back button row */}
         <div className="flex items-center justify-between">
           <ContextBackLink
-            fallback={getBackDestination(`/project/${projectId}?tab=transactions`)}
+            fallback={getBackDestination(projectId ? projectTransactions(projectId) : '/projects')}
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -982,7 +988,7 @@ export default function AddTransaction() {
           {/* Form Actions */}
           <div className="flex justify-end space-x-3 pt-4">
           <ContextBackLink
-            fallback={getBackDestination(`/project/${projectId}?tab=transactions`)}
+            fallback={getBackDestination(projectId ? projectTransactions(projectId) : '/projects')}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
           >
             <X className="h-4 w-4 mr-2" />

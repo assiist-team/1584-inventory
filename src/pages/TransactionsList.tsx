@@ -8,6 +8,7 @@ import { transactionService } from '@/services/inventoryService'
 import type { Transaction as TransactionType } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { useAccount } from '@/contexts/AccountContext'
+import { projectTransactionDetail, projectTransactionImport, projectTransactionNew } from '@/utils/routes'
 
 // Canonical transaction title for display only
 const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
@@ -37,10 +38,10 @@ interface TransactionsListProps {
 }
 
 export default function TransactionsList({ projectId: propProjectId, transactions: propTransactions }: TransactionsListProps) {
-  const { id: routeProjectId } = useParams<{ id: string }>()
+  const { id, projectId: routeProjectId } = useParams<{ id?: string; projectId?: string }>()
   const { currentAccountId } = useAccount()
   // Use prop if provided, otherwise fall back to route param
-  const projectId = propProjectId || routeProjectId
+  const projectId = propProjectId || routeProjectId || id
   const { buildContextUrl } = useNavigationContext()
   const [transactions, setTransactions] = useState<Transaction[]>(propTransactions || [])
   const [isLoading, setIsLoading] = useState(!propTransactions)
@@ -213,14 +214,14 @@ export default function TransactionsList({ projectId: propProjectId, transaction
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <ContextLink
-            to={buildContextUrl(`/project/${projectId}/transaction/add`, { project: projectId })}
+            to={buildContextUrl(projectTransactionNew(projectId), { project: projectId })}
             className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Transaction
           </ContextLink>
           <ContextLink
-            to={buildContextUrl(`/project/${projectId}/transaction/import-wayfair`, { project: projectId })}
+            to={buildContextUrl(projectTransactionImport(projectId), { project: projectId })}
             className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors duration-200 w-full sm:w-auto"
             title="Import a Wayfair invoice PDF"
           >
@@ -328,7 +329,7 @@ export default function TransactionsList({ projectId: propProjectId, transaction
             {filteredTransactions.map((transaction) => (
               <li key={transaction.transactionId} className="relative">
                 <ContextLink
-                  to={buildContextUrl(`/project/${projectId}/transaction/${transaction.transactionId}`, { project: projectId, transactionId: transaction.transactionId })}
+                  to={buildContextUrl(projectTransactionDetail(projectId, transaction.transactionId), { project: projectId, transactionId: transaction.transactionId })}
                   className="block bg-gray-50 transition-colors duration-200 hover:bg-gray-100"
                 >
                   <div className="px-4 py-4 sm:px-6">

@@ -20,6 +20,7 @@ import type { ItemLineageEdge } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import TransactionAudit from '@/components/ui/TransactionAudit'
 import { displayDispositionLabel, normalizeDisposition } from '@/utils/dispositionUtils'
+import { projectItemDetail, projectTransactionDetail, projectTransactionEdit, projectTransactions } from '@/utils/routes'
 
 // Remove any unwanted icons from transaction type badges
 const removeUnwantedIcons = () => {
@@ -52,7 +53,8 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
 
 
 export default function TransactionDetail() {
-  const { id: projectId, transactionId } = useParams<{ id?: string; transactionId: string }>()
+  const { id, projectId: routeProjectId, transactionId } = useParams<{ id?: string; projectId?: string; transactionId: string }>()
+  const projectId = routeProjectId || id
   const navigate = useStackedNavigate()
   const { currentAccountId } = useAccount()
   const [transaction, setTransaction] = useState<Transaction | null>(null)
@@ -89,8 +91,8 @@ export default function TransactionDetail() {
   // Navigation context logic
 
   const backDestination = useMemo(() => {
-    // Use navigation context's getBackDestination function
-    return getBackDestination(`/project/${projectId}?tab=transactions`)
+    const fallbackPath = projectId ? projectTransactions(projectId) : '/projects'
+    return getBackDestination(fallbackPath)
   }, [getBackDestination, projectId])
 
   // Refresh transaction items
@@ -434,7 +436,7 @@ export default function TransactionDetail() {
     if (window.confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
       try {
         await transactionService.deleteTransaction(currentAccountId, projectId, transactionId)
-        navigate(`/project/${projectId}?tab=transactions`)
+        navigate(projectId ? projectTransactions(projectId) : '/projects')
       } catch (error) {
         console.error('Error deleting transaction:', error)
         showError('Failed to delete transaction. Please try again.')
@@ -941,7 +943,7 @@ export default function TransactionDetail() {
                 // Use project route if projectId exists in URL and transaction has a projectId
                 // Otherwise use business inventory route (projectId can be empty string for business inventory transactions)
                 projectId && transaction?.projectId
-                  ? `/project/${projectId}/transaction/${transactionId}/edit`
+                  ? projectTransactionEdit(projectId, transactionId)
                   : `/business-inventory/transaction/${transaction?.projectId || 'null'}/${transactionId}/edit`
               )}
               className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
@@ -1272,9 +1274,12 @@ export default function TransactionDetail() {
                           {itemsInTransaction.map((item) => {
                             const isDeallocated = item.projectId == null
                             const originProjectId = projectId || transaction?.projectId || ''
-                            const itemLink = isDeallocated
+                            const itemLink = isDeallocated || !originProjectId
                               ? buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
-                              : buildContextUrl(`/project/${originProjectId}/item/${item.itemId}`, { from: 'transaction', project: originProjectId, transactionId: transactionId || '' })
+                              : buildContextUrl(
+                                projectItemDetail(originProjectId, item.itemId),
+                                { from: 'transaction', project: originProjectId, transactionId: transactionId || '' }
+                              )
                             
                             return renderItemCard(item, itemLink, false)
                           })}
@@ -1298,7 +1303,7 @@ export default function TransactionDetail() {
                               itemLink = buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
                             } else if (item.projectId) {
                               // Item still carries a projectId - use it
-                              itemLink = buildContextUrl(`/project/${item.projectId}/item/${item.itemId}`, { from: 'transaction' })
+                              itemLink = buildContextUrl(projectItemDetail(item.projectId, item.itemId), { from: 'transaction' })
                             } else if (currentTransactionId?.startsWith('INV_SALE_') || currentTransactionId?.startsWith('INV_PURCHASE_')) {
                               // Canonical inventory transaction - treat as company/business inventory for now
                               itemLink = buildContextUrl(`/business-inventory/${item.itemId}`, { from: 'business-inventory-item' })
@@ -1306,7 +1311,10 @@ export default function TransactionDetail() {
                               // Try resolved cache (populated asynchronously). If present, use it; otherwise leave null.
                               const resolvedProjectId = currentTransactionId ? resolvedProjectByTx[currentTransactionId] : undefined
                               if (resolvedProjectId) {
-                                itemLink = buildContextUrl(`/project/${resolvedProjectId}/item/${item.itemId}`, { from: 'transaction', project: resolvedProjectId, transactionId: transactionId || '' })
+                                itemLink = buildContextUrl(
+                                  projectItemDetail(resolvedProjectId, item.itemId),
+                                  { from: 'transaction', project: resolvedProjectId, transactionId: transactionId || '' }
+                                )
                               } else {
                                 // Log debug info - will render as non-link until resolution completes
                                 console.debug('TransactionDetail - unresolved moved item link', {

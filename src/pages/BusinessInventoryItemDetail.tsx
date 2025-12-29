@@ -14,6 +14,7 @@ import { useAccount } from '@/contexts/AccountContext'
 import ItemLineageBreadcrumb from '@/components/ui/ItemLineageBreadcrumb'
 import { lineageService } from '@/services/lineageService'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { projectItemDetail, projectItems, projectTransactionDetail } from '@/utils/routes'
 
 export default function BusinessInventoryItemDetail() {
   const { id } = useParams<{ id: string }>()
@@ -205,7 +206,9 @@ export default function BusinessInventoryItemDetail() {
       closeAllocationModal()
 
       // Navigate to the item detail in the project after successful allocation
-      navigate(`/project/${allocationForm.projectId}/item/${id}`)
+      if (allocationForm.projectId) {
+        navigate(projectItemDetail(allocationForm.projectId, id!))
+      }
 
       // Item will be updated via real-time subscription
     } catch (error) {
@@ -533,7 +536,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Project</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <ContextLink
-                        to={buildContextUrl(`/project/${item.projectId}`, { from: 'business-inventory-item' })}
+                        to={buildContextUrl(projectItems(item.projectId), { from: 'business-inventory-item' })}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {formatLinkedProjectText(item.projectId)}
@@ -547,7 +550,7 @@ export default function BusinessInventoryItemDetail() {
                     <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">TRANSACTION</dt>
                     <dd className="mt-1 text-sm text-gray-900">
                       <ContextLink
-                        to={buildContextUrl(`/project/${item.projectId}/transaction/${item.transactionId}`, { from: 'business-inventory-item' })}
+                        to={buildContextUrl(projectTransactionDetail(item.projectId, item.transactionId), { from: 'business-inventory-item' })}
                         className="text-primary-600 hover:text-primary-800 font-medium"
                       >
                         {item.transactionId}
@@ -569,7 +572,7 @@ export default function BusinessInventoryItemDetail() {
                     <dd className="mt-1 text-sm text-gray-900">
                       {item.previousProjectId ? (
                         <ContextLink
-                          to={buildContextUrl(`/project/${item.previousProjectId}/transaction/${item.previousProjectTransactionId}`, { from: 'business-inventory-item' })}
+                          to={buildContextUrl(projectTransactionDetail(item.previousProjectId, item.previousProjectTransactionId), { from: 'business-inventory-item' })}
                           className="text-primary-600 hover:text-primary-800 font-medium"
                         >
                           {item.previousProjectTransactionId}
