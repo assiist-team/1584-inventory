@@ -1683,8 +1683,10 @@ export const unifiedItemsService = {
       query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
     }
 
-    // Apply sorting
-    query = query.order('last_updated', { ascending: false })
+    // Apply sorting that remains stable when an item is edited
+    query = query
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .order('date_created', { ascending: false, nullsFirst: false })
 
     // Apply pagination
     if (pagination) {
@@ -1793,8 +1795,10 @@ export const unifiedItemsService = {
       query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
     }
 
-    // Apply sorting
-    query = query.order('last_updated', { ascending: false })
+    // Apply sorting that remains stable when an item is edited
+    query = query
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .order('date_created', { ascending: false, nullsFirst: false })
 
     // Apply pagination
     if (pagination) {
@@ -3458,6 +3462,8 @@ export const unifiedItemsService = {
       images: originalItem.images || [], // Copy images from original item
       tax_rate_pct: originalItem.taxRatePct || null,
       tax_amount: originalItem.taxAmount || null,
+      tax_amount_purchase_price: originalItem.taxAmountPurchasePrice || null,
+      tax_amount_project_price: originalItem.taxAmountProjectPrice || null,
       created_by: originalItem.createdBy || null,
       created_at: now.toISOString()
     }
