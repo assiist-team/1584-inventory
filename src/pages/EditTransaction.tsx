@@ -17,6 +17,7 @@ import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresets } from '@/services/taxPresetsService'
 import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import CategorySelect from '@/components/CategorySelect'
+import TransactionItemsList from '@/components/TransactionItemsList'
 import { projectTransactionDetail, projectTransactions } from '@/utils/routes'
 
 export default function EditTransaction() {
@@ -1004,6 +1005,25 @@ export default function EditTransaction() {
             />
             {errors.notes && (
               <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
+            )}
+          </div>
+
+          {/* Transaction Items */}
+          <div>
+            <TransactionItemsList
+              items={items}
+              onItemsChange={(newItems) => {
+                setItems(newItems)
+                // Clear items error if items are added
+                if (errors.items && newItems.length > 0) {
+                  setErrors(prev => ({ ...prev, items: undefined }))
+                }
+              }}
+              projectId={projectId}
+              projectName={projectName}
+            />
+            {errors.items && (
+              <p className="mt-1 text-sm text-red-600">{errors.items}</p>
             )}
           </div>
 

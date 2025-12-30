@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Edit, X, Plus, GitMerge } from 'lucide-react'
+import { Edit, X, Plus, GitMerge, ChevronDown } from 'lucide-react'
 import { TransactionItemFormData } from '@/types'
 import TransactionItemForm from './TransactionItemForm'
 import { normalizeMoneyToTwoDecimalString } from '@/utils/money'
 import { getTransactionFormGroupKey } from '@/utils/itemGrouping'
 import CollapsedDuplicateGroup from './ui/CollapsedDuplicateGroup'
+import { normalizeDisposition, displayDispositionLabel, DISPOSITION_OPTIONS, dispositionsEqual } from '@/utils/dispositionUtils'
+import { unifiedItemsService, integrationService } from '@/services/inventoryService'
+import { useAccount } from '@/contexts/AccountContext'
+import type { ItemDisposition } from '@/types'
 
 interface TransactionItemsListProps {
   items: TransactionItemFormData[]
@@ -13,14 +17,17 @@ interface TransactionItemsListProps {
   projectName?: string
   onImageFilesChange?: (itemId: string, imageFiles: File[]) => void
   totalAmount?: string // Optional total amount to display instead of calculating from items
+  showSelectionControls?: boolean // Whether to show select/merge buttons and checkboxes
 }
 
-export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange, totalAmount }: TransactionItemsListProps) {
+export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange, totalAmount, showSelectionControls = true }: TransactionItemsListProps) {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [mergeMasterId, setMergeMasterId] = useState<string | null>(null)
+  const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
+  const { currentAccountId } = useAccount()
 
   useEffect(() => {
     setSelectedItemIds(prev => {
@@ -31,6 +38,21 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
       return valid.size === prev.size ? prev : valid
     })
   }, [items])
+
+  // Close disposition menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
+        setOpenDispositionMenu(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   const selectedItems = useMemo(
     () => items.filter(item => selectedItemIds.has(item.id)),
@@ -119,6 +141,73 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     return Number.isFinite(n)
   }
 
+  const getDispositionBadgeClasses = (disposition?: string | null) => {
+    const baseClasses = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors hover:opacity-80'
+    const d = normalizeDisposition(disposition)
+
+    switch (d) {
+      case 'to purchase':
+        return `${baseClasses} bg-amber-100 text-amber-800`
+      case 'purchased':
+        return `${baseClasses} bg-green-100 text-green-800`
+      case 'to return':
+        return `${baseClasses} bg-red-100 text-red-700`
+      case 'returned':
+        return `${baseClasses} bg-red-800 text-red-100`
+      case 'inventory':
+        return `${baseClasses} bg-primary-100 text-primary-600`
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800`
+    }
+  }
+
+  const toggleDispositionMenu = (itemId: string) => {
+    setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
+  }
+
+  const updateDisposition = async (itemId: string, newDisposition: ItemDisposition) => {
+    if (!currentAccountId) return
+
+    try {
+      const item = items.find(item => item.id === itemId)
+      if (!item) {
+        console.error('Item not found for disposition update:', itemId)
+        return
+      }
+
+      const originalDisposition = item.disposition
+
+      await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: newDisposition })
+
+      // If disposition is set to 'inventory', trigger deallocation process
+      if (newDisposition === 'inventory') {
+        try {
+          await integrationService.handleItemDeallocation(
+            currentAccountId,
+            itemId,
+            projectId || '',
+            newDisposition
+          )
+        } catch (deallocationError) {
+          console.error('Failed to handle deallocation:', deallocationError)
+          // Revert the disposition change if deallocation fails
+          await unifiedItemsService.updateItem(currentAccountId, itemId, { disposition: originalDisposition as ItemDisposition })
+          throw deallocationError
+        }
+      }
+
+      // Update the local state
+      const updatedItems = items.map(item =>
+        item.id === itemId ? { ...item, disposition: newDisposition } : item
+      )
+      onItemsChange(updatedItems)
+
+      setOpenDispositionMenu(null)
+    } catch (error) {
+      console.error('Failed to update disposition:', error)
+    }
+  }
+
   const toggleItemSelection = (itemId: string, checked: boolean) => {
     setSelectedItemIds(prev => {
       const next = new Set(prev)
@@ -158,15 +247,17 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
   const renderTransactionItem = (item: TransactionItemFormData, groupIndex: number, groupSize?: number, itemIndexInGroup?: number) => (
     <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
       <div className="flex items-start gap-4">
-        <div className="pt-1">
-          <input
-            type="checkbox"
-            aria-label={`Select ${item.description || `item ${groupIndex + 1}`}`}
-            checked={selectedItemIds.has(item.id)}
-            onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
-            className="h-4 w-4 text-primary-600 border-gray-300 rounded"
-          />
-        </div>
+        {showSelectionControls && (
+          <div className="pt-1">
+            <input
+              type="checkbox"
+              aria-label={`Select ${item.description || `item ${groupIndex + 1}`}`}
+              checked={selectedItemIds.has(item.id)}
+              onChange={(e) => toggleItemSelection(item.id, e.target.checked)}
+              className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+            />
+          </div>
+        )}
         {item.images && item.images.length > 0 && (
           <div className="mr-4">
             <img
@@ -210,11 +301,6 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
                 <span className="font-medium">Market Value:</span> ${item.marketValue}
               </div>
             )}
-            {hasNonEmptyMoneyString(item.taxAmountProjectPrice) && (
-              <div>
-                <span className="font-medium">Tax on project:</span> {formatCurrency(item.taxAmountProjectPrice as string)}
-              </div>
-            )}
           </div>
 
           {item.notes && (
@@ -225,6 +311,44 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
         </div>
 
         <div className="flex items-center space-x-2 ml-auto">
+          <div className="relative">
+            <span
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                toggleDispositionMenu(item.id)
+              }}
+              className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
+              title="Change disposition"
+            >
+              {displayDispositionLabel(item.disposition) || 'Not Set'}
+              <ChevronDown className="h-3 w-3 ml-1" />
+            </span>
+
+            {/* Dropdown menu */}
+            {openDispositionMenu === item.id && (
+              <div className="disposition-menu absolute top-full right-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                <div className="py-1">
+                  {DISPOSITION_OPTIONS.map((disposition) => (
+                    <button
+                      key={disposition}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        updateDisposition(item.id, disposition)
+                      }}
+                      className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
+                        dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
+                    >
+                      {displayDispositionLabel(disposition)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={(e) => {
               e.preventDefault()
@@ -349,34 +473,31 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
 
   return (
     <div className="space-y-4">
-      <div className="sticky top-0 z-10 bg-white py-3 border-b border-gray-200 mb-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-medium text-gray-900">Transaction Items</h3>
-          {items.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              {selectedItemIds.size > 0 && (
-                <span className="text-gray-600">{selectedItemIds.size} selected</span>
-              )}
-              <button
-                type="button"
-                onClick={toggleSelectAll}
-                className="px-3 py-1 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
-              >
-                {selectedItemIds.size === items.length ? 'Clear selection' : 'Select all'}
-              </button>
-              <button
-                type="button"
-                onClick={openMergeDialog}
-                disabled={selectedItemIds.size < 2}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-md border border-transparent text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <GitMerge className="h-4 w-4" />
-                Merge Selected
-              </button>
-            </div>
-          )}
+      {items.length > 0 && showSelectionControls && (
+        <div className="sticky top-0 z-10 bg-white py-3 border-b border-gray-200 mb-4">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {selectedItemIds.size > 0 && (
+              <span className="text-gray-600">{selectedItemIds.size} selected</span>
+            )}
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="px-3 py-1 rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+            >
+              {selectedItemIds.size === items.length ? 'Clear selection' : 'Select all'}
+            </button>
+            <button
+              type="button"
+              onClick={openMergeDialog}
+              disabled={selectedItemIds.size < 2}
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-md border border-transparent text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <GitMerge className="h-4 w-4" />
+              Merge Selected
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-3">
         {groupedItems.map(({ groupKey, items: groupItems }, groupIndex) => {
@@ -403,8 +524,8 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
               key={groupKey}
               groupId={groupKey}
               count={groupItems.length}
-              selectionState={groupSelectionState}
-              onToggleSelection={(checked) => handleSelectGroup(groupItems, checked)}
+              selectionState={showSelectionControls ? groupSelectionState : undefined}
+              onToggleSelection={showSelectionControls ? (checked) => handleSelectGroup(groupItems, checked) : undefined}
               summary={
                 <div className="flex items-start gap-4">
                   {firstItem.images && firstItem.images.length > 0 && (
@@ -491,7 +612,7 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
           )
         })}
 
-        {/* Add Item Button - Always visible */}
+        {/* Add Item Button */}
         <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
           <button
             onClick={() => setIsAddingItem(true)}

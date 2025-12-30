@@ -301,6 +301,7 @@ export interface TransactionItemFormData {
   marketValue?: string;
   space?: string;
   notes?: string;
+  disposition?: ItemDisposition | string | null;
   // Item-level tax amounts (stored as strings; persisted to `items.tax_amount_*` columns)
   taxAmountPurchasePrice?: string;
   taxAmountProjectPrice?: string;

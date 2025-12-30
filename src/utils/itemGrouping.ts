@@ -83,6 +83,14 @@ export function getTransactionFormGroupKey(item: TransactionItemFormData): strin
 }
 
 /**
+ * Groups transaction detail items for display in transaction detail view
+ * Uses the same grouping logic as inventory lists
+ */
+export function getTransactionDetailGroupKey(item: Item, context: 'project' | 'businessInventory'): string {
+  return getInventoryListGroupKey(item, context)
+}
+
+/**
  * Strips Wayfair-style quantity suffix from description (if needed)
  * Example: "Pillow (1/24)" -> "Pillow"
  */

@@ -2057,9 +2057,11 @@ export const unifiedItemsService = {
 
     if (previousTransactionId !== nextTransactionId) {
       try {
-        if (previousTransactionId) {
-          await _updateTransactionItemIds(accountId, previousTransactionId, itemId, 'remove')
-        }
+        // NOTE: We no longer remove items from source transaction's item_ids when they move
+        // This preserves historical completeness. Items stay in item_ids forever once added.
+        // if (previousTransactionId) {
+        //   await _updateTransactionItemIds(accountId, previousTransactionId, itemId, 'remove')
+        // }
         if (nextTransactionId) {
           await _updateTransactionItemIds(accountId, nextTransactionId, itemId, 'add')
         }
