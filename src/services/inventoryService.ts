@@ -769,9 +769,19 @@ export const transactionService = {
    */
   async _recomputeNeedsReview(accountId: string, projectId: string | null | undefined, transactionId: string): Promise<void> {
     try {
-      // Use canonical completeness computation
-      const completeness = await this.getTransactionCompleteness(accountId, projectId || '', transactionId)
-      const needs = completeness.completenessStatus !== 'complete'
+      // Canonical sale and purchase transactions (INV_SALE_*, INV_PURCHASE_*) are system-generated
+      // and represent internal inventory movements, so they should never require review
+      const isCanonicalTransaction = transactionId.startsWith('INV_SALE_') || transactionId.startsWith('INV_PURCHASE_')
+
+      let needs: boolean
+      if (isCanonicalTransaction) {
+        // Canonical transactions are never flagged for review
+        needs = false
+      } else {
+        // Use canonical completeness computation for regular transactions
+        const completeness = await this.getTransactionCompleteness(accountId, projectId || '', transactionId)
+        needs = completeness.completenessStatus !== 'complete'
+      }
 
       // Persist the boolean directly to the transactions table to avoid calling updateTransaction
       await ensureAuthenticatedForDatabase()
@@ -3895,7 +3905,7 @@ export const deallocationService = {
         project_id: projectId,
         transaction_date: toDateOnlyString(now),
         source: projectName,  // Project name as source (project moving to inventory)
-        transaction_type: 'To Inventory',  // Project is moving item TO inventory
+        transaction_type: 'Sale',  // Project is moving item TO inventory
         payment_method: 'Pending',
         amount: parseFloat(calculatedAmount || '0').toFixed(2),
         budget_category: 'Furnishings',

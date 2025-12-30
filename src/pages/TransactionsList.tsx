@@ -3,12 +3,13 @@ import { useParams } from 'react-router-dom'
 import ContextLink from '@/components/ContextLink'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useState, useEffect, useMemo } from 'react'
-import { Transaction, TransactionCompleteness } from '@/types'
+import { Transaction, TransactionCompleteness, BudgetCategory } from '@/types'
 import { transactionService } from '@/services/inventoryService'
 import type { Transaction as TransactionType } from '@/types'
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { useAccount } from '@/contexts/AccountContext'
 import { projectTransactionDetail, projectTransactionImport, projectTransactionNew } from '@/utils/routes'
+import { budgetCategoriesService } from '@/services/budgetCategoriesService'
 
 // Canonical transaction title for display only
 const getCanonicalTransactionTitle = (transaction: TransactionType): string => {
@@ -32,6 +33,17 @@ const removeUnwantedIcons = () => {
   })
 }
 
+// Get budget category display name from transaction (handles both legacy and new fields)
+const getBudgetCategoryDisplayName = (transaction: TransactionType, categories: BudgetCategory[]): string | undefined => {
+  // First try the new categoryId field
+  if (transaction.categoryId) {
+    const category = categories.find(c => c.id === transaction.categoryId)
+    return category?.name
+  }
+  // Fall back to legacy budgetCategory field
+  return transaction.budgetCategory
+}
+
 interface TransactionsListProps {
   projectId?: string
   transactions?: Transaction[]
@@ -46,11 +58,26 @@ export default function TransactionsList({ projectId: propProjectId, transaction
   const [transactions, setTransactions] = useState<Transaction[]>(propTransactions || [])
   const [isLoading, setIsLoading] = useState(!propTransactions)
   const [completenessById, setCompletenessById] = useState<Record<string, TransactionCompleteness | null>>({})
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>([])
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [filterMode, setFilterMode] = useState<'all' | 'we-owe' | 'client-owes'>('all')
+
+  // Load budget categories for display
+  useEffect(() => {
+    const loadBudgetCategories = async () => {
+      if (!currentAccountId) return
+      try {
+        const categories = await budgetCategoriesService.getCategories(currentAccountId, true)
+        setBudgetCategories(categories)
+      } catch (error) {
+        console.error('Error loading budget categories:', error)
+      }
+    }
+    loadBudgetCategories()
+  }, [currentAccountId])
 
   useEffect(() => {
     // If transactions are passed as a prop, just update the state
@@ -362,30 +389,35 @@ export default function TransactionsList({ projectId: propProjectId, transaction
                     </div>
                     {/* Badges moved to bottom of preview container */}
                     <div className="mt-3 flex items-center flex-wrap gap-2">
-                      {transaction.budgetCategory && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          transaction.budgetCategory === 'Design Fee'
-                            ? 'bg-amber-100 text-amber-800'
-                            : transaction.budgetCategory === 'Furnishings'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : transaction.budgetCategory === 'Property Management'
-                            ? 'bg-orange-100 text-orange-800'
-                            : transaction.budgetCategory === 'Kitchen'
-                            ? 'bg-amber-200 text-amber-900'
-                            : transaction.budgetCategory === 'Install'
-                            ? 'bg-yellow-200 text-yellow-900'
-                            : transaction.budgetCategory === 'Storage & Receiving'
-                            ? 'bg-orange-200 text-orange-900'
-                            : transaction.budgetCategory === 'Fuel'
-                            ? 'bg-amber-300 text-amber-900'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {transaction.budgetCategory}
-                        </span>
-                      )}
+                      {(() => {
+                        const categoryName = getBudgetCategoryDisplayName(transaction, budgetCategories)
+                        return categoryName ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            categoryName === 'Design Fee'
+                              ? 'bg-amber-100 text-amber-800'
+                              : categoryName === 'Furnishings'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : categoryName === 'Property Management'
+                              ? 'bg-orange-100 text-orange-800'
+                              : categoryName === 'Kitchen'
+                              ? 'bg-amber-200 text-amber-900'
+                              : categoryName === 'Install'
+                              ? 'bg-yellow-200 text-yellow-900'
+                              : categoryName === 'Storage & Receiving'
+                              ? 'bg-orange-200 text-orange-900'
+                              : categoryName === 'Fuel'
+                              ? 'bg-amber-300 text-amber-900'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {categoryName}
+                          </span>
+                        ) : null
+                      })()}
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium no-icon ${
                         transaction.transactionType === 'Purchase'
                           ? 'bg-green-100 text-green-800'
+                          : transaction.transactionType === 'Sale'
+                          ? 'bg-blue-100 text-blue-800'
                           : transaction.transactionType === 'Return'
                           ? 'bg-red-100 text-red-800'
                           : transaction.transactionType === 'To Inventory'

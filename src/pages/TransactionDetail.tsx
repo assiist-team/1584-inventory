@@ -6,8 +6,9 @@ import { useParams } from 'react-router-dom'
 import ContextBackLink from '@/components/ContextBackLink'
 import ContextLink from '@/components/ContextLink'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
-import { Transaction, Project, Item, TransactionItemFormData, TaxPreset } from '@/types'
+import { Transaction, Project, Item, TransactionItemFormData, TaxPreset, BudgetCategory } from '@/types'
 import { transactionService, projectService, unifiedItemsService } from '@/services/inventoryService'
+import { budgetCategoriesService } from '@/services/budgetCategoriesService'
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { formatDate, formatCurrency } from '@/utils/dateUtils'
@@ -35,6 +36,17 @@ const getCanonicalTransactionTitle = (transaction: Transaction): string => {
   }
   // Return the original source for non-canonical transactions
   return transaction.source
+}
+
+// Get budget category display name from transaction (handles both legacy and new fields)
+const getBudgetCategoryDisplayName = (transaction: Transaction, categories: BudgetCategory[]): string | undefined => {
+  // First try the new categoryId field
+  if (transaction.categoryId) {
+    const category = categories.find(c => c.id === transaction.categoryId)
+    return category?.name
+  }
+  // Fall back to legacy budgetCategory field
+  return transaction.budgetCategory
 }
 
 const buildDisplayItems = (items: Item[], movedOutItemIds: Set<string>): DisplayTransactionItem[] => {
@@ -82,6 +94,19 @@ export default function TransactionDetail() {
     loadPresets()
   }, [currentAccountId])
 
+  useEffect(() => {
+    const loadBudgetCategories = async () => {
+      if (!currentAccountId) return
+      try {
+        const categories = await budgetCategoriesService.getCategories(currentAccountId, true)
+        setBudgetCategories(categories)
+      } catch (error) {
+        console.error('Error loading budget categories:', error)
+      }
+    }
+    loadBudgetCategories()
+  }, [currentAccountId])
+
   // Transaction items state - using TransactionItemFormData like the edit screen
   const [items, setItems] = useState<TransactionItemFormData[]>([])
   const initialItemsRef = useRef<TransactionItemFormData[] | null>(null)
@@ -104,6 +129,7 @@ export default function TransactionDetail() {
 
   // Cache resolved project IDs for transactions referenced by items when item.projectId is missing
   const [resolvedProjectByTx, setResolvedProjectByTx] = useState<Record<string, string>>({})
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingItems, setIsLoadingItems] = useState(true)
   const [showGallery, setShowGallery] = useState(false)
@@ -173,6 +199,24 @@ export default function TransactionDetail() {
       resolveMissingProjectIds(validItems).catch(err => console.debug('resolveMissingProjectIds error:', err))
     } catch (error) {
       console.error('Error refreshing transaction items:', error)
+    }
+  }
+
+  const handleDeletePersistedItem = async (itemId: string) => {
+    if (!currentAccountId) {
+      showError('You must belong to an account to delete items.')
+      return false
+    }
+
+    try {
+      await unifiedItemsService.deleteItem(currentAccountId, itemId)
+      await refreshTransactionItems()
+      showSuccess('Item deleted successfully')
+      return true
+    } catch (error) {
+      console.error('Error deleting item:', error)
+      showError('Failed to delete item. Please try again.')
+      return false
     }
   }
 
@@ -879,25 +923,30 @@ export default function TransactionDetail() {
             <div>
               <dt className="text-sm font-medium text-gray-500">Budget Category</dt>
               <dd className="mt-1">
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                  transaction.budgetCategory === 'Design Fee'
-                    ? 'bg-amber-100 text-amber-800'
-                    : transaction.budgetCategory === 'Furnishings'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : transaction.budgetCategory === 'Property Management'
-                    ? 'bg-orange-100 text-orange-800'
-                    : transaction.budgetCategory === 'Kitchen'
-                    ? 'bg-amber-200 text-amber-900'
-                    : transaction.budgetCategory === 'Install'
-                    ? 'bg-yellow-200 text-yellow-900'
-                    : transaction.budgetCategory === 'Storage & Receiving'
-                    ? 'bg-orange-200 text-orange-900'
-                    : transaction.budgetCategory === 'Fuel'
-                    ? 'bg-amber-300 text-amber-900'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {transaction.budgetCategory || 'Not specified'}
-                </span>
+                {(() => {
+                  const categoryName = getBudgetCategoryDisplayName(transaction, budgetCategories)
+                  return (
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                      categoryName === 'Design Fee'
+                        ? 'bg-amber-100 text-amber-800'
+                        : categoryName === 'Furnishings'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : categoryName === 'Property Management'
+                        ? 'bg-orange-100 text-orange-800'
+                        : categoryName === 'Kitchen'
+                        ? 'bg-amber-200 text-amber-900'
+                        : categoryName === 'Install'
+                        ? 'bg-yellow-200 text-yellow-900'
+                        : categoryName === 'Storage & Receiving'
+                        ? 'bg-orange-200 text-orange-900'
+                        : categoryName === 'Fuel'
+                        ? 'bg-amber-300 text-amber-900'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {categoryName || 'Not specified'}
+                    </span>
+                  )
+                })()}
               </dd>
             </div>
 
@@ -907,6 +956,8 @@ export default function TransactionDetail() {
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium no-icon ${
                   transaction.transactionType === 'Purchase'
                     ? 'bg-green-100 text-green-800'
+                    : transaction.transactionType === 'Sale'
+                    ? 'bg-blue-100 text-blue-800'
                     : transaction.transactionType === 'Return'
                     ? 'bg-red-100 text-red-800'
                     : transaction.transactionType === 'To Inventory'
@@ -1162,6 +1213,7 @@ export default function TransactionDetail() {
                     projectId={projectId}
                     projectName={project?.name}
                     onImageFilesChange={handleImageFilesChange}
+                    onDeleteItem={handleDeletePersistedItem}
                   />
                 </div>
               )}
@@ -1182,6 +1234,7 @@ export default function TransactionDetail() {
                       projectId={projectId}
                       projectName={project?.name}
                       onImageFilesChange={handleImageFilesChange}
+                    onDeleteItem={handleDeletePersistedItem}
                       showSelectionControls={false}
                     />
                   </div>

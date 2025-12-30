@@ -915,23 +915,25 @@ export default function BusinessInventory() {
                             }
                           >
                             {/* Render individual items in the expanded group */}
-                            {groupItems.map((item) => (
-                              <InventoryItemRow
-                                key={item.itemId}
-                                item={item}
-                                isSelected={selectedItems.has(item.itemId)}
-                                onSelect={handleSelectItem}
-                                onBookmark={toggleBookmark}
-                                onDuplicate={duplicateItem}
-                                onEdit={() => {}}
-                                onDispositionUpdate={updateDisposition}
-                                onAddImage={handleAddImage}
-                                uploadingImages={uploadingImages}
-                                openDispositionMenu={openDispositionMenu}
-                                setOpenDispositionMenu={setOpenDispositionMenu}
-                              context="businessInventory"
-                              />
-                            ))}
+                            <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
+                              {groupItems.map((item) => (
+                                <InventoryItemRow
+                                  key={item.itemId}
+                                  item={item}
+                                  isSelected={selectedItems.has(item.itemId)}
+                                  onSelect={handleSelectItem}
+                                  onBookmark={toggleBookmark}
+                                  onDuplicate={duplicateItem}
+                                  onEdit={() => {}}
+                                  onDispositionUpdate={updateDisposition}
+                                  onAddImage={handleAddImage}
+                                  uploadingImages={uploadingImages}
+                                  openDispositionMenu={openDispositionMenu}
+                                  setOpenDispositionMenu={setOpenDispositionMenu}
+                                  context="businessInventory"
+                                />
+                              ))}
+                            </ul>
                           </CollapsedDuplicateGroup>
 
                         </li>

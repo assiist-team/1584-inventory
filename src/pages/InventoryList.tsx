@@ -306,17 +306,25 @@ export default function InventoryList({ projectId, projectName, items: propItems
       setError('Account ID is required')
       return
     }
+
+    const idsToDelete = Array.from(selectedItems)
+
+    // Optimistically remove items so the UI reflects the deletion immediately
+    setItems(prev => prev.filter(item => !idsToDelete.includes(item.itemId)))
+    setSelectedItems(new Set())
+
     try {
-      const deletePromises = Array.from(selectedItems).map(itemId =>
+      const deletePromises = idsToDelete.map(itemId =>
         unifiedItemsService.deleteItem(currentAccountId, itemId)
       )
 
       await Promise.all(deletePromises)
-      setSelectedItems(new Set())
       setError(null)
     } catch (error) {
       console.error('Failed to delete items:', error)
       setError('Failed to delete some items. Please try again.')
+      // Reload items to ensure UI stays in sync if delete failed
+      await handleRetry()
     }
   }
 
@@ -662,24 +670,26 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       }
                     >
                       {/* Render individual items in the expanded group */}
-                      {groupItems.map((item) => (
-                        <InventoryItemRow
-                          key={item.itemId}
-                          item={item}
-                          isSelected={selectedItems.has(item.itemId)}
-                          onSelect={handleSelectItem}
-                          onBookmark={toggleBookmark}
-                          onDuplicate={duplicateItem}
-                          onEdit={() => {}}
-                          onDispositionUpdate={updateDisposition}
-                          onAddImage={handleAddImage}
-                          uploadingImages={uploadingImages}
-                          openDispositionMenu={openDispositionMenu}
-                          setOpenDispositionMenu={setOpenDispositionMenu}
-                          context="project"
-                          projectId={projectId}
-                        />
-                      ))}
+                      <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
+                        {groupItems.map((item) => (
+                          <InventoryItemRow
+                            key={item.itemId}
+                            item={item}
+                            isSelected={selectedItems.has(item.itemId)}
+                            onSelect={handleSelectItem}
+                            onBookmark={toggleBookmark}
+                            onDuplicate={duplicateItem}
+                            onEdit={() => {}}
+                            onDispositionUpdate={updateDisposition}
+                            onAddImage={handleAddImage}
+                            uploadingImages={uploadingImages}
+                            openDispositionMenu={openDispositionMenu}
+                            setOpenDispositionMenu={setOpenDispositionMenu}
+                            context="project"
+                            projectId={projectId}
+                          />
+                        ))}
+                      </ul>
                     </CollapsedDuplicateGroup>
 
                   </li>

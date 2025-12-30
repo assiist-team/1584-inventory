@@ -18,15 +18,17 @@ interface TransactionItemsListProps {
   onImageFilesChange?: (itemId: string, imageFiles: File[]) => void
   totalAmount?: string // Optional total amount to display instead of calculating from items
   showSelectionControls?: boolean // Whether to show select/merge buttons and checkboxes
+  onDeleteItem?: (itemId: string, item: TransactionItemFormData) => Promise<boolean | void> | boolean | void
 }
 
-export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange, totalAmount, showSelectionControls = true }: TransactionItemsListProps) {
+export default function TransactionItemsList({ items, onItemsChange, projectId, projectName, onImageFilesChange, totalAmount, showSelectionControls = true, onDeleteItem }: TransactionItemsListProps) {
   const [isAddingItem, setIsAddingItem] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [mergeMasterId, setMergeMasterId] = useState<string | null>(null)
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
+  const [deletingItemIds, setDeletingItemIds] = useState<Set<string>>(new Set())
   const { currentAccountId } = useAccount()
 
   useEffect(() => {
@@ -112,7 +114,38 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
     setIsAddingItem(false)
   }
 
-  const handleDeleteItem = (itemId: string) => {
+  const handleDeleteItem = async (itemId: string) => {
+    const itemToDelete = items.find(item => item.id === itemId)
+    if (!itemToDelete) return
+
+    let shouldRemove = true
+
+    if (onDeleteItem) {
+      setDeletingItemIds(prev => {
+        const next = new Set(prev)
+        next.add(itemId)
+        return next
+      })
+
+      try {
+        const result = await onDeleteItem(itemId, itemToDelete)
+        if (result === false) {
+          shouldRemove = false
+        }
+      } catch (error) {
+        console.error('TransactionItemsList: failed to delete item via callback', error)
+        shouldRemove = false
+      } finally {
+        setDeletingItemIds(prev => {
+          const next = new Set(prev)
+          next.delete(itemId)
+          return next
+        })
+      }
+    }
+
+    if (!shouldRemove) return
+
     const updatedItems = items.filter(item => item.id !== itemId)
     onItemsChange(updatedItems)
     setSelectedItemIds(prev => {
@@ -364,12 +397,17 @@ export default function TransactionItemsList({ items, onItemsChange, projectId, 
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              handleDeleteItem(item.id)
+              void handleDeleteItem(item.id)
             }}
-            className="text-red-600 hover:text-red-900 p-1"
-            title="Delete item"
+            className="text-red-600 hover:text-red-900 p-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={deletingItemIds.has(item.id) ? 'Deleting item' : 'Delete item'}
+            disabled={deletingItemIds.has(item.id)}
           >
-            <X className="h-4 w-4" />
+            {deletingItemIds.has(item.id) ? (
+              <span className="text-xs font-medium">...</span>
+            ) : (
+              <X className="h-4 w-4" />
+            )}
           </button>
         </div>
       </div>

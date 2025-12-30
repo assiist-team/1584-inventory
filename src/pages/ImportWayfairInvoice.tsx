@@ -12,10 +12,9 @@ import { useAccount } from '@/contexts/AccountContext'
 import { extractPdfText } from '@/utils/pdfTextExtraction'
 import { parseWayfairInvoiceText, WayfairInvoiceLineItem, WayfairInvoiceParseResult } from '@/utils/wayfairInvoiceParser'
 import { normalizeMoneyToTwoDecimalString, parseMoneyToNumber } from '@/utils/money'
-import { getDefaultCategory } from '@/services/accountPresetsService'
 import { projectService, transactionService, unifiedItemsService } from '@/services/inventoryService'
 import { ImageUploadService } from '@/services/imageService'
-import { budgetCategoriesService } from '@/services/budgetCategoriesService'
+import CategorySelect from '@/components/CategorySelect'
 import { extractPdfEmbeddedImages, type PdfEmbeddedImagePlacement } from '@/utils/pdfEmbeddedImageExtraction'
 import { COMPANY_NAME } from '@/constants/company'
 import type { ItemImage, TransactionItemFormData } from '@/types'
@@ -462,30 +461,7 @@ export default function ImportWayfairInvoice() {
     loadProject()
   }, [resolvedProjectId, currentAccountId])
 
-  useEffect(() => {
-    const loadWayfairDefaultCategory = async () => {
-      if (!currentAccountId) return
-      try {
-        // Wayfair invoices should default to Furnishings (if the category exists for this account).
-        const categories = await budgetCategoriesService.getCategories(currentAccountId, true)
-        const furnishings = categories.find(c =>
-          (c.slug || '').toLowerCase() === 'furnishings' ||
-          (c.name || '').toLowerCase().includes('furnish')
-        )
-        if (furnishings?.id) {
-          setCategoryId(furnishings.id)
-          return
-        }
 
-        // Fallback to account preset default category, if any.
-        const defaultCategory = await getDefaultCategory(currentAccountId)
-        if (defaultCategory) setCategoryId(defaultCategory)
-      } catch (err) {
-        console.error('Failed to load Wayfair default category:', err)
-      }
-    }
-    loadWayfairDefaultCategory()
-  }, [currentAccountId])
 
   const includedLineItems = useMemo(() => {
     if (!parseResult) return []
@@ -1245,7 +1221,7 @@ export default function ImportWayfairInvoice() {
                   </div>
                 )}
 
-                <div className={`grid grid-cols-1 ${taxRatePreset === 'Other' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+                <div className={`grid grid-cols-1 ${taxRatePreset === 'Other' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Transaction Date</label>
                     <input
@@ -1296,9 +1272,21 @@ export default function ImportWayfairInvoice() {
                     </p>
                   </div>
 
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <CategorySelect
+                      value={categoryId}
+                      onChange={setCategoryId}
+                      label="Budget Category"
+                      required
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Payment Method</label>
-                    <div className="mt-2 flex items-center gap-6">
+                    <div className="mt-2 flex flex-col gap-2">
                       <label className="flex items-center gap-2 text-sm text-gray-900">
                         <input
                           type="radio"
