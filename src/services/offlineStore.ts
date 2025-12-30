@@ -26,7 +26,8 @@ interface DBItem {
   businessInventoryLocation?: string
   originTransactionId?: string | null
   latestTransactionId?: string | null
-  version: number // For future conflict resolution
+  version: number // For conflict resolution
+  last_synced_at?: string // Track when this was last synced
 }
 
 interface DBTransaction {
@@ -52,6 +53,7 @@ interface DBTransaction {
   needsReview?: boolean
   sumItemPurchasePrices?: string
   version: number
+  last_synced_at?: string
 }
 
 interface DBProject {
@@ -67,6 +69,7 @@ interface DBProject {
   updatedAt: string
   createdBy: string
   version: number
+  last_synced_at?: string
 }
 
 class OfflineStore {
@@ -129,6 +132,12 @@ class OfflineStore {
     const store = transaction.objectStore('items')
 
     for (const item of items) {
+      // Ensure version exists and increment it
+      if (!item.version) {
+        item.version = 1
+      }
+      // Set last synced timestamp
+      item.last_synced_at = new Date().toISOString()
       store.put(item)
     }
 
@@ -158,6 +167,12 @@ class OfflineStore {
     const store = transaction.objectStore('transactions')
 
     for (const tx of transactions) {
+      // Ensure version exists and increment it
+      if (!tx.version) {
+        tx.version = 1
+      }
+      // Set last synced timestamp
+      tx.last_synced_at = new Date().toISOString()
       store.put(tx)
     }
 
@@ -186,6 +201,12 @@ class OfflineStore {
     const store = transaction.objectStore('projects')
 
     for (const project of projects) {
+      // Ensure version exists and increment it
+      if (!project.version) {
+        project.version = 1
+      }
+      // Set last synced timestamp
+      project.last_synced_at = new Date().toISOString()
       store.put(project)
     }
 

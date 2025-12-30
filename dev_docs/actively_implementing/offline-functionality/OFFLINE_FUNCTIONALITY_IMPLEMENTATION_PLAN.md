@@ -108,23 +108,38 @@ Implement offline-first functionality so users can:
 - Side-by-side comparison UI
 - Manual resolution options (keep local, keep server, merge)
 
-### Phase 4: Advanced Features (1 week)
-**Goal**: Polish offline experience
+### Phase 4: Offline Experience Polish (1 week)
+**Goal**: Make offline functionality robust, performant, and user-friendly
 
-#### 4.1 Selective Sync
-- Sync only relevant projects/accounts
-- Implement data cleanup (old projects)
-- Add manual sync triggers
+#### 4.1 Error Recovery & Resilience
+- Smart retry strategies beyond exponential backoff (detect permanent failures)
+- Partial sync recovery (resume interrupted syncs)
+- Corruption detection & repair (rebuild corrupted IndexedDB data)
+- Offline session recovery (restore state after browser crashes)
 
-#### 4.2 Offline Auth Handling
-- Cache auth tokens with expiration
-- Handle token refresh offline
-- Queue auth-dependent operations
+#### 4.2 User Experience Enhancements
+- Sync progress indicators (show % complete, items remaining)
+- Better conflict UI (diff view, preview of merged results)
+- Offline action feedback (toast notifications for queued operations)
+- Network quality indicators (connection speed, reliability hints)
 
-#### 4.3 Performance Optimizations
-- Compress stored data
-- Implement pagination for large datasets
-- Add background cleanup of old data
+#### 4.3 Performance & Storage Optimization
+- Storage quota management (warn before hitting limits, cleanup strategies)
+- Lazy loading & pagination (load data on-demand to reduce memory usage)
+- Background maintenance (cleanup old data, optimize indexes)
+- Memory leak prevention (proper cleanup of event listeners, cached data)
+
+#### 4.4 Testing & Monitoring
+- Comprehensive offline testing (simulated network conditions, chaos testing)
+- Sync reliability metrics (success rates, failure patterns)
+- Performance benchmarking (sync speed, memory usage, battery impact)
+- Error tracking & reporting (log sync failures for debugging)
+
+#### 4.5 Production Readiness
+- Graceful degradation (fallback when IndexedDB fails)
+- Cross-browser compatibility (handle Safari/Chrome/Firefox differences)
+- Mobile optimization (touch interactions, battery considerations)
+- Accessibility (screen reader support, keyboard navigation)
 
 ## Data Synchronization Strategy
 

@@ -1,6 +1,7 @@
-import { Operation } from '../types/operations'
+import { Operation, CreateItemOperation, UpdateItemOperation, DeleteItemOperation } from '../types/operations'
 import { offlineStore } from './offlineStore'
 import { supabase } from './supabase'
+import { conflictDetector } from './conflictDetector'
 
 class OperationQueue {
   private queue: Operation[] = []
@@ -81,6 +82,18 @@ class OperationQueue {
 
   private async executeOperation(operation: Operation): Promise<boolean> {
     try {
+      // Check for conflicts before executing (Phase 3: Conflict Resolution)
+      const projectId = this.getProjectIdFromOperation(operation)
+      if (projectId) {
+        const conflicts = await conflictDetector.detectConflicts(projectId)
+        if (conflicts.length > 0) {
+          // For now, log conflicts and skip execution
+          // In Phase 4, we'll integrate with UI for resolution
+          console.warn('Conflicts detected, skipping operation:', conflicts)
+          return false
+        }
+      }
+
       switch (operation.type) {
         case 'CREATE_ITEM':
           return await this.executeCreateItem(operation)
@@ -95,6 +108,23 @@ class OperationQueue {
     } catch (error) {
       console.error('Failed to execute operation:', error)
       return false
+    }
+  }
+
+  private getProjectIdFromOperation(operation: Operation): string | null {
+    switch (operation.type) {
+      case 'CREATE_ITEM':
+        return (operation as CreateItemOperation).data.projectId
+      case 'UPDATE_ITEM':
+        // UPDATE_ITEM doesn't have projectId in the current operation structure
+        // We'll need to look up the item to get projectId, but for now skip conflict detection
+        return null
+      case 'DELETE_ITEM':
+        // DELETE_ITEM doesn't have projectId in the current operation structure
+        // We'll need to look up the item to get projectId, but for now skip conflict detection
+        return null
+      default:
+        return null
     }
   }
 
