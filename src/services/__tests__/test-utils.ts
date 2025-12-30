@@ -194,7 +194,6 @@ export const createMockItem = (overrides?: Partial<any>) => ({
   lastUpdated: new Date().toISOString(),
   images: [],
   taxRatePct: 8.375,
-  taxAmount: '8.38',
   ...overrides
 })
 
@@ -214,7 +213,6 @@ export const createMockTransaction = (overrides?: Partial<any>) => ({
   taxState: 'NV',
   subtotal: '92.38',
   taxRatePct: 8.25,
-  taxAmount: '7.62',
   reimbursementType: CLIENT_OWES_COMPANY,
   status: 'pending',
   notes: 'Test transaction',

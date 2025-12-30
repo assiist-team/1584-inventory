@@ -256,7 +256,7 @@ export const projectService = {
           event: '*',
           schema: 'public',
           table: 'projects',
-          filter: `account_id=eq.${accountId}`
+          filter: 'account_id=eq.' + accountId
         },
         (payload) => {
           console.log('Projects change received!', payload)
@@ -1251,7 +1251,7 @@ export const transactionService = {
           schema: 'public',
           table: 'transactions',
           // Listen at account scope so we receive updates when project_id changes
-          filter: `account_id=eq.${accountId}`
+          filter: 'account_id=eq.' + accountId
         },
         async (payload) => {
           console.log('Transactions change received (account scope)!', payload)
@@ -1327,7 +1327,7 @@ export const transactionService = {
           event: '*',
           schema: 'public',
           table: 'transactions',
-          filter: `account_id=eq.${accountId}`
+          filter: 'account_id=eq.' + accountId
         },
         async (payload) => {
           console.log('All transactions change received!', payload)
@@ -1379,7 +1379,7 @@ export const transactionService = {
           event: '*',
           schema: 'public',
           table: 'transactions',
-          filter: `account_id=eq.${accountId} AND transaction_id=eq.${transactionId}`
+          filter: 'account_id=eq.' + accountId + ' AND transaction_id=eq.' + transactionId
         },
         async () => {
           // Refetch transaction on any change
@@ -1574,7 +1574,6 @@ export const unifiedItemsService = {
       inventoryStatus: converted.inventory_status || undefined,
       businessInventoryLocation: converted.business_inventory_location || undefined,
       taxRatePct: converted.tax_rate_pct ? parseFloat(converted.tax_rate_pct) : undefined,
-      taxAmount: converted.tax_amount || undefined,
       taxAmountPurchasePrice: converted.tax_amount_purchase_price || undefined,
       taxAmountProjectPrice: converted.tax_amount_project_price || undefined,
       createdBy: converted.created_by || undefined,
@@ -1613,7 +1612,6 @@ export const unifiedItemsService = {
     if (item.inventoryStatus !== undefined) dbItem.inventory_status = item.inventoryStatus
     if (item.businessInventoryLocation !== undefined) dbItem.business_inventory_location = item.businessInventoryLocation
     if (item.taxRatePct !== undefined) dbItem.tax_rate_pct = item.taxRatePct
-    if (item.taxAmount !== undefined) dbItem.tax_amount = item.taxAmount
     if (item.taxAmountPurchasePrice !== undefined) dbItem.tax_amount_purchase_price = item.taxAmountPurchasePrice
     if (item.taxAmountProjectPrice !== undefined) dbItem.tax_amount_project_price = item.taxAmountProjectPrice
     if (item.createdBy !== undefined) dbItem.created_by = item.createdBy
@@ -1719,7 +1717,7 @@ export const unifiedItemsService = {
           schema: 'public',
           table: 'items',
           // Broaden filter to account-level to catch updates where project_id changes
-          filter: `account_id=eq.${accountId}`
+          filter: 'account_id=eq.' + accountId
         },
         (payload) => {
           console.log('Project items change received (broad filter)!', payload)
@@ -1829,7 +1827,7 @@ export const unifiedItemsService = {
           event: '*',
           schema: 'public',
           table: 'items',
-          filter: `account_id=eq.${accountId}`
+          filter: 'account_id=eq.' + accountId
         },
         (payload) => {
           console.log('Business inventory change received!', payload)
@@ -3461,7 +3459,6 @@ export const unifiedItemsService = {
       last_updated: now.toISOString(),
       images: originalItem.images || [], // Copy images from original item
       tax_rate_pct: originalItem.taxRatePct || null,
-      tax_amount: originalItem.taxAmount || null,
       tax_amount_purchase_price: originalItem.taxAmountPurchasePrice || null,
       tax_amount_project_price: originalItem.taxAmountProjectPrice || null,
       created_by: originalItem.createdBy || null,

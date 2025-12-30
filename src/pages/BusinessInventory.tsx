@@ -1,4 +1,4 @@
-import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, DollarSign } from 'lucide-react'
+import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, DollarSign, ArrowUpDown } from 'lucide-react'
 import { useMemo } from 'react'
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
@@ -50,6 +50,8 @@ export default function BusinessInventory() {
   // Filter and selection state for inventory items (matching InventoryList.tsx)
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [sortMode, setSortMode] = useState<'alphabetical' | 'creationDate'>('alphabetical')
+  const [showSortMenu, setShowSortMenu] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
   const { showSuccess, showError } = useToast()
@@ -67,12 +69,13 @@ export default function BusinessInventory() {
   // Close filter menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if ((showFilterMenu || showTransactionFilterMenu) && !event.target) return
+      if ((showFilterMenu || showTransactionFilterMenu || showSortMenu) && !event.target) return
 
       const target = event.target as Element
-      if (!target.closest('.filter-menu') && !target.closest('.filter-button') && !target.closest('.transaction-filter-menu') && !target.closest('.transaction-filter-button')) {
+      if (!target.closest('.filter-menu') && !target.closest('.filter-button') && !target.closest('.transaction-filter-menu') && !target.closest('.transaction-filter-button') && !target.closest('.sort-menu') && !target.closest('.sort-button')) {
         setShowFilterMenu(false)
         setShowTransactionFilterMenu(false)
+        setShowSortMenu(false)
       }
     }
 
@@ -80,7 +83,7 @@ export default function BusinessInventory() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showFilterMenu, showTransactionFilterMenu])
+  }, [showFilterMenu, showTransactionFilterMenu, showSortMenu])
 
   // Close disposition menu when clicking outside
   useEffect(() => {
@@ -134,7 +137,7 @@ export default function BusinessInventory() {
 
   // Compute filtered items (matching InventoryList.tsx)
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
+    let filtered = items.filter(item => {
       // Apply search filter
       const matchesSearch = !inventorySearchQuery ||
         item.description?.toLowerCase().includes(inventorySearchQuery.toLowerCase()) ||
@@ -149,7 +152,23 @@ export default function BusinessInventory() {
 
       return matchesSearch && matchesStatus && matchesFilter
     })
-  }, [items, inventorySearchQuery, filters.status, filterMode])
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      if (sortMode === 'alphabetical') {
+        const aDesc = a.description || ''
+        const bDesc = b.description || ''
+        return aDesc.localeCompare(bDesc)
+      } else if (sortMode === 'creationDate') {
+        const aDate = new Date(a.dateCreated || 0).getTime()
+        const bDate = new Date(b.dateCreated || 0).getTime()
+        return bDate - aDate // Most recent first
+      }
+      return 0
+    })
+
+    return filtered
+  }, [items, inventorySearchQuery, filters.status, filterMode, sortMode])
 
   // Group filtered items by their grouping key
   const groupedItems = useMemo(() => {
@@ -163,14 +182,9 @@ export default function BusinessInventory() {
       groups.get(groupKey)!.push(item)
     })
 
-    // Convert to array and sort groups by the first item's position in original list
+    // Convert to array - items are already sorted in filteredItems
     return Array.from(groups.entries())
       .map(([groupKey, items]) => ({ groupKey, items }))
-      .sort((a, b) => {
-        const aIndex = filteredItems.indexOf(a.items[0])
-        const bIndex = filteredItems.indexOf(b.items[0])
-        return aIndex - bIndex
-      })
   }, [filteredItems])
 
   // Compute filtered transactions
@@ -738,14 +752,65 @@ export default function BusinessInventory() {
 
               {/* Bulk action buttons */}
               <div className="flex items-center space-x-2">
+                {/* Sort Button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowSortMenu(!showSortMenu)}
+                    className={`sort-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                      sortMode === 'alphabetical'
+                        ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                        : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
+                    }`}
+                    title="Sort items"
+                  >
+                    <ArrowUpDown className="h-4 w-4 mr-2" />
+                    Sort
+                  </button>
+
+                  {/* Sort Dropdown Menu */}
+                  {showSortMenu && (
+                    <div className="sort-menu absolute top-full left-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            setSortMode('alphabetical')
+                            setShowSortMenu(false)
+                          }}
+                          className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                            sortMode === 'alphabetical' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                          }`}
+                        >
+                          Alphabetical
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSortMode('creationDate')
+                            setShowSortMenu(false)
+                          }}
+                          className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                            sortMode === 'creationDate' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                          }`}
+                        >
+                          Creation Date
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Filter Button */}
                 <div className="relative">
                   <button
                     onClick={() => setShowFilterMenu(!showFilterMenu)}
-                    className="filter-button inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
+                    className={`filter-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                      filterMode === 'all'
+                        ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                        : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
+                    }`}
                     title="Filter items"
                   >
-                    <Filter className="h-4 w-4" />
+                    <Filter className="h-4 w-4 mr-2" />
+                    Filter
                   </button>
 
                   {/* Filter Dropdown Menu */}
@@ -849,6 +914,7 @@ export default function BusinessInventory() {
                             openDispositionMenu={openDispositionMenu}
                             setOpenDispositionMenu={setOpenDispositionMenu}
                             context="businessInventory"
+                            itemNumber={groupIndex + 1}
                           />
                         )
                       }
@@ -916,7 +982,7 @@ export default function BusinessInventory() {
                           >
                             {/* Render individual items in the expanded group */}
                             <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
-                              {groupItems.map((item) => (
+                              {groupItems.map((item, itemIndex) => (
                                 <InventoryItemRow
                                   key={item.itemId}
                                   item={item}
@@ -931,6 +997,9 @@ export default function BusinessInventory() {
                                   openDispositionMenu={openDispositionMenu}
                                   setOpenDispositionMenu={setOpenDispositionMenu}
                                   context="businessInventory"
+                                  itemNumber={groupIndex + 1}
+                                  duplicateCount={groupItems.length}
+                                  duplicateIndex={itemIndex + 1}
                                 />
                               ))}
                             </ul>
@@ -988,7 +1057,8 @@ export default function BusinessInventory() {
                         }`}
                         title="Filter transactions"
                       >
-                        <Filter className="h-4 w-4" />
+                        <Filter className="h-4 w-4 mr-2" />
+                        Filter
                       </button>
 
                       {/* Transaction Filter Dropdown Menu */}

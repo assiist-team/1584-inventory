@@ -128,7 +128,6 @@ export interface Item {
   images?: ItemImage[];         // Images associated with this item
   // Tax fields
   taxRatePct?: number; // percentage, e.g., 8.25
-  taxAmount?: string; // Legacy single tax amount (kept for compatibility)
   taxAmountPurchasePrice?: string; // Tax amount applied to `purchasePrice` (stored as four-decimal string; display as 2-decimal)
   taxAmountProjectPrice?: string;  // Tax amount applied to `projectPrice` (stored as four-decimal string; display as 2-decimal)
   createdBy?: string;

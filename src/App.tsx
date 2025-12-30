@@ -1,21 +1,38 @@
 import { Routes, Route } from 'react-router-dom'
-import { lazy, Suspense, ReactNode } from 'react'
+import { lazy, Suspense, ReactNode, useEffect } from 'react'
 import Layout from './components/layout/Layout'
 import LoadingSpinner from './components/ui/LoadingSpinner'
 import { ToastProvider } from './components/ui/ToastContext'
 import { AccountProvider } from './contexts/AccountContext'
 import { BusinessProfileProvider } from './contexts/BusinessProfileContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
+import { NetworkStatus } from './components/NetworkStatus'
+import { offlineStore } from './services/offlineStore'
 
 const withRouteSuspense = (element: ReactNode, fallback?: ReactNode) => (
   <Suspense fallback={fallback ?? <LoadingSpinner />}>{element}</Suspense>
 )
 
 function App() {
+  useEffect(() => {
+    // Initialize offline store on app startup
+    const initOfflineStore = async () => {
+      try {
+        await offlineStore.init()
+        console.log('Offline store initialized')
+      } catch (error) {
+        console.error('Failed to initialize offline store:', error)
+      }
+    }
+
+    initOfflineStore()
+  }, [])
+
   return (
     <AccountProvider>
       <BusinessProfileProvider>
         <ToastProvider>
+          <NetworkStatus />
           <Routes>
             <Route path="/auth/callback" element={withRouteSuspense(<AuthCallback />)} />
             <Route path="/invite/:token" element={withRouteSuspense(<InviteAccept />)} />

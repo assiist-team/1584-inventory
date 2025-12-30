@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Search, RotateCcw, Camera, Trash2, QrCode, Filter } from 'lucide-react'
+import { Plus, Search, RotateCcw, Camera, Trash2, QrCode, Filter, ArrowUpDown } from 'lucide-react'
 import ContextLink from '@/components/ContextLink'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
 import { lineageService } from '@/services/lineageService'
@@ -37,7 +37,41 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [sortMode, setSortMode] = useState<'alphabetical' | 'creationDate'>('alphabetical')
+  const [showSortMenu, setShowSortMenu] = useState(false)
   const { showSuccess, showError } = useToast()
+
+  const parseMoney = (value?: string | number | null) => {
+    if (value === undefined || value === null) return 0
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+    const trimmed = value.trim()
+    if (!trimmed) return 0
+    const parsed = Number.parseFloat(trimmed)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const hasNonEmptyMoneyString = (value?: string | number | null) => {
+    if (value === undefined || value === null) return false
+    if (typeof value === 'number') return Number.isFinite(value)
+    if (typeof value !== 'string') return false
+    return value.trim().length > 0 && Number.isFinite(Number.parseFloat(value))
+  }
+
+  const formatCurrency = (amount?: string | number | null) => {
+    const numeric = parseMoney(amount)
+    return numeric.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }
+
+  const getPrimaryPrice = (item: Item) => {
+    if (hasNonEmptyMoneyString(item.projectPrice)) return item.projectPrice
+    if (hasNonEmptyMoneyString(item.purchasePrice)) return item.purchasePrice
+    return undefined
+  }
 
   // Debug logging
   useEffect(() => {
@@ -103,8 +137,9 @@ export default function InventoryList({ projectId, projectName, items: propItems
       if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
         setOpenDispositionMenu(null)
       }
-      if (showFilterMenu && !target.closest('.filter-menu') && !target.closest('.filter-button')) {
+      if ((showFilterMenu || showSortMenu) && !target.closest('.filter-menu') && !target.closest('.filter-button') && !target.closest('.sort-menu') && !target.closest('.sort-button')) {
         setShowFilterMenu(false)
+        setShowSortMenu(false)
       }
     }
 
@@ -112,7 +147,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [openDispositionMenu, showFilterMenu])
+  }, [openDispositionMenu, showFilterMenu, showSortMenu])
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -373,6 +408,17 @@ export default function InventoryList({ projectId, projectName, items: propItems
     }
 
     return matchesSearch && matchesFilter
+  }).sort((a, b) => {
+    if (sortMode === 'alphabetical') {
+      const aDesc = a.description || ''
+      const bDesc = b.description || ''
+      return aDesc.localeCompare(bDesc)
+    } else if (sortMode === 'creationDate') {
+      const aDate = new Date(a.dateCreated || 0).getTime()
+      const bDate = new Date(b.dateCreated || 0).getTime()
+      return bDate - aDate // Most recent first
+    }
+    return 0
   })
 
   // Group filtered items by their grouping key
@@ -387,14 +433,9 @@ export default function InventoryList({ projectId, projectName, items: propItems
       groups.get(groupKey)!.push(item)
     })
 
-    // Convert to array and sort groups by the first item's position in original list
+    // Convert to array - items are already sorted in filteredItems
     return Array.from(groups.entries())
       .map(([groupKey, items]) => ({ groupKey, items }))
-      .sort((a, b) => {
-        const aIndex = filteredItems.indexOf(a.items[0])
-        const bIndex = filteredItems.indexOf(b.items[0])
-        return aIndex - bIndex
-      })
   }, [filteredItems])
 
   return (
@@ -451,6 +492,52 @@ export default function InventoryList({ projectId, projectName, items: propItems
 
             {/* Bulk action buttons */}
             <div className="flex items-center space-x-2">
+              {/* Sort Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowSortMenu(!showSortMenu)}
+                  className={`sort-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                    sortMode === 'alphabetical'
+                      ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                      : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
+                  }`}
+                  title="Sort items"
+                >
+                  <ArrowUpDown className="h-4 w-4 mr-2" />
+                  Sort
+                </button>
+
+                {/* Sort Dropdown Menu */}
+                {showSortMenu && (
+                  <div className="sort-menu absolute top-full left-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setSortMode('alphabetical')
+                          setShowSortMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          sortMode === 'alphabetical' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                        }`}
+                      >
+                        Alphabetical
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSortMode('creationDate')
+                          setShowSortMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          sortMode === 'creationDate' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                        }`}
+                      >
+                        Creation Date
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Filter Button */}
               <div className="relative">
                 <button
@@ -462,7 +549,8 @@ export default function InventoryList({ projectId, projectName, items: propItems
                   }`}
                   title="Filter items"
                 >
-                  <Filter className="h-4 w-4" />
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filter
                 </button>
 
                 {/* Filter Dropdown Menu */}
@@ -584,7 +672,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
         !isLoading && !error && (
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
-              {groupedItems.map(({ groupKey, items: groupItems }) => {
+              {groupedItems.map(({ groupKey, items: groupItems }, groupIndex) => {
                 // Single item - render directly
                 if (groupItems.length === 1) {
                   const item = groupItems[0]
@@ -604,6 +692,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       setOpenDispositionMenu={setOpenDispositionMenu}
                       context="project"
                       projectId={projectId}
+                      itemNumber={groupIndex + 1}
                     />
                   )
                 }
@@ -611,6 +700,20 @@ export default function InventoryList({ projectId, projectName, items: propItems
                 // Multiple items - render as collapsed group
                 const firstItem = groupItems[0]
                 const groupSelectionState = getGroupSelectionState(groupItems)
+                const locationValue = firstItem.space || firstItem.businessInventoryLocation
+                const hasAnyPrice = groupItems.some(item => getPrimaryPrice(item) !== undefined)
+                const totalPrice = groupItems.reduce((sum, item) => sum + parseMoney(getPrimaryPrice(item)), 0)
+                const firstItemPrice = parseMoney(getPrimaryPrice(firstItem))
+                const hasAnyTaxPurchase = groupItems.some(item => hasNonEmptyMoneyString(item.taxAmountPurchasePrice))
+                const hasAnyTaxProject = groupItems.some(item => hasNonEmptyMoneyString(item.taxAmountProjectPrice))
+                const totalTaxPurchase = groupItems.reduce(
+                  (sum, item) => sum + parseMoney(item.taxAmountPurchasePrice as string | number | null),
+                  0
+                )
+                const totalTaxProject = groupItems.reduce(
+                  (sum, item) => sum + parseMoney(item.taxAmountProjectPrice as string | number | null),
+                  0
+                )
 
                 return (
                   <li key={groupKey} className="relative">
@@ -620,13 +723,13 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       selectionState={groupSelectionState}
                       onToggleSelection={(checked) => handleSelectGroup(groupItems, checked)}
                       summary={
-                        <div className="flex items-center gap-3 py-3">
+                        <div className="flex items-start gap-4 py-3">
                           <div className="flex-shrink-0">
                             {firstItem.images && firstItem.images.length > 0 ? (
                               (() => {
                                 const primaryImage = firstItem.images.find(img => img.isPrimary) || firstItem.images[0]
                                 return (
-                                  <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                                  <div className="w-12 h-12 rounded-md overflow-hidden border border-gray-200">
                                     <img
                                       src={primaryImage.url}
                                       alt={primaryImage.alt || 'Item image'}
@@ -636,42 +739,91 @@ export default function InventoryList({ projectId, projectName, items: propItems
                                 )
                               })()
                             ) : (
-                              <div className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400">
-                                <Camera className="h-6 w-6" />
+                              <div className="w-12 h-12 rounded-md border border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                                <Camera className="h-5 w-5" />
                               </div>
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
-                              {firstItem.description}
-                            </h3>
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 mt-1">
-                              {(firstItem.projectPrice || firstItem.purchasePrice) && (
-                                <span className="font-medium text-gray-700">
-                                  ${firstItem.projectPrice || firstItem.purchasePrice}
+                          <div className="flex-1 min-w-0 space-y-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                                Item {groupIndex + 1} ×{groupItems.length}
+                              </span>
+                              {hasAnyPrice && (
+                                <span className="text-sm text-gray-500">
+                                  {formatCurrency(totalPrice)}
+                                  {groupItems.length > 1 && totalPrice !== firstItemPrice && (
+                                    <span className="text-xs text-gray-400">
+                                      {' ('}{formatCurrency(totalPrice / groupItems.length)} each)
+                                    </span>
+                                  )}
+                                  {hasAnyTaxPurchase && totalTaxPurchase > 0 && (
+                                    <>
+                                      {' • Tax: '}
+                                      {formatCurrency(totalTaxPurchase)}
+                                      {groupItems.length > 1 && (
+                                        <span className="text-xs text-gray-400">
+                                          {' ('}{formatCurrency(totalTaxPurchase / groupItems.length)} each)
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                  {!hasAnyTaxPurchase && hasAnyTaxProject && totalTaxProject > 0 && (
+                                    <>
+                                      {' • Tax: '}
+                                      {formatCurrency(totalTaxProject)}
+                                      {groupItems.length > 1 && (
+                                        <span className="text-xs text-gray-400">
+                                          {' ('}{formatCurrency(totalTaxProject / groupItems.length)} each)
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
                                 </span>
                               )}
-                              {firstItem.source && (
-                                <>
-                                  {(firstItem.projectPrice || firstItem.purchasePrice) && <span className="hidden sm:inline">•</span>}
-                                  <span className="font-medium text-gray-700">{firstItem.source}</span>
-                                </>
-                              )}
+                            </div>
+
+                            <h4 className="text-sm font-medium text-gray-900">
+                              {firstItem.description || 'No description'}
+                            </h4>
+
+                            {locationValue && (
+                              <div className="text-sm text-gray-500">
+                                <span className="font-medium">Location:</span> {locationValue}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                               {firstItem.sku && (
-                                <>
-                                  {(firstItem.projectPrice || firstItem.purchasePrice || firstItem.source) && <span className="hidden sm:inline">•</span>}
-                                  <span className="font-medium text-gray-700">{firstItem.sku}</span>
-                                </>
+                                <div>
+                                  <span className="font-medium">SKU:</span> {firstItem.sku}
+                                </div>
+                              )}
+                              {firstItem.marketValue && (
+                                <div>
+                                  <span className="font-medium">Market Value:</span> {formatCurrency(firstItem.marketValue)}
+                                </div>
+                              )}
+                              {hasNonEmptyMoneyString(firstItem.taxAmountProjectPrice) && (
+                                <div>
+                                  <span className="font-medium">Tax on project:</span> {formatCurrency(firstItem.taxAmountProjectPrice)}
+                                </div>
                               )}
                             </div>
+
+                            {firstItem.notes && (
+                              <div className="text-sm text-gray-600 whitespace-pre-wrap">
+                                <span className="font-medium">Notes:</span> {firstItem.notes}
+                              </div>
+                            )}
                           </div>
                         </div>
                       }
                     >
                       {/* Render individual items in the expanded group */}
                       <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
-                        {groupItems.map((item) => (
+                        {groupItems.map((item, itemIndex) => (
                           <InventoryItemRow
                             key={item.itemId}
                             item={item}
@@ -687,6 +839,9 @@ export default function InventoryList({ projectId, projectName, items: propItems
                             setOpenDispositionMenu={setOpenDispositionMenu}
                             context="project"
                             projectId={projectId}
+                            itemNumber={groupIndex + 1}
+                            duplicateCount={groupItems.length}
+                            duplicateIndex={itemIndex + 1}
                           />
                         ))}
                       </ul>
