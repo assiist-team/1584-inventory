@@ -1,6 +1,8 @@
 import { offlineStore, type DBItem } from './offlineStore'
 import { supabase } from './supabase'
+import { operationQueue } from './operationQueue'
 import type { Item } from '../types'
+import type { Operation } from '../types/operations'
 
 export class OfflineItemService {
   private isOnline = navigator.onLine
@@ -56,6 +58,96 @@ export class OfflineItemService {
     }
   }
 
+  async createItem(itemData: {
+    projectId: string
+    name: string
+    description?: string
+    quantity: number
+    unitCost: number
+  }): Promise<void> {
+    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount'> = {
+      type: 'CREATE_ITEM',
+      data: itemData
+    }
+
+    await operationQueue.add(operation)
+
+    // Optimistically update local store
+    const tempId = `temp-${Date.now()}`
+    const tempItem: DBItem = {
+      itemId: tempId,
+      projectId: itemData.projectId,
+      name: itemData.name,
+      description: itemData.description || '',
+      source: 'manual',
+      sku: `TEMP-${Date.now()}`,
+      paymentMethod: 'cash',
+      qrKey: crypto.randomUUID(),
+      bookmark: false,
+      dateCreated: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      version: 1
+    }
+
+    await offlineStore.saveItems([tempItem])
+
+    // Trigger immediate processing if online
+    if (navigator.onLine) {
+      operationQueue.processQueue()
+    }
+  }
+
+  async updateItem(itemId: string, updates: Partial<{
+    name: string
+    description: string
+    quantity: number
+    unitCost: number
+  }>): Promise<void> {
+    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount'> = {
+      type: 'UPDATE_ITEM',
+      data: { id: itemId, updates }
+    }
+
+    await operationQueue.add(operation)
+
+    // Update local store optimistically
+    const existingItems = await offlineStore.getItems('') // Get all items for now
+    const itemToUpdate = existingItems.find(item => item.itemId === itemId)
+
+    if (itemToUpdate) {
+      const optimisticItem = {
+        ...itemToUpdate,
+        ...updates,
+        lastUpdated: new Date().toISOString(),
+        version: itemToUpdate.version + 1
+      }
+      await offlineStore.saveItems([optimisticItem])
+    }
+
+    // Trigger immediate processing if online
+    if (navigator.onLine) {
+      operationQueue.processQueue()
+    }
+  }
+
+  async deleteItem(itemId: string): Promise<void> {
+    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount'> = {
+      type: 'DELETE_ITEM',
+      data: { id: itemId }
+    }
+
+    await operationQueue.add(operation)
+
+    // Note: Optimistic deletion from local store would be complex
+    // since we need to track deletions. For now, we'll let the
+    // React Query invalidation handle this when sync completes.
+
+    // Trigger immediate processing if online
+    if (navigator.onLine) {
+      operationQueue.processQueue()
+    }
+  }
+
   private convertDbItemToItem(dbItem: DBItem): Item {
     return {
       itemId: dbItem.itemId,
@@ -78,7 +170,6 @@ export class OfflineItemService {
       dateCreated: dbItem.dateCreated,
       lastUpdated: dbItem.lastUpdated,
       taxRatePct: dbItem.taxRatePct,
-      taxAmount: dbItem.taxAmount,
       taxAmountPurchasePrice: dbItem.taxAmountPurchasePrice,
       taxAmountProjectPrice: dbItem.taxAmountProjectPrice,
       createdBy: dbItem.createdBy,

@@ -7,7 +7,9 @@ import { AccountProvider } from './contexts/AccountContext'
 import { BusinessProfileProvider } from './contexts/BusinessProfileContext'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import { NetworkStatus } from './components/NetworkStatus'
+import { SyncStatus } from './components/SyncStatus'
 import { offlineStore } from './services/offlineStore'
+import { operationQueue } from './services/operationQueue'
 
 const withRouteSuspense = (element: ReactNode, fallback?: ReactNode) => (
   <Suspense fallback={fallback ?? <LoadingSpinner />}>{element}</Suspense>
@@ -15,17 +17,20 @@ const withRouteSuspense = (element: ReactNode, fallback?: ReactNode) => (
 
 function App() {
   useEffect(() => {
-    // Initialize offline store on app startup
-    const initOfflineStore = async () => {
+    // Initialize offline store and operation queue on app startup
+    const initOfflineServices = async () => {
       try {
         await offlineStore.init()
         console.log('Offline store initialized')
+
+        await operationQueue.init()
+        console.log('Operation queue initialized')
       } catch (error) {
-        console.error('Failed to initialize offline store:', error)
+        console.error('Failed to initialize offline services:', error)
       }
     }
 
-    initOfflineStore()
+    initOfflineServices()
   }, [])
 
   return (
@@ -33,6 +38,7 @@ function App() {
       <BusinessProfileProvider>
         <ToastProvider>
           <NetworkStatus />
+          <SyncStatus />
           <Routes>
             <Route path="/auth/callback" element={withRouteSuspense(<AuthCallback />)} />
             <Route path="/invite/:token" element={withRouteSuspense(<InviteAccept />)} />

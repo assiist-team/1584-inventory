@@ -19,7 +19,6 @@ interface DBItem {
   dateCreated: string
   lastUpdated: string
   taxRatePct?: number
-  taxAmount?: string
   taxAmountPurchasePrice?: string
   taxAmountProjectPrice?: string
   createdBy?: string
