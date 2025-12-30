@@ -1,17 +1,21 @@
-import { useState, useEffect } from 'react'
-import { Plus, Search, Bookmark, RotateCcw, Camera, ChevronDown, Edit, Trash2, QrCode, Filter, Copy } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { Plus, Search, RotateCcw, Camera, Trash2, QrCode, Filter, ArrowUpDown } from 'lucide-react'
 import ContextLink from '@/components/ContextLink'
 import { unifiedItemsService, integrationService } from '@/services/inventoryService'
 import { lineageService } from '@/services/lineageService'
 import { ImageUploadService } from '@/services/imageService'
 import { Item, ItemImage } from '@/types'
-import { normalizeDisposition, dispositionsEqual, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { normalizeDisposition } from '@/utils/dispositionUtils'
+import type { ItemDisposition } from '@/types'
 import { useToast } from '@/components/ui/ToastContext'
 import { useBookmark } from '@/hooks/useBookmark'
 import { useDuplication } from '@/hooks/useDuplication'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
 import { useAccount } from '@/contexts/AccountContext'
+import { projectItemNew } from '@/utils/routes'
+import { getInventoryListGroupKey } from '@/utils/itemGrouping'
+import CollapsedDuplicateGroup from '@/components/ui/CollapsedDuplicateGroup'
+import InventoryItemRow from '@/components/items/InventoryItemRow'
 
 interface InventoryListProps {
   projectId: string
@@ -25,7 +29,6 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<Item[]>(propItems || [])
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Show loading spinner only if account is loading - items come from props (parent handles that loading)
@@ -34,7 +37,41 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
   const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [sortMode, setSortMode] = useState<'alphabetical' | 'creationDate'>('alphabetical')
+  const [showSortMenu, setShowSortMenu] = useState(false)
   const { showSuccess, showError } = useToast()
+
+  const parseMoney = (value?: string | number | null) => {
+    if (value === undefined || value === null) return 0
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+    const trimmed = value.trim()
+    if (!trimmed) return 0
+    const parsed = Number.parseFloat(trimmed)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const hasNonEmptyMoneyString = (value?: string | number | null) => {
+    if (value === undefined || value === null) return false
+    if (typeof value === 'number') return Number.isFinite(value)
+    if (typeof value !== 'string') return false
+    return value.trim().length > 0 && Number.isFinite(Number.parseFloat(value))
+  }
+
+  const formatCurrency = (amount?: string | number | null) => {
+    const numeric = parseMoney(amount)
+    return numeric.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }
+
+  const getPrimaryPrice = (item: Item) => {
+    if (hasNonEmptyMoneyString(item.projectPrice)) return item.projectPrice
+    if (hasNonEmptyMoneyString(item.purchasePrice)) return item.purchasePrice
+    return undefined
+  }
 
   // Debug logging
   useEffect(() => {
@@ -100,8 +137,9 @@ export default function InventoryList({ projectId, projectName, items: propItems
       if (!target.closest('.disposition-menu') && !target.closest('.disposition-badge')) {
         setOpenDispositionMenu(null)
       }
-      if (showFilterMenu && !target.closest('.filter-menu') && !target.closest('.filter-button')) {
+      if ((showFilterMenu || showSortMenu) && !target.closest('.filter-menu') && !target.closest('.filter-button') && !target.closest('.sort-menu') && !target.closest('.sort-button')) {
         setShowFilterMenu(false)
+        setShowSortMenu(false)
       }
     }
 
@@ -109,11 +147,11 @@ export default function InventoryList({ projectId, projectName, items: propItems
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [openDispositionMenu, showFilterMenu])
+  }, [openDispositionMenu, showFilterMenu, showSortMenu])
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedItems(new Set(items.map(item => item.itemId)))
+      setSelectedItems(new Set(filteredItems.map(item => item.itemId)))
     } else {
       setSelectedItems(new Set())
     }
@@ -127,6 +165,25 @@ export default function InventoryList({ projectId, projectName, items: propItems
       newSelected.delete(itemId)
     }
     setSelectedItems(newSelected)
+  }
+
+  const handleSelectGroup = (groupItems: Item[], checked: boolean) => {
+    const newSelected = new Set(selectedItems)
+    groupItems.forEach(item => {
+      if (checked) {
+        newSelected.add(item.itemId)
+      } else {
+        newSelected.delete(item.itemId)
+      }
+    })
+    setSelectedItems(newSelected)
+  }
+
+  const getGroupSelectionState = (groupItems: Item[]) => {
+    const selectedInGroup = groupItems.filter(item => selectedItems.has(item.itemId)).length
+    if (selectedInGroup === 0) return 'unchecked'
+    if (selectedInGroup === groupItems.length) return 'checked'
+    return 'indeterminate'
   }
 
   // Use centralized bookmark hook
@@ -144,13 +201,14 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const { duplicateItem } = useDuplication({
     items,
     setItems,
-    projectId
+    projectId,
+    accountId: currentAccountId || undefined
   })
 
   // Use navigation context for proper back navigation
   const { buildContextUrl } = useNavigationContext()
 
-  const updateDisposition = async (itemId: string, newDisposition: string) => {
+  const updateDisposition = async (itemId: string, newDisposition: ItemDisposition) => {
     console.log('🎯 InventoryList updateDisposition called:', itemId, newDisposition)
 
     try {
@@ -193,7 +251,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
         // For non-inventory dispositions, update local state optimistically
         setItems(items.map(item =>
           item.itemId === itemId
-            ? { ...item, disposition: newDisposition }
+            ? { ...item, disposition: newDisposition as ItemDisposition }
             : item
         ))
 
@@ -206,27 +264,6 @@ export default function InventoryList({ projectId, projectName, items: propItems
     }
   }
 
-  const toggleDispositionMenu = (itemId: string) => {
-    setOpenDispositionMenu(openDispositionMenu === itemId ? null : itemId)
-  }
-
-  const getDispositionBadgeClasses = (disposition?: string) => {
-    const baseClasses = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium cursor-pointer transition-colors hover:opacity-80'
-    const d = normalizeDisposition(disposition)
-
-    switch (d) {
-      case 'keep':
-        return `${baseClasses} bg-green-100 text-green-800`
-      case 'to return':
-        return `${baseClasses} bg-red-100 text-red-700`
-      case 'returned':
-        return `${baseClasses} bg-red-800 text-red-100`
-      case 'inventory':
-        return `${baseClasses} bg-primary-100 text-primary-600`
-      default:
-        return `${baseClasses} bg-gray-100 text-gray-800`
-    }
-  }
 
 
   const handleAddImage = async (itemId: string) => {
@@ -304,17 +341,42 @@ export default function InventoryList({ projectId, projectName, items: propItems
       setError('Account ID is required')
       return
     }
+
+    const idsToDelete = Array.from(selectedItems)
+
+    // Optimistically remove items so the UI reflects the deletion immediately
+    setItems(prev => prev.filter(item => !idsToDelete.includes(item.itemId)))
+    setSelectedItems(new Set())
+
     try {
-      const deletePromises = Array.from(selectedItems).map(itemId =>
+      const deletePromises = idsToDelete.map(itemId =>
         unifiedItemsService.deleteItem(currentAccountId, itemId)
       )
 
       await Promise.all(deletePromises)
-      setSelectedItems(new Set())
       setError(null)
     } catch (error) {
       console.error('Failed to delete items:', error)
       setError('Failed to delete some items. Please try again.')
+      // Reload items to ensure UI stays in sync if delete failed
+      await handleRetry()
+    }
+  }
+
+  const handleRetry = async () => {
+    if (!currentAccountId) {
+      setError('Account ID is required to reload inventory.')
+      return
+    }
+
+    setError(null)
+
+    try {
+      const refreshedItems = await unifiedItemsService.getItemsByProject(currentAccountId, projectId)
+      setItems(refreshedItems)
+    } catch (retryError) {
+      console.error('Failed to reload inventory:', retryError)
+      setError('Failed to reload inventory. Please try again.')
     }
   }
 
@@ -346,14 +408,42 @@ export default function InventoryList({ projectId, projectName, items: propItems
     }
 
     return matchesSearch && matchesFilter
+  }).sort((a, b) => {
+    if (sortMode === 'alphabetical') {
+      const aDesc = a.description || ''
+      const bDesc = b.description || ''
+      return aDesc.localeCompare(bDesc)
+    } else if (sortMode === 'creationDate') {
+      const aDate = new Date(a.dateCreated || 0).getTime()
+      const bDate = new Date(b.dateCreated || 0).getTime()
+      return bDate - aDate // Most recent first
+    }
+    return 0
   })
+
+  // Group filtered items by their grouping key
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, Item[]>()
+
+    filteredItems.forEach(item => {
+      const groupKey = getInventoryListGroupKey(item, 'project')
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, [])
+      }
+      groups.get(groupKey)!.push(item)
+    })
+
+    // Convert to array - items are already sorted in filteredItems
+    return Array.from(groups.entries())
+      .map(([groupKey, items]) => ({ groupKey, items }))
+  }, [filteredItems])
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-2">
-        <ContextLink
-          to={buildContextUrl(`/project/${projectId}/item/add`, { project: projectId })}
+          <ContextLink
+            to={buildContextUrl(projectItemNew(projectId), { project: projectId })}
           className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200 w-full sm:w-auto"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -386,7 +476,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
               type="checkbox"
               className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
               onChange={(e) => handleSelectAll(e.target.checked)}
-              checked={selectedItems.size === items.length && items.length > 0}
+              checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
             />
             <span className="ml-3 text-sm font-medium text-gray-700">Select all</span>
           </label>
@@ -396,12 +486,58 @@ export default function InventoryList({ projectId, projectName, items: propItems
             {/* Counter (when visible) */}
             {selectedItems.size > 0 && (
               <span className="text-sm text-gray-500">
-                {selectedItems.size} of {items.length} selected
+                {selectedItems.size} of {filteredItems.length} selected
               </span>
             )}
 
             {/* Bulk action buttons */}
             <div className="flex items-center space-x-2">
+              {/* Sort Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowSortMenu(!showSortMenu)}
+                  className={`sort-button inline-flex items-center justify-center px-3 py-2 border text-sm font-medium rounded-md transition-colors duration-200 ${
+                    sortMode === 'alphabetical'
+                      ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                      : 'border-primary-500 text-primary-600 bg-primary-50 hover:bg-primary-100'
+                  }`}
+                  title="Sort items"
+                >
+                  <ArrowUpDown className="h-4 w-4 mr-2" />
+                  Sort
+                </button>
+
+                {/* Sort Dropdown Menu */}
+                {showSortMenu && (
+                  <div className="sort-menu absolute top-full left-0 mt-1 w-40 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setSortMode('alphabetical')
+                          setShowSortMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          sortMode === 'alphabetical' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                        }`}
+                      >
+                        Alphabetical
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSortMode('creationDate')
+                          setShowSortMenu(false)
+                        }}
+                        className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          sortMode === 'creationDate' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                        }`}
+                      >
+                        Creation Date
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Filter Button */}
               <div className="relative">
                 <button
@@ -413,7 +549,8 @@ export default function InventoryList({ projectId, projectName, items: propItems
                   }`}
                   title="Filter items"
                 >
-                  <Filter className="h-4 w-4" />
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filter
                 </button>
 
                 {/* Filter Dropdown Menu */}
@@ -514,7 +651,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
           <h3 className="text-lg font-medium text-red-900 mb-2">Error loading inventory</h3>
           <p className="text-sm text-red-500 mb-6 max-w-sm mx-auto">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={handleRetry}
             className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors duration-200 w-full sm:w-auto max-w-xs"
           >
             <RotateCcw className="h-5 w-5 mr-2" />
@@ -535,108 +672,64 @@ export default function InventoryList({ projectId, projectName, items: propItems
         !isLoading && !error && (
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
-              {filteredItems.map((item) => (
-                <li key={item.itemId} className="relative bg-gray-50 transition-colors duration-200 hover:bg-gray-100">
-                  {/* Top row: Controls - stays outside Link */}
-                  <div className="flex items-center justify-between mb-0 px-4 py-3">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4 flex-shrink-0"
-                        checked={selectedItems.has(item.itemId)}
-                        onChange={(e) => handleSelectItem(item.itemId, e.target.checked)}
-                      />
-                    </div>
+              {groupedItems.map(({ groupKey, items: groupItems }, groupIndex) => {
+                // Single item - render directly
+                if (groupItems.length === 1) {
+                  const item = groupItems[0]
+                  return (
+                    <InventoryItemRow
+                      key={item.itemId}
+                      item={item}
+                      isSelected={selectedItems.has(item.itemId)}
+                      onSelect={handleSelectItem}
+                      onBookmark={toggleBookmark}
+                      onDuplicate={duplicateItem}
+                      onEdit={() => {}}
+                      onDispositionUpdate={updateDisposition}
+                      onAddImage={handleAddImage}
+                      uploadingImages={uploadingImages}
+                      openDispositionMenu={openDispositionMenu}
+                      setOpenDispositionMenu={setOpenDispositionMenu}
+                      context="project"
+                      projectId={projectId}
+                      itemNumber={groupIndex + 1}
+                    />
+                  )
+                }
 
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          toggleBookmark(item.itemId)
-                        }}
-                        className={`inline-flex items-center justify-center p-2 border text-sm font-medium rounded-md transition-colors ${
-                          item.bookmark
-                            ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
-                            : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
-                        } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`}
-                        title={item.bookmark ? 'Remove Bookmark' : 'Add Bookmark'}
-                      >
-                        <Bookmark className="h-4 w-4" fill={item.bookmark ? 'currentColor' : 'none'} />
-                      </button>
-                      <ContextLink
-                        to={buildContextUrl(`/project/${projectId}/edit-item/${item.itemId}`, { project: projectId })}
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-                        title="Edit item"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </ContextLink>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          duplicateItem(item.itemId)
-                        }}
-                        className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-                        title="Duplicate item"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                        <div className="relative ml-1">
-                          <span
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              toggleDispositionMenu(item.itemId)
-                            }}
-                          className={`disposition-badge ${getDispositionBadgeClasses(item.disposition)}`}
-                        >
-                          {displayDispositionLabel(item.disposition) || 'Not Set'}
-                            <ChevronDown className="h-3 w-3 ml-1" />
-                          </span>
+                // Multiple items - render as collapsed group
+                const firstItem = groupItems[0]
+                const groupSelectionState = getGroupSelectionState(groupItems)
+                const locationValue = firstItem.space || firstItem.businessInventoryLocation
+                const hasAnyPrice = groupItems.some(item => getPrimaryPrice(item) !== undefined)
+                const totalPrice = groupItems.reduce((sum, item) => sum + parseMoney(getPrimaryPrice(item)), 0)
+                const firstItemPrice = parseMoney(getPrimaryPrice(firstItem))
+                const hasAnyTaxPurchase = groupItems.some(item => hasNonEmptyMoneyString(item.taxAmountPurchasePrice))
+                const hasAnyTaxProject = groupItems.some(item => hasNonEmptyMoneyString(item.taxAmountProjectPrice))
+                const totalTaxPurchase = groupItems.reduce(
+                  (sum, item) => sum + parseMoney(item.taxAmountPurchasePrice as string | number | null),
+                  0
+                )
+                const totalTaxProject = groupItems.reduce(
+                  (sum, item) => sum + parseMoney(item.taxAmountProjectPrice as string | number | null),
+                  0
+                )
 
-                          {/* Dropdown menu */}
-                          {openDispositionMenu === item.itemId && (
-                            <div className="disposition-menu absolute top-full left-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                              <div className="py-1">
-                                {['keep', 'to return', 'returned', 'inventory'].map((disposition) => (
-                                  <button
-                                    key={disposition}
-                                    onClick={(e) => {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      updateDisposition(item.itemId, disposition)
-                                    }}
-                                    className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${
-                                      dispositionsEqual(item.disposition, disposition) ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
-                                    }`}
-                                    disabled={!item.disposition}
-                                  >
-                                    {disposition === 'to return' ? 'To Return' : disposition.charAt(0).toUpperCase() + disposition.slice(1)}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                    </div>
-                  </div>
-
-                  {/* Main tappable content - wrapped in Link */}
-                  <ContextLink to={buildContextUrl(`/item/${item.itemId}`, { project: projectId })}>
-                    <div className="block bg-transparent">
-                      <div className="px-4 pb-3 sm:px-6">
-                        {/* Middle row: Thumbnail and Description - now tappable */}
-                        <div className="flex items-center gap-3 py-3">
+                return (
+                  <li key={groupKey} className="relative">
+                    <CollapsedDuplicateGroup
+                      groupId={groupKey}
+                      count={groupItems.length}
+                      selectionState={groupSelectionState}
+                      onToggleSelection={(checked) => handleSelectGroup(groupItems, checked)}
+                      summary={
+                        <div className="flex items-start gap-4 py-3">
                           <div className="flex-shrink-0">
-                            {item.images && item.images.length > 0 ? (
-                              // Show primary image thumbnail or first image if no primary
+                            {firstItem.images && firstItem.images.length > 0 ? (
                               (() => {
-                                const primaryImage = item.images.find(img => img.isPrimary) || item.images[0]
+                                const primaryImage = firstItem.images.find(img => img.isPrimary) || firstItem.images[0]
                                 return (
-                                  <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                                  <div className="w-12 h-12 rounded-md overflow-hidden border border-gray-200">
                                     <img
                                       src={primaryImage.url}
                                       alt={primaryImage.alt || 'Item image'}
@@ -646,66 +739,113 @@ export default function InventoryList({ projectId, projectName, items: propItems
                                 )
                               })()
                             ) : (
-                              // Show camera placeholder when no images
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleAddImage(item.itemId)
-                                }}
-                                disabled={uploadingImages.has(item.itemId)}
-                                className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors disabled:opacity-50"
-                                title="Add image (camera or gallery)"
-                              >
-                                <Camera className="h-6 w-6" />
-                              </button>
+                              <div className="w-12 h-12 rounded-md border border-dashed border-gray-300 flex items-center justify-center text-gray-400">
+                                <Camera className="h-5 w-5" />
+                              </div>
                             )}
                           </div>
 
-                          {/* Item description - now tappable */}
-                          <div className="flex-1 min-w-0 flex items-center">
-                            <div>
-                              <h3 className="text-base font-medium text-gray-900 line-clamp-2 break-words">
-                                {item.description}
-                              </h3>
-                              {/* Space field */}
-                              {item.space && (
-                                <p className="text-sm text-gray-600 mt-1">
-                                  {item.space}
-                                </p>
+                          <div className="flex-1 min-w-0 space-y-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                                Item {groupIndex + 1} ×{groupItems.length}
+                              </span>
+                              {hasAnyPrice && (
+                                <span className="text-sm text-gray-500">
+                                  {formatCurrency(totalPrice)}
+                                  {groupItems.length > 1 && totalPrice !== firstItemPrice && (
+                                    <span className="text-xs text-gray-400">
+                                      {' ('}{formatCurrency(totalPrice / groupItems.length)} each)
+                                    </span>
+                                  )}
+                                  {hasAnyTaxPurchase && totalTaxPurchase > 0 && (
+                                    <>
+                                      {' • Tax: '}
+                                      {formatCurrency(totalTaxPurchase)}
+                                      {groupItems.length > 1 && (
+                                        <span className="text-xs text-gray-400">
+                                          {' ('}{formatCurrency(totalTaxPurchase / groupItems.length)} each)
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                  {!hasAnyTaxPurchase && hasAnyTaxProject && totalTaxProject > 0 && (
+                                    <>
+                                      {' • Tax: '}
+                                      {formatCurrency(totalTaxProject)}
+                                      {groupItems.length > 1 && (
+                                        <span className="text-xs text-gray-400">
+                                          {' ('}{formatCurrency(totalTaxProject / groupItems.length)} each)
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                </span>
                               )}
                             </div>
-                          </div>
-                        </div>
 
-                        {/* Bottom row: Content - now tappable */}
-                        <div className="space-y-2">
-                          {/* Project Price (or Purchase Price if project price not set), Source, SKU on same row */}
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                            {(item.projectPrice || item.purchasePrice) && (
-                              <span className="font-medium text-gray-700">${item.projectPrice || item.purchasePrice}</span>
+                            <h4 className="text-sm font-medium text-gray-900">
+                              {firstItem.description || 'No description'}
+                            </h4>
+
+                            {locationValue && (
+                              <div className="text-sm text-gray-500">
+                                <span className="font-medium">Location:</span> {locationValue}
+                              </div>
                             )}
-                            {item.source && (
-                              <>
-                                {(item.projectPrice || item.purchasePrice) && <span className="hidden sm:inline">•</span>}
-                                <span className="font-medium text-gray-700">{item.source}</span>
-                              </>
-                            )}
-                            {item.sku && (
-                              <>
-                                {(item.projectPrice || item.purchasePrice || item.source) && <span className="hidden sm:inline">•</span>}
-                                <span className="font-medium text-gray-700">{item.sku}</span>
-                              </>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                              {firstItem.sku && (
+                                <div>
+                                  <span className="font-medium">SKU:</span> {firstItem.sku}
+                                </div>
+                              )}
+                              {firstItem.marketValue && (
+                                <div>
+                                  <span className="font-medium">Market Value:</span> {formatCurrency(firstItem.marketValue)}
+                                </div>
+                              )}
+                            </div>
+
+                            {firstItem.notes && (
+                              <div className="text-sm text-gray-600 whitespace-pre-wrap">
+                                <span className="font-medium">Notes:</span> {firstItem.notes}
+                              </div>
                             )}
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  </ContextLink>
-                </li>
-              ))}
+                      }
+                    >
+                      {/* Render individual items in the expanded group */}
+                      <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
+                        {groupItems.map((item, itemIndex) => (
+                          <InventoryItemRow
+                            key={item.itemId}
+                            item={item}
+                            isSelected={selectedItems.has(item.itemId)}
+                            onSelect={handleSelectItem}
+                            onBookmark={toggleBookmark}
+                            onDuplicate={duplicateItem}
+                            onEdit={() => {}}
+                            onDispositionUpdate={updateDisposition}
+                            onAddImage={handleAddImage}
+                            uploadingImages={uploadingImages}
+                            openDispositionMenu={openDispositionMenu}
+                            setOpenDispositionMenu={setOpenDispositionMenu}
+                            context="project"
+                            projectId={projectId}
+                            itemNumber={groupIndex + 1}
+                            duplicateCount={groupItems.length}
+                            duplicateIndex={itemIndex + 1}
+                          />
+                        ))}
+                      </ul>
+                    </CollapsedDuplicateGroup>
+
+                  </li>
+                )
+              })}
             </ul>
-            
           </div>
         )
       )}

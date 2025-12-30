@@ -48,6 +48,7 @@ export default defineConfig({
         globPatterns: ['index.html', '**/*.{ico,png,svg}'], // Only cache static assets, precache shell
         // Don't cache app files in service worker - always fetch fresh versions
         cacheId: `1584-inventory-${timestamp}`,
+        swSrc: 'public/sw-custom.js', // Use custom service worker
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,

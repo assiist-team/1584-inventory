@@ -332,6 +332,21 @@ export default function EditItem() {
         <div className="px-6 py-4">
           <div className="px-6 py-4">
             <form onSubmit={handleSubmit} className="space-y-8">
+              {/* SKU */}
+              <div>
+                <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
+                  SKU
+                </label>
+                <input
+                  type="text"
+                  id="sku"
+                  value={formData.sku}
+                  onChange={(e) => handleInputChange('sku', e.target.value)}
+                  placeholder="Product SKU or model number"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+
               {/* Description */}
               <div>
                 <label htmlFor="description" className="block text-sm font-medium text-gray-700">
@@ -464,21 +479,6 @@ export default function EditItem() {
                 {errors.paymentMethod && (
                   <p className="mt-1 text-sm text-red-600">{errors.paymentMethod}</p>
                 )}
-              </div>
-
-              {/* SKU */}
-              <div>
-                <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
-                  SKU
-                </label>
-                <input
-                  type="text"
-                  id="sku"
-                  value={formData.sku}
-                  onChange={(e) => handleInputChange('sku', e.target.value)}
-                  placeholder="Product SKU or model number"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                />
               </div>
 
               {/* Purchase Price */}
