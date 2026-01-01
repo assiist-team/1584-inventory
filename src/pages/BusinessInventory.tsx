@@ -1,6 +1,6 @@
 import { Plus, Search, Package, Receipt, Filter, QrCode, Trash2, Camera, DollarSign, ArrowUpDown } from 'lucide-react'
 import { useMemo } from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import ContextLink from '@/components/ContextLink'
 import { Item, Transaction, ItemImage, Project, ItemDisposition } from '@/types'
@@ -20,6 +20,7 @@ import { getInventoryListGroupKey } from '@/utils/itemGrouping'
 import CollapsedDuplicateGroup from '@/components/ui/CollapsedDuplicateGroup'
 import InventoryItemRow from '@/components/items/InventoryItemRow'
 import { getTransactionDisplayInfo, getTransactionRoute } from '@/utils/transactionDisplayUtils'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 
 interface FilterOptions {
   status?: string
@@ -30,6 +31,7 @@ export default function BusinessInventory() {
   const { currentAccountId, loading: accountLoading } = useAccount()
   const ENABLE_QR = import.meta.env.VITE_ENABLE_QR === 'true'
   const { buildContextUrl } = useNavigationContext()
+  const stackedNavigate = useStackedNavigate()
   const [activeTab, setActiveTab] = useState<'inventory' | 'transactions'>('inventory')
   const [items, setItems] = useState<Item[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -38,6 +40,14 @@ export default function BusinessInventory() {
     status: '',
     searchQuery: ''
   })
+  const handleNavigateToEdit = useCallback(
+    (href: string) => {
+      if (!href || href === '#') return
+      stackedNavigate(buildContextUrl(href))
+    },
+    [buildContextUrl, stackedNavigate]
+  )
+
   const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('')
   const [transactionSearchQuery, setTransactionSearchQuery] = useState<string>('')
 
@@ -490,33 +500,38 @@ export default function BusinessInventory() {
     }
 
     const itemIds = Array.from(selectedItems)
-    
-    // Optimistically update UI immediately by removing deleted items from state
-    setItems(prevItems => prevItems.filter(item => !itemIds.includes(item.itemId)))
-    
-    // Clear selections immediately
-    setSelectedItems(new Set())
 
     try {
       let successCount = 0
       let errorCount = 0
+      const successfullyDeletedIds: string[] = []
 
       // Delete items one by one
       for (const itemId of itemIds) {
         try {
           await unifiedItemsService.deleteItem(currentAccountId, itemId)
           successCount++
+          successfullyDeletedIds.push(itemId)
         } catch (error) {
           console.error(`Error deleting item ${itemId}:`, error)
           errorCount++
         }
       }
 
+      if (successfullyDeletedIds.length > 0) {
+        setItems(prevItems => prevItems.filter(item => !successfullyDeletedIds.includes(item.itemId)))
+        setSelectedItems(prevSelected => {
+          const updatedSelection = new Set(prevSelected)
+          successfullyDeletedIds.forEach(id => updatedSelection.delete(id))
+          return updatedSelection
+        })
+      }
+
       // Show result message
       if (errorCount === 0) {
         alert(`Successfully deleted ${successCount} item${successCount !== 1 ? 's' : ''}.`)
       } else {
-        // If there were errors, reload the items to restore the failed deletions
+        // If there were errors, reload the items to make sure state reflects the server
         await loadBusinessInventory()
         alert(`Deleted ${successCount} item${successCount !== 1 ? 's' : ''}, but ${errorCount} item${errorCount !== 1 ? 's' : ''} failed to delete.`)
       }
@@ -908,7 +923,7 @@ export default function BusinessInventory() {
                             onSelect={handleSelectItem}
                             onBookmark={toggleBookmark}
                             onDuplicate={duplicateItem}
-                            onEdit={() => {}}
+                            onEdit={handleNavigateToEdit}
                             onDispositionUpdate={updateDisposition}
                             onAddImage={handleAddImage}
                             uploadingImages={uploadingImages}
@@ -972,7 +987,7 @@ export default function BusinessInventory() {
                             </div>
 
                             {/* Right column: Text content */}
-                            <ContextLink to={`/business-inventory/${firstItem.itemId}`} className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0">
                               <div>
                                 <h4 className="text-sm font-medium text-gray-900 mb-1">
                                   {firstItem.description || 'No description'}
@@ -984,16 +999,21 @@ export default function BusinessInventory() {
                                     {firstItem.sku && <span className="font-medium">SKU: {firstItem.sku}</span>}
                                     {(firstItem.sku || transactionDisplayInfo || firstItem.source) && <span className="mx-2 text-gray-400">•</span>}
                                     {transactionDisplayInfo ? (
-                                      <span className="inline-flex items-center text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors">
+                                      <span
+                                        className="inline-flex items-center text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors cursor-pointer hover:underline"
+                                        title={`View transaction: ${transactionDisplayInfo.title}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          if (transactionRoute) {
+                                            window.location.href = buildContextUrl(
+                                              transactionRoute.path,
+                                              transactionRoute.projectId ? { project: transactionRoute.projectId } : undefined
+                                            )
+                                          }
+                                        }}
+                                      >
                                         <Receipt className="h-3 w-3 mr-1" />
-                                        <ContextLink
-                                          to={transactionRoute ? buildContextUrl(transactionRoute.path, transactionRoute.projectId ? { project: transactionRoute.projectId } : undefined) : ''}
-                                          className="hover:underline font-medium"
-                                          title={`View transaction: ${transactionDisplayInfo.title}`}
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          {transactionDisplayInfo.title} {transactionDisplayInfo.amount}
-                                        </ContextLink>
+                                        {transactionDisplayInfo.title} {transactionDisplayInfo.amount}
                                       </span>
                                     ) : (
                                       firstItem.source && <span className="text-xs font-medium text-gray-600">{firstItem.source}</span>
@@ -1006,7 +1026,7 @@ export default function BusinessInventory() {
                                   )}
                                 </div>
                               </div>
-                            </ContextLink>
+                            </div>
                           </>
                         )
                       }
@@ -1033,7 +1053,7 @@ export default function BusinessInventory() {
                             summary={<GroupedItemSummary />}
                           >
                             {/* Render individual items in the expanded group */}
-                            <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
+                            <ul className="divide-y divide-gray-200 rounded-lg overflow-visible list-none p-0 m-0">
                               {groupItems.map((item, itemIndex) => (
                                 <InventoryItemRow
                                   key={item.itemId}
@@ -1042,7 +1062,7 @@ export default function BusinessInventory() {
                                   onSelect={handleSelectItem}
                                   onBookmark={toggleBookmark}
                                   onDuplicate={duplicateItem}
-                                  onEdit={() => {}}
+                                  onEdit={handleNavigateToEdit}
                                   onDispositionUpdate={updateDisposition}
                                   onAddImage={handleAddImage}
                                   uploadingImages={uploadingImages}

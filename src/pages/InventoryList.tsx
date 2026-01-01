@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Plus, Search, RotateCcw, Camera, Trash2, QrCode, Filter, ArrowUpDown, Receipt } from 'lucide-react'
 import ContextLink from '@/components/ContextLink'
 import { unifiedItemsService, integrationService, transactionService } from '@/services/inventoryService'
@@ -19,6 +19,8 @@ import CollapsedDuplicateGroup from '@/components/ui/CollapsedDuplicateGroup'
 import InventoryItemRow from '@/components/items/InventoryItemRow'
 import BulkItemControls from '@/components/ui/BulkItemControls'
 import { useTransactionDisplayInfo } from '@/hooks/useTransactionDisplayInfo'
+import { useProjectRealtime } from '@/contexts/ProjectRealtimeContext'
+import { useStackedNavigate } from '@/hooks/useStackedNavigate'
 
 interface InventoryListProps {
   projectId: string
@@ -45,6 +47,12 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const [sortMode, setSortMode] = useState<'alphabetical' | 'creationDate'>('alphabetical')
   const [showSortMenu, setShowSortMenu] = useState(false)
   const { showSuccess, showError } = useToast()
+  const { refreshCollections: refreshRealtimeCollections } = useProjectRealtime(projectId)
+  const refreshRealtimeAfterWrite = useCallback(() => {
+    return refreshRealtimeCollections().catch(err => {
+      console.debug('InventoryList: realtime refresh failed', err)
+    })
+  }, [refreshRealtimeCollections])
 
   // Track item list container width for bulk controls
   useEffect(() => {
@@ -225,6 +233,20 @@ export default function InventoryList({ projectId, projectName, items: propItems
 
   // Use navigation context for proper back navigation
   const { buildContextUrl } = useNavigationContext()
+  const stackedNavigate = useStackedNavigate()
+
+  const handleNavigateToEdit = useCallback(
+    (href: string) => {
+      if (!href || href === '#') return
+
+      const targetUrl = buildContextUrl(
+        href,
+        projectId ? { project: projectId } : undefined
+      )
+      stackedNavigate(targetUrl)
+    },
+    [buildContextUrl, projectId, stackedNavigate]
+  )
 
   const updateDisposition = async (itemId: string, newDisposition: ItemDisposition) => {
     console.log('🎯 InventoryList updateDisposition called:', itemId, newDisposition)
@@ -496,16 +518,16 @@ export default function InventoryList({ projectId, projectName, items: propItems
 
     const idsToDelete = Array.from(selectedItems)
 
-    // Optimistically remove items so the UI reflects the deletion immediately
-    setItems(prev => prev.filter(item => !idsToDelete.includes(item.itemId)))
-    setSelectedItems(new Set())
-
     try {
       const deletePromises = idsToDelete.map(itemId =>
         unifiedItemsService.deleteItem(currentAccountId, itemId)
       )
 
       await Promise.all(deletePromises)
+      await refreshRealtimeAfterWrite()
+
+      setItems(prev => prev.filter(item => !idsToDelete.includes(item.itemId)))
+      setSelectedItems(new Set())
       setError(null)
       showSuccess(`Deleted ${idsToDelete.length} item${idsToDelete.length !== 1 ? 's' : ''}`)
     } catch (error) {
@@ -819,10 +841,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       onSelect={handleSelectItem}
                       onBookmark={toggleBookmark}
                       onDuplicate={duplicateItem}
-                      onEdit={(href) => {
-                        // Optional: Add analytics or logging here
-                        console.log('Navigating to edit item:', href)
-                      }}
+                      onEdit={handleNavigateToEdit}
                       onDispositionUpdate={updateDisposition}
                       onAddImage={handleAddImage}
                       uploadingImages={uploadingImages}
@@ -870,7 +889,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       </div>
 
                       {/* Right column: Text content */}
-                      <ContextLink to={projectId ? `/item/${firstItem.itemId}?project=${projectId}` : `/item/${firstItem.itemId}`} className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0">
                         <div>
                           <h4 className="text-sm font-medium text-gray-900 mb-1">
                             {firstItem.description || 'No description'}
@@ -921,7 +940,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                             )}
                           </div>
                         </div>
-                      </ContextLink>
+                      </div>
                     </>
                   )
                 }
@@ -948,7 +967,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                       summary={<GroupedItemSummary />}
                     >
                       {/* Render individual items in the expanded group */}
-                      <ul className="divide-y divide-gray-200 rounded-lg overflow-hidden list-none p-0 m-0">
+                      <ul className="divide-y divide-gray-200 rounded-lg overflow-visible list-none p-0 m-0">
                         {groupItems.map((item, itemIndex) => (
                           <InventoryItemRow
                             key={item.itemId}
@@ -957,10 +976,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
                             onSelect={handleSelectItem}
                             onBookmark={toggleBookmark}
                             onDuplicate={duplicateItem}
-                            onEdit={(href) => {
-                              // Optional: Add analytics or logging here
-                              console.log('Navigating to edit item:', href)
-                            }}
+                            onEdit={handleNavigateToEdit}
                             onDispositionUpdate={updateDisposition}
                             onAddImage={handleAddImage}
                             uploadingImages={uploadingImages}

@@ -102,9 +102,11 @@ export default function ItemPreviewCard({
   
   // Fetch transaction display info if not provided and transactionId exists
   const shouldFetchTransactionInfo = showTransactionLink && item.transactionId && !providedTransactionDisplayInfo
+  const accountIdForTransactionInfo = shouldFetchTransactionInfo ? currentAccountId ?? null : null
+  const transactionIdForTransactionInfo = shouldFetchTransactionInfo ? item.transactionId ?? null : null
   const { displayInfo: fetchedTransactionDisplayInfo, route: fetchedTransactionRoute, isLoading: fetchedIsLoadingTransaction } = useTransactionDisplayInfo(
-    shouldFetchTransactionInfo ? currentAccountId : undefined,
-    shouldFetchTransactionInfo ? item.transactionId : undefined,
+    accountIdForTransactionInfo,
+    transactionIdForTransactionInfo,
     projectId
   )
   
@@ -265,9 +267,10 @@ export default function ItemPreviewCard({
                 </button>
               )}
               {showEdit && onEdit && (
-                <ContextLink
-                  to={getEditLink()}
+                <button
+                  type="button"
                   onClick={(e) => {
+                    e.preventDefault()
                     e.stopPropagation()
                     onEdit(getEditLink())
                   }}
@@ -275,7 +278,7 @@ export default function ItemPreviewCard({
                   title="Edit item"
                 >
                   <Edit className="h-4 w-4" />
-                </ContextLink>
+                </button>
               )}
               {showDuplicate && onDuplicate && (
                 <button
@@ -308,7 +311,7 @@ export default function ItemPreviewCard({
                   )}
                 </button>
               )}
-              {showDisposition && onDispositionUpdate && (
+              {showDisposition && (
                 <div className="relative">
                   <span
                     onClick={(e) => {
@@ -325,7 +328,7 @@ export default function ItemPreviewCard({
 
                   {/* Dropdown menu */}
                   {openDispositionMenu === itemId && (
-                    <div className="disposition-menu absolute top-full right-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                    <div className="disposition-menu absolute top-full right-0 mt-1 w-32 bg-white border border-gray-200 rounded-md shadow-lg z-40">
                       <div className="py-1">
                         {DISPOSITION_OPTIONS.map((disposition) => (
                           <button
