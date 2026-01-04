@@ -24,11 +24,15 @@ import { projectService } from '@/services/inventoryService'
 import { useAccount } from '@/contexts/AccountContext'
 import { useProjectRealtime } from '@/contexts/ProjectRealtimeContext'
 import ProjectForm from '@/components/ProjectForm'
+import { hydrateProjectCache } from '@/utils/hydrationHelpers'
+import { getGlobalQueryClient } from '@/utils/queryClient'
 import BudgetProgress from '@/components/ui/BudgetProgress'
 import { useToast } from '@/components/ui/ToastContext'
 import { Button } from '@/components/ui/Button'
+import { RetrySyncButton } from '@/components/ui/RetrySyncButton'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { useNavigationContext } from '@/hooks/useNavigationContext'
+import { isNetworkOnline } from '@/services/networkStatusService'
 import {
   projectBudget,
   projectClientSummary,
@@ -112,6 +116,21 @@ export default function ProjectLayout() {
       stackedNavigateRef.current(projectsRoot())
     }
   }, [projectId])
+
+  // Hydrate project cache from offlineStore before rendering
+  useEffect(() => {
+    if (!projectId || !currentAccountId) return
+
+    const hydrate = async () => {
+      try {
+        await hydrateProjectCache(getGlobalQueryClient(), currentAccountId, projectId)
+      } catch (error) {
+        console.warn('Failed to hydrate project cache (non-fatal):', error)
+      }
+    }
+
+    hydrate()
+  }, [projectId, currentAccountId])
 
   const sectionPaths = useMemo(() => {
     if (!projectId) return null
@@ -213,18 +232,28 @@ export default function ProjectLayout() {
   }
 
   if (error) {
+    const isOfflineError = error === 'Network unavailable' || !isNetworkOnline()
+    
     return (
       <div className="text-center py-12">
         <div className="mx-auto h-12 w-12 text-red-400">⚠️</div>
-        <h3 className="mt-2 text-sm font-medium text-gray-900">Error Loading Project</h3>
-        <p className="mt-1 text-sm text-gray-500">{error}</p>
+        <h3 className="mt-2 text-sm font-medium text-gray-900">
+          {isOfflineError ? 'Offline' : 'Error Loading Project'}
+        </h3>
+        <p className="mt-1 text-sm text-gray-500">
+          {isOfflineError 
+            ? 'You\'re currently offline. The project will load automatically when you reconnect.'
+            : error}
+        </p>
         <div className="mt-6 flex justify-center space-x-3">
-          <button
-            onClick={retryLoadProject}
-            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
-          >
-            Try Again
-          </button>
+          {!isOfflineError && (
+            <button
+              onClick={retryLoadProject}
+              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+            >
+              Try Again
+            </button>
+          )}
           <ContextBackLink
             fallback={backDestination}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -288,6 +317,7 @@ export default function ProjectLayout() {
               <Trash2 className="h-4 w-4 mr-2" />
               Delete
             </button>
+            <RetrySyncButton size="sm" variant="secondary" />
           </div>
         </div>
 

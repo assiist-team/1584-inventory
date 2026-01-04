@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { operationQueue } from '../operationQueue'
+import { operationQueue, OfflineContextError } from '../operationQueue'
 import { offlineStore } from '../offlineStore'
+import { conflictDetector } from '../conflictDetector'
+import { getCurrentUser } from '../supabase'
 
 // Mock dependencies
 vi.mock('../offlineStore')
@@ -12,15 +14,57 @@ vi.mock('../supabase', () => ({
   },
   getCurrentUser: vi.fn().mockResolvedValue({ id: 'test-user' })
 }))
-vi.mock('../conflictDetector')
+vi.mock('../conflictDetector', () => ({
+  conflictDetector: {
+    detectConflicts: vi.fn().mockResolvedValue([])
+  }
+}))
+vi.mock('../serviceWorker', () => ({
+  registerBackgroundSync: vi.fn().mockResolvedValue({ enabled: true, supported: true }),
+  notifySyncStart: vi.fn(),
+  notifySyncComplete: vi.fn(),
+  notifySyncError: vi.fn()
+}))
 
 describe('OperationQueue', () => {
+const mockedOfflineStore = vi.mocked(offlineStore)
+const mockedConflictDetector = vi.mocked(conflictDetector)
+  let storedOperations: any[] = []
+
   beforeEach(async () => {
+    vi.useFakeTimers()
+    let onlineState = false
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      get: () => onlineState,
+      set: (value) => {
+        onlineState = value
+      }
+    })
+    storedOperations = []
+    ;(operationQueue as any).context = null
+    mockedOfflineStore.init.mockResolvedValue(undefined)
+    mockedOfflineStore.getContext.mockResolvedValue(null as any)
+    mockedOfflineStore.saveContext.mockResolvedValue(undefined)
+    mockedOfflineStore.clearContext.mockResolvedValue(undefined)
+    mockedOfflineStore.getOperations.mockImplementation(async () => storedOperations)
+    mockedOfflineStore.replaceOperationsForAccount.mockImplementation(async (_accountId, ops) => {
+      storedOperations = ops
+    })
+    mockedOfflineStore.clearOperations.mockImplementation(async () => {
+      storedOperations = []
+    })
+    mockedOfflineStore.getItemById.mockReset()
+    mockedOfflineStore.getItemById.mockResolvedValue(null as any)
+
+    ;(navigator as any).onLine = false
+
     // Clear queue before each test
     await operationQueue.clearQueue()
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
   })
 
@@ -29,9 +73,13 @@ describe('OperationQueue', () => {
       const operation = {
         type: 'CREATE_ITEM' as const,
         data: {
+          id: 'item-test-123',
+          accountId: 'acc-123',
           projectId: 'proj-123',
           name: 'Test Item',
-          description: 'Test description'
+          description: 'Test description',
+          quantity: 1,
+          unitCost: 0
         }
       }
 
@@ -49,6 +97,7 @@ describe('OperationQueue', () => {
       const operation = {
         type: 'UPDATE_ITEM' as const,
         data: {
+          accountId: 'acc-123',
           id: 'item-123',
           updates: { name: 'Updated Name' }
         }
@@ -66,7 +115,7 @@ describe('OperationQueue', () => {
     it('should clear queue', async () => {
       const operation = {
         type: 'DELETE_ITEM' as const,
-        data: { id: 'item-123' }
+        data: { id: 'item-123', accountId: 'acc-123' }
       }
 
       await operationQueue.add(operation)
@@ -75,16 +124,41 @@ describe('OperationQueue', () => {
       await operationQueue.clearQueue()
       expect(operationQueue.getQueueLength()).toBe(0)
     })
+    it('should respect metadata overrides when provided', async () => {
+      const metadataTimestamp = '2025-01-01T00:00:00.000Z'
+      const operation = {
+        type: 'CREATE_ITEM' as const,
+        data: {
+          id: 'item-meta-123',
+          accountId: 'meta-account',
+          projectId: 'proj-321',
+          name: 'Meta Item',
+          description: 'Meta test item',
+          quantity: 1,
+          unitCost: 0
+        }
+      }
+
+      await operationQueue.add(operation, {
+        accountId: 'meta-account',
+        version: 5,
+        timestamp: metadataTimestamp
+      })
+
+      const pending = operationQueue.getPendingOperations()
+      expect(pending[0].accountId).toBe('meta-account')
+      expect(pending[0].version).toBe(5)
+      expect(pending[0].timestamp).toBe(metadataTimestamp)
+    })
   })
 
   describe('Operation processing', () => {
     it('should process operations when online', async () => {
       // Mock navigator.onLine
-      Object.defineProperty(navigator, 'onLine', { value: true, writable: true })
-
       const operation = {
         type: 'CREATE_ITEM' as const,
         data: {
+          accountId: 'acc-123',
           projectId: 'proj-123',
           name: 'Test Item'
         }
@@ -94,81 +168,95 @@ describe('OperationQueue', () => {
 
       // Mock successful execution
       const mockExecute = vi.fn().mockResolvedValue(true)
-      vi.spyOn(operationQueue as any, 'executeOperation').mockImplementation(mockExecute)
+      const executeSpy = vi.spyOn(operationQueue as any, 'executeOperation').mockImplementation(mockExecute)
 
+      ;(navigator as any).onLine = true
       await operationQueue.processQueue()
 
       expect(mockExecute).toHaveBeenCalled()
+      executeSpy.mockRestore()
     })
 
     it('should not process when offline', async () => {
-      Object.defineProperty(navigator, 'onLine', { value: false, writable: true })
+      ;(navigator as any).onLine = false
 
       const operation = {
         type: 'CREATE_ITEM' as const,
         data: {
+          id: 'item-test-789',
+          accountId: 'acc-123',
           projectId: 'proj-123',
-          name: 'Test Item'
+          name: 'Test Item',
+          quantity: 1,
+          unitCost: 0
         }
       }
 
       await operationQueue.add(operation)
 
       const mockExecute = vi.fn()
-      vi.spyOn(operationQueue as any, 'executeOperation').mockImplementation(mockExecute)
+      const executeSpy = vi.spyOn(operationQueue as any, 'executeOperation').mockImplementation(mockExecute)
 
       await operationQueue.processQueue()
 
       expect(mockExecute).not.toHaveBeenCalled()
+      executeSpy.mockRestore()
     })
 
     it('should retry failed operations with backoff', async () => {
-      Object.defineProperty(navigator, 'onLine', { value: true, writable: true })
-
       const operation = {
         type: 'CREATE_ITEM' as const,
         data: {
+          id: 'item-test-retry',
+          accountId: 'acc-123',
           projectId: 'proj-123',
-          name: 'Test Item'
+          name: 'Test Item',
+          quantity: 1,
+          unitCost: 0
         }
       }
 
       await operationQueue.add(operation)
 
       // Mock failed execution
-      vi.spyOn(operationQueue as any, 'executeOperation').mockResolvedValue(false)
+      const executeSpy = vi.spyOn(operationQueue as any, 'executeOperation').mockResolvedValue(false)
 
+      ;(navigator as any).onLine = true
       await operationQueue.processQueue()
 
       const pending = operationQueue.getPendingOperations()
       expect(pending[0].retryCount).toBe(1)
       expect(pending[0].lastError).toBe('Sync failed')
+      executeSpy.mockRestore()
     })
 
     it('should give up after max retries', async () => {
-      Object.defineProperty(navigator, 'onLine', { value: true, writable: true })
-
       const operation = {
         type: 'CREATE_ITEM' as const,
         data: {
+          id: 'item-test-max-retries',
+          accountId: 'acc-123',
           projectId: 'proj-123',
-          name: 'Test Item'
+          name: 'Test Item',
+          quantity: 1,
+          unitCost: 0
         }
       }
 
       await operationQueue.add(operation)
 
-      // Set retry count to max
-      const pending = operationQueue.getPendingOperations()
-      pending[0].retryCount = 5
+      // Set retry count to max on internal queue
+      ;(operationQueue as any).queue[0].retryCount = 5
 
       // Mock failed execution
-      vi.spyOn(operationQueue as any, 'executeOperation').mockResolvedValue(false)
+      const executeSpy = vi.spyOn(operationQueue as any, 'executeOperation').mockResolvedValue(false)
 
+      ;(navigator as any).onLine = true
       await operationQueue.processQueue()
 
       // Operation should be removed after max retries
       expect(operationQueue.getQueueLength()).toBe(0)
+      executeSpy.mockRestore()
     })
   })
 
@@ -180,12 +268,176 @@ describe('OperationQueue', () => {
       const operation = {
         type: 'CREATE_ITEM' as const,
         data: {
+          id: 'item-test-auth',
+          accountId: 'acc-123',
           projectId: 'proj-123',
-          name: 'Test Item'
+          name: 'Test Item',
+          quantity: 1,
+          unitCost: 0
         }
       }
 
       await expect(operationQueue.add(operation)).rejects.toThrow('User must be authenticated')
+    })
+  })
+
+  describe('Conflict gating', () => {
+    const baseConflict = {
+      local: { data: {}, timestamp: new Date().toISOString(), version: 1 },
+      server: { data: {}, timestamp: new Date().toISOString(), version: 2 },
+      field: 'name',
+      type: 'content' as const
+    }
+
+    it('allows create operations to proceed when conflicts target other items', async () => {
+      const operation = {
+        id: 'op-create-1',
+        type: 'CREATE_ITEM' as const,
+        timestamp: new Date().toISOString(),
+        retryCount: 0,
+        accountId: 'acc-123',
+        updatedBy: 'test-user',
+        version: 1,
+        data: {
+          id: 'item-create-allowed',
+          accountId: 'acc-123',
+          projectId: 'proj-123',
+          name: 'Staged Item'
+        }
+      }
+
+      mockedConflictDetector.detectConflicts.mockResolvedValueOnce([
+        { id: 'other-item', ...baseConflict }
+      ])
+
+      const executeCreateSpy = vi
+        .spyOn(operationQueue as any, 'executeCreateItem')
+        .mockResolvedValue(true)
+
+      const result = await (operationQueue as any).executeOperation(operation)
+
+      expect(result).toBe(true)
+      expect(executeCreateSpy).toHaveBeenCalled()
+
+      executeCreateSpy.mockRestore()
+    })
+
+    it('blocks update operations when conflicts exist for the same item', async () => {
+      const operation = {
+        id: 'op-update-1',
+        type: 'UPDATE_ITEM' as const,
+        timestamp: new Date().toISOString(),
+        retryCount: 0,
+        accountId: 'acc-123',
+        updatedBy: 'test-user',
+        version: 2,
+        data: {
+          id: 'item-conflict',
+          accountId: 'acc-123',
+          updates: { name: 'New name' }
+        }
+      }
+
+      mockedOfflineStore.getItemById.mockResolvedValueOnce({
+        itemId: 'item-conflict',
+        projectId: 'proj-999'
+      } as any)
+
+      mockedConflictDetector.detectConflicts.mockResolvedValueOnce([
+        { id: 'item-conflict', ...baseConflict }
+      ])
+
+      const executeUpdateSpy = vi
+        .spyOn(operationQueue as any, 'executeUpdateItem')
+        .mockResolvedValue(true)
+
+      const result = await (operationQueue as any).executeOperation(operation)
+
+      expect(result).toBe(false)
+      expect(executeUpdateSpy).not.toHaveBeenCalled()
+
+      executeUpdateSpy.mockRestore()
+    })
+
+    it('does not mark operations as blocked when conflicts are unrelated', async () => {
+      const operationInput = {
+        type: 'CREATE_ITEM' as const,
+        data: {
+          id: 'item-nonblocking',
+          accountId: 'acc-123',
+          projectId: 'proj-abc',
+          name: 'Retry Item'
+        }
+      }
+
+      await operationQueue.add(operationInput)
+
+      mockedConflictDetector.detectConflicts.mockResolvedValue([
+        { id: 'other-item', ...baseConflict }
+      ])
+
+      const executeOpSpy = vi
+        .spyOn(operationQueue as any, 'executeOperation')
+        .mockResolvedValueOnce(false)
+
+      ;(navigator as any).onLine = true
+      await operationQueue.processQueue()
+
+      const pending = operationQueue.getPendingOperations()
+      expect(pending[0].retryCount).toBe(1)
+      expect(pending[0].lastError).toBe('Sync failed')
+
+      executeOpSpy.mockRestore()
+    })
+  })
+
+  describe('Offline context behavior', () => {
+    it('uses cached offline user context without calling getCurrentUser', async () => {
+      const getCurrentUserMock = vi.mocked(getCurrentUser)
+      getCurrentUserMock.mockClear()
+
+      ;(operationQueue as any).context = {
+        userId: 'offline-user',
+        accountId: 'acc-123',
+        updatedAt: new Date().toISOString()
+      }
+
+      const operation = {
+        type: 'CREATE_ITEM' as const,
+        data: {
+          id: 'item-offline-test',
+          accountId: 'acc-123',
+          projectId: 'proj-123',
+          name: 'Offline Item'
+        }
+      }
+
+      await operationQueue.add(operation)
+      expect(getCurrentUserMock).not.toHaveBeenCalled()
+
+      const snapshot = operationQueue.getSnapshot()
+      expect(snapshot.lastOfflineEnqueueAt).not.toBeNull()
+      await operationQueue.clearQueue()
+    })
+
+    it('throws OfflineContextError when user context missing offline', async () => {
+      const operation = {
+        type: 'CREATE_ITEM' as const,
+        data: {
+          id: 'missing-user-item',
+          accountId: 'acc-123',
+          projectId: 'proj-123',
+          name: 'Missing User Item'
+        }
+      }
+
+      ;(operationQueue as any).context = {
+        userId: null,
+        accountId: 'acc-123',
+        updatedAt: new Date().toISOString()
+      }
+
+      await expect(operationQueue.add(operation)).rejects.toBeInstanceOf(OfflineContextError)
     })
   })
 })

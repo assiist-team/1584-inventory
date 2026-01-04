@@ -25,9 +25,14 @@ export interface BudgetCategory {
 
 export interface Account {
   id: string;
-  name: string;
+  name: string; // Account name and business name (consolidated from business_name)
   createdAt: Date;
   createdBy: string;
+  // Business profile fields (consolidated from business_profiles table)
+  businessLogoUrl?: string | null;
+  businessProfileUpdatedAt?: Date | null;
+  businessProfileUpdatedBy?: string | null;
+  businessProfileVersion?: number | null;
 }
 
 
@@ -69,6 +74,7 @@ export interface Invitation {
 
 export interface Project {
   id: string;
+  accountId?: string;
   name: string;
   description: string;
   clientName: string;
@@ -82,6 +88,9 @@ export interface Project {
   createdBy: string;
   settings?: ProjectSettings;
   metadata?: ProjectMetadata;
+  itemCount?: number;
+  transactionCount?: number;
+  totalValue?: number;
 }
 
 // ProjectBudgetCategories maps category IDs to budget amounts

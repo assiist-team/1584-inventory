@@ -10,11 +10,16 @@ import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { TransactionSource } from '@/constants/transactionSources'
 import { Combobox } from '@/components/ui/Combobox'
 import ImagePreview from '@/components/ui/ImagePreview'
+import { RetrySyncButton } from '@/components/ui/RetrySyncButton'
 import { useAuth } from '../contexts/AuthContext'
 import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
+import { useOfflineFeedback } from '@/utils/offlineUxFeedback'
+import { hydrateOptimisticItem } from '@/utils/hydrationHelpers'
+import { OfflineQueueUnavailableError } from '@/services/offlineItemService'
+import { OfflineContextError } from '@/services/operationQueue'
 
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE } from '@/constants/company'
 
@@ -36,7 +41,8 @@ export default function AddBusinessInventoryItem() {
   const location = useLocation()
   const { hasRole } = useAuth()
   const { currentAccountId } = useAccount()
-  const { showError } = useToast()
+  const { showError, showSuccess } = useToast()
+  const { showOfflineSaved } = useOfflineFeedback()
 
   // Navigation context logic
   const backDestination = useMemo(() => {
@@ -211,10 +217,31 @@ export default function AddBusinessInventoryItem() {
         showError('Account ID is required')
         return
       }
-      const itemId = await unifiedItemsService.createItem(currentAccountId, itemData)
-      navigate(`/business-inventory/${itemId}`)
+      const createResult = await unifiedItemsService.createItem(currentAccountId, itemData)
+
+      // Hydrate optimistic item into React Query cache immediately
+      await hydrateOptimisticItem(currentAccountId, createResult.itemId, itemData)
+
+      // Show appropriate feedback based on mode
+      if (createResult.mode === 'offline') {
+        showOfflineSaved(createResult.operationId)
+      } else {
+        showSuccess('Item saved successfully')
+      }
+
+      navigate(`/business-inventory/${createResult.itemId}`)
     } catch (error) {
       console.error('Error creating item:', error)
+      if (error instanceof OfflineQueueUnavailableError) {
+        setErrors({ submit: 'Offline storage is unavailable. Please refresh or try again online.' })
+        showError('Offline storage is unavailable. Please refresh or try again online.')
+        return
+      }
+      if (error instanceof OfflineContextError) {
+        setErrors({ submit: 'Sign in before working offline so we can save your changes.' })
+        showError('Sign in before working offline so we can save your changes.')
+        return
+      }
       setErrors({ submit: 'Failed to create item. Please try again.' })
     } finally {
       setIsSubmitting(false)
@@ -358,6 +385,7 @@ export default function AddBusinessInventoryItem() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </ContextBackLink>
+          <RetrySyncButton size="sm" variant="secondary" />
         </div>
       </div>
 

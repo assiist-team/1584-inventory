@@ -1,7 +1,12 @@
+import type { ItemImage } from '@/types'
+
 interface DBItem {
   itemId: string
   accountId?: string
   projectId?: string | null
+  transactionId?: string | null
+  previousProjectTransactionId?: string | null
+  previousProjectId?: string | null
   name?: string
   description: string
   source: string
@@ -18,6 +23,8 @@ interface DBItem {
   bookmark: boolean
   dateCreated: string
   lastUpdated: string
+  createdAt?: string
+  images?: ItemImage[]
   taxRatePct?: number
   taxAmountPurchasePrice?: string
   taxAmountProjectPrice?: string
@@ -32,6 +39,7 @@ interface DBItem {
 
 interface DBTransaction {
   transactionId: string
+  accountId: string
   projectId?: string | null
   transactionDate: string
   source: string
@@ -52,22 +60,30 @@ interface DBTransaction {
   subtotal?: string
   needsReview?: boolean
   sumItemPurchasePrices?: string
+  itemIds?: string[]
   version: number
   last_synced_at?: string
 }
 
 interface DBProject {
   id: string
+  accountId: string
   name: string
   description: string
   clientName: string
   budget?: number
   designFee?: number
-  defaultCategoryId?: string
+  budgetCategories?: Record<string, number>
+  defaultCategoryId?: string | null
   mainImageUrl?: string
   createdAt: string
   updatedAt: string
   createdBy: string
+  settings?: Record<string, any> | null
+  metadata?: Record<string, any> | null
+  itemCount?: number
+  transactionCount?: number
+  totalValue?: number
   version: number
   last_synced_at?: string
 }
@@ -82,6 +98,13 @@ interface DBOperation {
   updatedBy: string
   version: number
   data: Record<string, unknown>
+}
+
+interface DBContextRecord {
+  id: string
+  userId: string
+  accountId: string
+  updatedAt: string
 }
 
 interface DBCacheEntry {
@@ -103,9 +126,26 @@ interface DBMediaEntry {
   expiresAt?: string // For cleanup of temporary uploads
 }
 
+interface DBMediaUploadQueueEntry {
+  id: string
+  mediaId: string
+  accountId: string
+  itemId: string
+  metadata?: {
+    isPrimary?: boolean
+    caption?: string
+  }
+  queuedAt: string
+  retryCount: number
+  lastError?: string
+}
+
 interface DBConflict {
   id: string
-  itemId: string
+  entityType: 'item' | 'transaction' | 'project'
+  itemId?: string // For item conflicts
+  transactionId?: string // For transaction conflicts
+  projectId?: string // For project conflicts (also used for item conflicts to scope them)
   accountId: string
   type: 'version' | 'timestamp' | 'content'
   field?: string
@@ -124,18 +164,75 @@ interface DBConflict {
   resolution?: 'local' | 'server' | 'merge'
 }
 
+interface DBBudgetCategory {
+  id: string
+  accountId: string
+  name: string
+  slug: string
+  isArchived: boolean
+  metadata?: Record<string, any> | null
+  createdAt: string
+  updatedAt: string
+  cachedAt: string // When this was cached
+}
+
+interface DBTaxPreset {
+  id: string
+  name: string
+  rate: number
+}
+
+interface DBTaxPresetsCache {
+  accountId: string
+  presets: DBTaxPreset[]
+  cachedAt: string // When this was cached
+}
+
+interface DBVendorDefaultsCache {
+  accountId: string
+  slots: Array<string | null> // Raw string slots (exactly 10)
+  cachedAt: string // When this was cached
+}
+
 class OfflineStore {
   private db: IDBDatabase | null = null
+  private initPromise: Promise<void> | null = null
   private readonly dbName = 'ledger-offline'
-  private readonly dbVersion = 2 // Increment when schema changes
+  private readonly dbVersion = 9 // Increment when schema changes
+  private resettingDatabase = false
 
   async init(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    if (this.db) {
+      return
+    }
+
+    if (this.initPromise) {
+      return this.initPromise
+    }
+
+    if (typeof indexedDB === 'undefined') {
+      console.warn('IndexedDB is not available in this environment; offline cache disabled.')
+      return
+    }
+
+    this.initPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.dbVersion)
 
-      request.onerror = () => reject(request.error)
+      request.onerror = () => {
+        this.initPromise = null
+        reject(request.error)
+      }
+      request.onblocked = () => {
+        console.warn('[offlineStore] Database upgrade blocked by another open tab. Please close other Ledger tabs and reload.')
+      }
       request.onsuccess = () => {
         this.db = request.result
+        this.db.onversionchange = () => {
+          console.warn('[offlineStore] Database version change detected. Closing existing connection.')
+          this.db?.close()
+          this.db = null
+        }
+        this.initPromise = null
         resolve()
       }
 
@@ -148,6 +245,101 @@ class OfflineStore {
         this.runMigrations(db, oldVersion, upgradeTransaction)
       }
     })
+
+    return this.initPromise
+  }
+
+  /**
+   * Wait for the database to be initialized if it's not already.
+   * Returns immediately if already initialized.
+   */
+  async waitForInit(): Promise<void> {
+    if (this.db) {
+      return
+    }
+    if (this.initPromise) {
+      return this.initPromise
+    }
+    // If not initialized and no promise exists, try to initialize
+    return this.init()
+  }
+
+  /**
+   * Check if the database is initialized
+   */
+  isInitialized(): boolean {
+    return this.db !== null
+  }
+
+  /**
+   * Reset the IndexedDB database by deleting and re-initializing it.
+   * This is used when migrations failed to create required stores.
+   */
+  private async resetDatabase(): Promise<void> {
+    if (typeof indexedDB === 'undefined') {
+      console.warn('[offlineStore] IndexedDB not available; cannot reset database.')
+      return
+    }
+
+    if (this.resettingDatabase) {
+      // Another reset is already in progress; wait for it to finish
+      await this.initPromise
+      return
+    }
+
+    this.resettingDatabase = true
+
+    try {
+      if (this.db) {
+        this.db.close()
+        this.db = null
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const deleteRequest = indexedDB.deleteDatabase(this.dbName)
+        deleteRequest.onsuccess = () => resolve()
+        deleteRequest.onerror = () => {
+          console.error('[offlineStore] Failed to delete IndexedDB database:', deleteRequest.error)
+          reject(deleteRequest.error ?? new Error('Failed to delete database'))
+        }
+        deleteRequest.onblocked = () => {
+          console.warn('[offlineStore] Database deletion blocked. Close other tabs that have Ledger open and reload.')
+        }
+      })
+
+      this.initPromise = null
+      await this.init()
+    } finally {
+      this.resettingDatabase = false
+    }
+  }
+
+  /**
+   * Ensure a given object store exists. If it does not, reset the database
+   * so migrations can recreate missing stores.
+   */
+  private async ensureStoreInitialized(storeName: string): Promise<boolean> {
+    if (!this.db) {
+      throw new Error('Database not initialized')
+    }
+
+    if (this.db.objectStoreNames.contains(storeName)) {
+      return true
+    }
+
+    console.warn(`[offlineStore] ${storeName} store missing. Resetting offline database to re-run migrations.`)
+    await this.resetDatabase()
+
+    if (!this.db) {
+      console.error('[offlineStore] Database reset completed but connection is not available.')
+      return false
+    }
+
+    const hasStore = this.db.objectStoreNames.contains(storeName)
+    if (!hasStore) {
+      console.error(`[offlineStore] ${storeName} store still missing after reset. Offline metadata caching disabled for this store.`)
+    }
+    return hasStore
   }
 
   private runMigrations(db: IDBDatabase, oldVersion: number, transaction: IDBTransaction | null): void {
@@ -222,6 +414,324 @@ class OfflineStore {
         }
       }
     }
+
+    // Migration 3: Context store for auth/account metadata
+    if (oldVersion < 3) {
+      if (!db.objectStoreNames.contains('context')) {
+        db.createObjectStore('context', { keyPath: 'id' })
+      }
+    }
+
+    // Migration 4: Ensure operations are indexed for per-account ordering
+    if (oldVersion < 4) {
+      if (db.objectStoreNames.contains('operations') && transaction) {
+        try {
+          const operationsStore = transaction.objectStore('operations')
+          if (!operationsStore.indexNames.contains('accountId_timestamp')) {
+            operationsStore.createIndex('accountId_timestamp', ['accountId', 'timestamp'], { unique: false })
+          }
+        } catch (error) {
+          console.warn('Failed to add accountId_timestamp index to operations store during migration:', error)
+        }
+      }
+    }
+
+    // Migration 5: Add media upload queue store
+    if (oldVersion < 5) {
+      if (!db.objectStoreNames.contains('mediaUploadQueue')) {
+        const queueStore = db.createObjectStore('mediaUploadQueue', { keyPath: 'id' })
+        queueStore.createIndex('mediaId', 'mediaId', { unique: false })
+        queueStore.createIndex('accountId', 'accountId', { unique: false })
+        queueStore.createIndex('itemId', 'itemId', { unique: false })
+        queueStore.createIndex('queuedAt', 'queuedAt', { unique: false })
+      }
+    }
+
+    // Migration 6: Add budget categories and tax presets stores for offline metadata caching
+    if (oldVersion < 6) {
+      // Budget categories store
+      if (!db.objectStoreNames.contains('budgetCategories')) {
+        const categoriesStore = db.createObjectStore('budgetCategories', { keyPath: 'id' })
+        categoriesStore.createIndex('accountId', 'accountId', { unique: false })
+        categoriesStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+      }
+
+      // Tax presets store (one entry per account)
+      if (!db.objectStoreNames.contains('taxPresets')) {
+        const presetsStore = db.createObjectStore('taxPresets', { keyPath: 'accountId' })
+        presetsStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+      }
+    }
+
+    // Migration 7: Add entityType discriminator to conflicts store
+    if (oldVersion < 7) {
+      if (db.objectStoreNames.contains('conflicts') && transaction) {
+        try {
+          const conflictsStore = transaction.objectStore('conflicts')
+          
+          // Add indexes for transaction and project conflicts
+          if (!conflictsStore.indexNames.contains('transactionId')) {
+            conflictsStore.createIndex('transactionId', 'transactionId', { unique: false })
+          }
+          if (!conflictsStore.indexNames.contains('entityType')) {
+            conflictsStore.createIndex('entityType', 'entityType', { unique: false })
+          }
+          if (!conflictsStore.indexNames.contains('entityType_accountId')) {
+            conflictsStore.createIndex('entityType_accountId', ['entityType', 'accountId'], { unique: false })
+          }
+          
+          // Migrate existing conflicts to have entityType = 'item' (default for legacy conflicts)
+          // This will be done lazily when conflicts are accessed
+        } catch (error) {
+          console.warn('Failed to add entityType indexes to conflicts store during migration:', error)
+        }
+      }
+    }
+
+    // Migration 8: Ensure budgetCategories and taxPresets stores exist
+    // This migration ensures these stores exist even if migration 6 was skipped
+    if (oldVersion < 8) {
+      // Budget categories store
+      if (!db.objectStoreNames.contains('budgetCategories')) {
+        const categoriesStore = db.createObjectStore('budgetCategories', { keyPath: 'id' })
+        categoriesStore.createIndex('accountId', 'accountId', { unique: false })
+        categoriesStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+      } else if (transaction) {
+        // Store exists, ensure indexes are present
+        try {
+          const categoriesStore = transaction.objectStore('budgetCategories')
+          if (!categoriesStore.indexNames.contains('accountId')) {
+            categoriesStore.createIndex('accountId', 'accountId', { unique: false })
+          }
+          if (!categoriesStore.indexNames.contains('cachedAt')) {
+            categoriesStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+          }
+        } catch (error) {
+          console.warn('Failed to add indexes to budgetCategories store during migration:', error)
+        }
+      }
+
+      // Tax presets store (one entry per account)
+      if (!db.objectStoreNames.contains('taxPresets')) {
+        const presetsStore = db.createObjectStore('taxPresets', { keyPath: 'accountId' })
+        presetsStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+      } else if (transaction) {
+        // Store exists, ensure indexes are present
+        try {
+          const presetsStore = transaction.objectStore('taxPresets')
+          if (!presetsStore.indexNames.contains('cachedAt')) {
+            presetsStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+          }
+        } catch (error) {
+          console.warn('Failed to add indexes to taxPresets store during migration:', error)
+        }
+      }
+    }
+
+    // Migration 9: Add vendor defaults store for offline caching
+    if (oldVersion < 9) {
+      if (!db.objectStoreNames.contains('vendorDefaults')) {
+        const vendorDefaultsStore = db.createObjectStore('vendorDefaults', { keyPath: 'accountId' })
+        vendorDefaultsStore.createIndex('cachedAt', 'cachedAt', { unique: false })
+      }
+    }
+  }
+
+  private getConflictKey(accountId: string, entityId: string, entityType: 'item' | 'transaction' | 'project', field?: string, type?: string): string {
+    const safeAccount = accountId || 'unknown-account'
+    const safeEntity = entityId || 'unknown-entity'
+    const safeField = field || 'unknown'
+    const safeType = type || 'content'
+    return `conflict:${entityType}:${safeAccount}:${safeEntity}:${safeType}:${safeField}`
+  }
+
+  async deleteConflictsForItems(accountId: string, itemIds: string[]): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!accountId || itemIds.length === 0) {
+      return
+    }
+
+    const itemSet = new Set(itemIds.filter(Boolean))
+    if (itemSet.size === 0) {
+      return
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['conflicts'], 'readwrite')
+      const store = transaction.objectStore('conflicts')
+      const accountIndex = store.index('accountId')
+      const request = accountIndex.openCursor(IDBKeyRange.only(accountId))
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+        if (!cursor) {
+          return
+        }
+
+        const value = cursor.value as DBConflict
+        if (value.entityType === 'item' && value.itemId && itemSet.has(value.itemId)) {
+          cursor.delete()
+        }
+
+        cursor.continue()
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async deleteConflictsForTransactions(accountId: string, transactionIds: string[]): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!accountId || transactionIds.length === 0) {
+      return
+    }
+
+    const transactionSet = new Set(transactionIds.filter(Boolean))
+    if (transactionSet.size === 0) {
+      return
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['conflicts'], 'readwrite')
+      const store = transaction.objectStore('conflicts')
+      const accountIndex = store.index('accountId')
+      const request = accountIndex.openCursor(IDBKeyRange.only(accountId))
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+        if (!cursor) {
+          return
+        }
+
+        const value = cursor.value as DBConflict
+        if (value.entityType === 'transaction' && value.transactionId && transactionSet.has(value.transactionId)) {
+          cursor.delete()
+        }
+
+        cursor.continue()
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async deleteConflictsForProjects(accountId: string, projectIds: string[]): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!accountId || projectIds.length === 0) {
+      return
+    }
+
+    const projectSet = new Set(projectIds.filter(Boolean))
+    if (projectSet.size === 0) {
+      return
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['conflicts'], 'readwrite')
+      const store = transaction.objectStore('conflicts')
+      const accountIndex = store.index('accountId')
+      const request = accountIndex.openCursor(IDBKeyRange.only(accountId))
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+        if (!cursor) {
+          return
+        }
+
+        const value = cursor.value as DBConflict
+        if (value.entityType === 'project' && value.projectId && projectSet.has(value.projectId)) {
+          cursor.delete()
+        }
+
+        cursor.continue()
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async deleteConflictsForProject(accountId: string, projectId: string | null): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!accountId) {
+      return
+    }
+
+    const normalizedProjectId = projectId ?? null
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['conflicts'], 'readwrite')
+      const store = transaction.objectStore('conflicts')
+      const accountIndex = store.index('accountId')
+      const request = accountIndex.openCursor(IDBKeyRange.only(accountId))
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+        if (!cursor) {
+          return
+        }
+
+        const value = cursor.value as DBConflict
+        const storedProjectId = value.projectId ?? null
+        const matchesProject =
+          normalizedProjectId === null
+            ? storedProjectId === null || storedProjectId === undefined
+            : storedProjectId === normalizedProjectId
+
+        // Delete conflicts for items in this project OR project-level conflicts
+        if (matchesProject && (value.entityType === 'item' || value.entityType === 'project')) {
+          cursor.delete()
+        }
+
+        cursor.continue()
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async deleteAllConflictsForProject(projectId: string | null): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+
+    const normalizedProjectId = projectId ?? null
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['conflicts'], 'readwrite')
+      const store = transaction.objectStore('conflicts')
+      const request = store.openCursor()
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+        if (!cursor) {
+          return
+        }
+
+        const value = cursor.value as DBConflict
+        const storedProjectId = value.projectId ?? null
+        const matchesProject =
+          normalizedProjectId === null
+            ? storedProjectId === null || storedProjectId === undefined
+            : storedProjectId === normalizedProjectId
+
+        // Delete conflicts for items in this project OR project-level conflicts
+        if (matchesProject && (value.entityType === 'item' || value.entityType === 'project')) {
+          cursor.delete()
+        }
+
+        cursor.continue()
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
   }
 
   // Items CRUD
@@ -244,6 +754,11 @@ class OfflineStore {
     const store = transaction.objectStore('items')
 
     for (const item of items) {
+      // Validate itemId is present and valid (required for IndexedDB keyPath)
+      if (!item.itemId || typeof item.itemId !== 'string' || item.itemId.trim() === '') {
+        throw new Error(`Cannot save item: missing or invalid itemId. Item: ${JSON.stringify(item, null, 2)}`)
+      }
+      
       // Ensure version exists and increment it
       if (!item.version) {
         item.version = 1
@@ -328,6 +843,30 @@ class OfflineStore {
     })
   }
 
+  async getProjectById(projectId: string): Promise<DBProject | null> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['projects'], 'readonly')
+      const store = transaction.objectStore('projects')
+      const request = store.get(projectId)
+
+      request.onsuccess = () => resolve(request.result || null)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['projects'], 'readwrite')
+      const store = transaction.objectStore('projects')
+      const request = store.delete(projectId)
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
   // Operations CRUD
   async getOperations(accountId?: string): Promise<DBOperation[]> {
     if (!this.db) throw new Error('Database not initialized')
@@ -335,15 +874,47 @@ class OfflineStore {
       const transaction = this.db!.transaction(['operations'], 'readonly')
       const store = transaction.objectStore('operations')
 
-      let request: IDBRequest
       if (accountId) {
+        const useCompoundIndex = store.indexNames.contains('accountId_timestamp')
+        if (useCompoundIndex) {
+          const index = store.index('accountId_timestamp')
+          const lowerBound: [string, string] = [accountId, '']
+          const upperBound: [string, string] = [accountId, '\uffff']
+          const range = IDBKeyRange.bound(lowerBound, upperBound)
+          const results: DBOperation[] = []
+          const cursorRequest = index.openCursor(range)
+          cursorRequest.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
+            if (cursor) {
+              results.push(cursor.value as DBOperation)
+              cursor.continue()
+            } else {
+              resolve(results)
+            }
+          }
+          cursorRequest.onerror = () => reject(cursorRequest.error)
+          return
+        }
+
         const index = store.index('accountId')
-        request = index.getAll(accountId)
-      } else {
-        request = store.getAll()
+        const request = index.getAll(accountId)
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+        return
       }
 
-      request.onsuccess = () => resolve(request.result)
+      const request = store.getAll()
+      request.onsuccess = () => {
+        const records = request.result ?? []
+        // Ensure deterministic ordering for mixed-account reads
+        records.sort((a, b) => {
+          if (a.accountId === b.accountId) {
+            return a.timestamp.localeCompare(b.timestamp)
+          }
+          return (a.accountId ?? '').localeCompare(b.accountId ?? '')
+        })
+        resolve(records)
+      }
       request.onerror = () => reject(request.error)
     })
   }
@@ -361,6 +932,20 @@ class OfflineStore {
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
     })
+  }
+
+  async replaceOperationsForAccount(accountId: string, operations: DBOperation[]): Promise<void> {
+    if (!accountId) {
+      throw new Error('replaceOperationsForAccount requires an accountId')
+    }
+
+    await this.clearOperations(accountId)
+
+    if (operations.length === 0) {
+      return
+    }
+
+    await this.saveOperations(operations)
   }
 
   async deleteOperation(operationId: string): Promise<void> {
@@ -400,6 +985,50 @@ class OfflineStore {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  // Context persistence
+  async getContext(): Promise<DBContextRecord | null> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['context'], 'readonly')
+      const store = transaction.objectStore('context')
+      const request = store.get('active-context')
+
+      request.onsuccess = () => {
+        resolve(request.result || null)
+      }
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async saveContext(context: Omit<DBContextRecord, 'id'>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    const record: DBContextRecord = {
+      id: 'active-context',
+      ...context
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['context'], 'readwrite')
+      const store = transaction.objectStore('context')
+      const request = store.put(record)
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async clearContext(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['context'], 'readwrite')
+      const store = transaction.objectStore('context')
+      const request = store.delete('active-context')
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
     })
   }
 
@@ -489,26 +1118,113 @@ class OfflineStore {
   // Conflict methods
   async saveConflict(conflict: Omit<DBConflict, 'id' | 'createdAt'>): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
-    const dbConflict: DBConflict = {
-      ...conflict,
-      id: `conflict-${conflict.itemId}-${Date.now()}`,
-      createdAt: new Date().toISOString()
-    }
+
+    // Determine entity ID based on entityType
+    const entityId = conflict.entityType === 'item' 
+      ? conflict.itemId || ''
+      : conflict.entityType === 'transaction'
+      ? conflict.transactionId || ''
+      : conflict.projectId || ''
+    
+    const conflictKey = this.getConflictKey(conflict.accountId, entityId, conflict.entityType, conflict.field, conflict.type)
+    const transaction = this.db.transaction(['conflicts'], 'readwrite')
+    const store = transaction.objectStore('conflicts')
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['conflicts'], 'readwrite')
-      const store = transaction.objectStore('conflicts')
-      const request = store.put(dbConflict)
+      const getRequest = store.get(conflictKey)
 
-      request.onsuccess = () => resolve()
-      request.onerror = () => reject(request.error)
+      getRequest.onerror = () => reject(getRequest.error)
+      getRequest.onsuccess = () => {
+        const existing = getRequest.result as DBConflict | undefined
+        const dbConflict: DBConflict = {
+          ...existing,
+          ...conflict,
+          id: conflictKey,
+          createdAt: existing?.createdAt ?? new Date().toISOString(),
+          resolved: conflict.resolved ?? existing?.resolved ?? false,
+          resolution: conflict.resolution ?? existing?.resolution
+        }
+
+        const putRequest = store.put(dbConflict)
+        putRequest.onerror = () => reject(putRequest.error)
+
+        // Clean up duplicates based on entityType
+        let index: IDBIndex
+        let entityIdToCheck: string | undefined
+        
+        if (conflict.entityType === 'item' && conflict.itemId) {
+          index = store.index('itemId')
+          entityIdToCheck = conflict.itemId
+        } else if (conflict.entityType === 'transaction' && conflict.transactionId) {
+          index = store.index('transactionId')
+          entityIdToCheck = conflict.transactionId
+        } else if (conflict.entityType === 'project' && conflict.projectId) {
+          // For projects, use accountId + projectId to find duplicates
+          const entityTypeAccountIndex = store.index('entityType_accountId')
+          const range = IDBKeyRange.bound(
+            ['project', conflict.accountId],
+            ['project', conflict.accountId + '\uffff']
+          )
+          const cursorRequest = entityTypeAccountIndex.openCursor(range)
+          cursorRequest.onerror = () => reject(cursorRequest.error)
+          cursorRequest.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+            if (!cursor) {
+              transaction.oncomplete = () => resolve()
+              return
+            }
+
+            const value = cursor.value as DBConflict
+            const sameAccount = value.accountId === conflict.accountId
+            const sameProject = value.projectId === conflict.projectId
+            const sameField = (value.field || 'unknown') === (dbConflict.field || 'unknown')
+            const sameType = value.type === dbConflict.type
+            const isDuplicate = value.id !== conflictKey && sameAccount && sameProject && sameField && sameType && !value.resolved
+
+            if (isDuplicate) {
+              cursor.delete()
+            }
+
+            cursor.continue()
+          }
+          return
+        }
+
+        if (index && entityIdToCheck) {
+          const cursorRequest = index.openCursor(IDBKeyRange.only(entityIdToCheck))
+          cursorRequest.onerror = () => reject(cursorRequest.error)
+          cursorRequest.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+            if (!cursor) {
+              transaction.oncomplete = () => resolve()
+              return
+            }
+
+            const value = cursor.value as DBConflict
+            const sameAccount = value.accountId === conflict.accountId
+            const sameField = (value.field || 'unknown') === (dbConflict.field || 'unknown')
+            const sameType = value.type === dbConflict.type
+            const isDuplicate = value.id !== conflictKey && sameAccount && sameField && sameType && !value.resolved
+
+            if (isDuplicate) {
+              cursor.delete()
+            }
+
+            cursor.continue()
+          }
+        } else {
+          transaction.oncomplete = () => resolve()
+        }
+      }
+
+      transaction.onerror = () => reject(transaction.error)
     })
   }
 
   async getConflicts(accountId?: string, resolved?: boolean): Promise<DBConflict[]> {
     if (!this.db) throw new Error('Database not initialized')
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['conflicts'], 'readonly')
+      const transaction = this.db!.transaction(['conflicts'], 'readwrite') // Use readwrite to migrate legacy conflicts
       const store = transaction.objectStore('conflicts')
 
       let request: IDBRequest
@@ -519,9 +1235,15 @@ class OfflineStore {
 
         const results: DBConflict[] = []
         request.onsuccess = (event) => {
-          const cursor = (event.target as IDBRequest).result
+          const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
           if (cursor) {
             const conflict = cursor.value as DBConflict
+            // Migrate legacy conflicts that don't have entityType
+            if (!conflict.entityType) {
+              conflict.entityType = 'item' // Default for legacy conflicts
+              conflict.itemId = conflict.itemId || (conflict as any).id // Ensure itemId is set
+              cursor.update(conflict)
+            }
             if (conflict.resolved === resolved) {
               results.push(conflict)
             }
@@ -533,12 +1255,45 @@ class OfflineStore {
       } else if (accountId) {
         // Get by account only
         const index = store.index('accountId')
-        request = index.getAll(accountId)
-        request.onsuccess = () => resolve(request.result)
+        request = index.openCursor(IDBKeyRange.only(accountId))
+        
+        const results: DBConflict[] = []
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+          if (cursor) {
+            const conflict = cursor.value as DBConflict
+            // Migrate legacy conflicts that don't have entityType
+            if (!conflict.entityType) {
+              conflict.entityType = 'item' // Default for legacy conflicts
+              conflict.itemId = conflict.itemId || (conflict as any).id // Ensure itemId is set
+              cursor.update(conflict)
+            }
+            results.push(conflict)
+            cursor.continue()
+          } else {
+            resolve(results)
+          }
+        }
       } else {
         // Get all
-        request = store.getAll()
-        request.onsuccess = () => resolve(request.result)
+        request = store.openCursor()
+        const results: DBConflict[] = []
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+          if (cursor) {
+            const conflict = cursor.value as DBConflict
+            // Migrate legacy conflicts that don't have entityType
+            if (!conflict.entityType) {
+              conflict.entityType = 'item' // Default for legacy conflicts
+              conflict.itemId = conflict.itemId || (conflict as any).id // Ensure itemId is set
+              cursor.update(conflict)
+            }
+            results.push(conflict)
+            cursor.continue()
+          } else {
+            resolve(results)
+          }
+        }
       }
 
       request.onerror = () => reject(request.error)
@@ -825,10 +1580,290 @@ class OfflineStore {
     })
   }
 
+  // Media upload queue methods
+  async addMediaUploadToQueue(entry: Omit<DBMediaUploadQueueEntry, 'id' | 'queuedAt' | 'retryCount'>): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized')
+    const id = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const queueEntry: DBMediaUploadQueueEntry = {
+      ...entry,
+      id,
+      queuedAt: new Date().toISOString(),
+      retryCount: 0
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['mediaUploadQueue'], 'readwrite')
+      const store = transaction.objectStore('mediaUploadQueue')
+      const request = store.put(queueEntry)
+
+      request.onsuccess = () => resolve(id)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async getMediaUploadQueue(accountId?: string): Promise<DBMediaUploadQueueEntry[]> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['mediaUploadQueue'], 'readonly')
+      const store = transaction.objectStore('mediaUploadQueue')
+      const request = accountId
+        ? store.index('accountId').getAll(accountId)
+        : store.getAll()
+
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async removeMediaUploadFromQueue(queueId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['mediaUploadQueue'], 'readwrite')
+      const store = transaction.objectStore('mediaUploadQueue')
+      const request = store.delete(queueId)
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async updateMediaUploadQueueEntry(queueId: string, updates: Partial<DBMediaUploadQueueEntry>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['mediaUploadQueue'], 'readwrite')
+      const store = transaction.objectStore('mediaUploadQueue')
+      const getRequest = store.get(queueId)
+
+      getRequest.onsuccess = () => {
+        const entry = getRequest.result
+        if (entry) {
+          Object.assign(entry, updates)
+          store.put(entry)
+        }
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  // Budget Categories CRUD
+  async saveBudgetCategories(accountId: string, categories: Omit<DBBudgetCategory, 'cachedAt'>[]): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('budgetCategories'))) {
+      return
+    }
+
+    const transaction = this.db.transaction(['budgetCategories'], 'readwrite')
+    const store = transaction.objectStore('budgetCategories')
+    const cachedAt = new Date().toISOString()
+
+    for (const category of categories) {
+      const dbCategory: DBBudgetCategory = {
+        ...category,
+        cachedAt
+      }
+      store.put(dbCategory)
+    }
+
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async getBudgetCategories(accountId: string): Promise<DBBudgetCategory[]> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('budgetCategories'))) {
+      return []
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['budgetCategories'], 'readonly')
+      const store = transaction.objectStore('budgetCategories')
+      const index = store.index('accountId')
+      const request = index.getAll(accountId)
+
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async getBudgetCategoryById(accountId: string, categoryId: string): Promise<DBBudgetCategory | null> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('budgetCategories'))) {
+      return null
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['budgetCategories'], 'readonly')
+      const store = transaction.objectStore('budgetCategories')
+      const request = store.get(categoryId)
+
+      request.onsuccess = () => {
+        const category = request.result as DBBudgetCategory | undefined
+        // Verify it belongs to the account
+        if (category && category.accountId === accountId) {
+          resolve(category)
+        } else {
+          resolve(null)
+        }
+      }
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async clearBudgetCategories(accountId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('budgetCategories'))) {
+      return
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['budgetCategories'], 'readwrite')
+      const store = transaction.objectStore('budgetCategories')
+      const index = store.index('accountId')
+      const request = index.openCursor(IDBKeyRange.only(accountId))
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result as IDBCursorWithValue | null
+        if (cursor) {
+          cursor.delete()
+          cursor.continue()
+        }
+      }
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  // Tax Presets CRUD
+  async saveTaxPresets(accountId: string, presets: DBTaxPreset[]): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('taxPresets'))) {
+      return
+    }
+
+    const transaction = this.db.transaction(['taxPresets'], 'readwrite')
+    const store = transaction.objectStore('taxPresets')
+    const cachedAt = new Date().toISOString()
+
+    const cacheEntry: DBTaxPresetsCache = {
+      accountId,
+      presets,
+      cachedAt
+    }
+    store.put(cacheEntry)
+
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async getTaxPresets(accountId: string): Promise<DBTaxPreset[] | null> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('taxPresets'))) {
+      return null
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['taxPresets'], 'readonly')
+      const store = transaction.objectStore('taxPresets')
+      const request = store.get(accountId)
+
+      request.onsuccess = () => {
+        const cache = request.result as DBTaxPresetsCache | undefined
+        resolve(cache?.presets ?? null)
+      }
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async getTaxPresetById(accountId: string, presetId: string): Promise<DBTaxPreset | null> {
+    const presets = await this.getTaxPresets(accountId)
+    if (!presets) return null
+    return presets.find(p => p.id === presetId) || null
+  }
+
+  async clearTaxPresets(accountId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('taxPresets'))) {
+      return
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['taxPresets'], 'readwrite')
+      const store = transaction.objectStore('taxPresets')
+      const request = store.delete(accountId)
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  // Vendor Defaults CRUD
+  async saveVendorDefaults(accountId: string, slots: Array<string | null>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('vendorDefaults'))) {
+      return
+    }
+
+    // Validate slots
+    if (!Array.isArray(slots) || slots.length !== 10) {
+      throw new Error('Vendor defaults must be an array of exactly 10 slots')
+    }
+
+    const transaction = this.db.transaction(['vendorDefaults'], 'readwrite')
+    const store = transaction.objectStore('vendorDefaults')
+    const cachedAt = new Date().toISOString()
+
+    const cacheEntry: DBVendorDefaultsCache = {
+      accountId,
+      slots,
+      cachedAt
+    }
+    store.put(cacheEntry)
+
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+    })
+  }
+
+  async getVendorDefaults(accountId: string): Promise<Array<string | null> | null> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('vendorDefaults'))) {
+      return null
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['vendorDefaults'], 'readonly')
+      const store = transaction.objectStore('vendorDefaults')
+      const request = store.get(accountId)
+
+      request.onsuccess = () => {
+        const cache = request.result as DBVendorDefaultsCache | undefined
+        resolve(cache?.slots ?? null)
+      }
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async clearVendorDefaults(accountId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    if (!(await this.ensureStoreInitialized('vendorDefaults'))) {
+      return
+    }
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['vendorDefaults'], 'readwrite')
+      const store = transaction.objectStore('vendorDefaults')
+      const request = store.delete(accountId)
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
   // Utility methods
   async clearAll(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized')
-    const transaction = this.db.transaction(['items', 'transactions', 'projects', 'operations', 'cache', 'conflicts', 'media'], 'readwrite')
+    const transaction = this.db.transaction(['items', 'transactions', 'projects', 'operations', 'cache', 'conflicts', 'media', 'mediaUploadQueue', 'budgetCategories', 'taxPresets', 'vendorDefaults'], 'readwrite')
 
     transaction.objectStore('items').clear()
     transaction.objectStore('transactions').clear()
@@ -837,6 +1872,18 @@ class OfflineStore {
     transaction.objectStore('cache').clear()
     transaction.objectStore('conflicts').clear()
     transaction.objectStore('media').clear()
+    if (transaction.objectStore('mediaUploadQueue')) {
+      transaction.objectStore('mediaUploadQueue').clear()
+    }
+    if (transaction.objectStore('budgetCategories')) {
+      transaction.objectStore('budgetCategories').clear()
+    }
+    if (transaction.objectStore('taxPresets')) {
+      transaction.objectStore('taxPresets').clear()
+    }
+    if (transaction.objectStore('vendorDefaults')) {
+      transaction.objectStore('vendorDefaults').clear()
+    }
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => resolve()
@@ -846,4 +1893,4 @@ class OfflineStore {
 }
 
 export const offlineStore = new OfflineStore()
-export type { DBItem, DBTransaction, DBProject }
+export type { DBItem, DBTransaction, DBProject, DBOperation, DBContextRecord, DBMediaUploadQueueEntry, DBBudgetCategory, DBTaxPreset, DBTaxPresetsCache, DBVendorDefaultsCache }

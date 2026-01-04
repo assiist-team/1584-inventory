@@ -23,13 +23,22 @@ export function ConflictResolutionView({ accountId, projectId, onConflictsResolv
     isResolving,
     detectConflicts,
     resolveCurrentConflict,
+    resolveAllConflicts,
     skipCurrentConflict,
     hasConflicts
-  } = useConflictResolution()
+  } = useConflictResolution(accountId, projectId)
 
   useEffect(() => {
     loadStoredConflicts()
   }, [accountId])
+
+  // Also load stored conflicts when useConflictResolution loads them
+  useEffect(() => {
+    if (detectedConflicts.length > 0) {
+      // Merge detected conflicts with stored ones
+      loadStoredConflicts()
+    }
+  }, [detectedConflicts.length])
 
   const loadStoredConflicts = async () => {
     try {
@@ -144,11 +153,25 @@ export function ConflictResolutionView({ accountId, projectId, onConflictsResolv
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => setShowModal(true)}
-            disabled={!currentConflict}
+            onClick={async () => {
+              try {
+                // Resolve all conflicts using keep_server strategy (server wins)
+                await resolveAllConflicts({ strategy: 'keep_server' })
+                // Reload stored conflicts to update UI
+                await loadStoredConflicts()
+                // Check if all conflicts are resolved
+                const remainingConflicts = await offlineStore.getConflicts(accountId, false)
+                if (remainingConflicts.length === 0 && onConflictsResolved) {
+                  onConflictsResolved()
+                }
+              } catch (error) {
+                console.error('Failed to resolve all conflicts:', error)
+              }
+            }}
+            disabled={isResolving || allConflicts.length === 0}
           >
             <CheckCircle className="w-4 h-4 mr-1" />
-            Resolve All
+            {isResolving ? 'Resolving...' : `Resolve All (${allConflicts.length})`}
           </Button>
         )}
       </div>

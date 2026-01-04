@@ -21,6 +21,7 @@ import BulkItemControls from '@/components/ui/BulkItemControls'
 import { useTransactionDisplayInfo } from '@/hooks/useTransactionDisplayInfo'
 import { useProjectRealtime } from '@/contexts/ProjectRealtimeContext'
 import { useStackedNavigate } from '@/hooks/useStackedNavigate'
+import { ConflictResolutionView } from '@/components/ConflictResolutionView'
 
 interface InventoryListProps {
   projectId: string
@@ -42,7 +43,7 @@ export default function InventoryList({ projectId, projectName, items: propItems
   const isLoading = accountLoading
   const [uploadingImages, setUploadingImages] = useState<Set<string>>(new Set())
   const [openDispositionMenu, setOpenDispositionMenu] = useState<string | null>(null)
-  const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory'>('all')
+  const [filterMode, setFilterMode] = useState<'all' | 'bookmarked' | 'to-inventory' | 'from-inventory' | 'to-return' | 'returned'>('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [sortMode, setSortMode] = useState<'alphabetical' | 'creationDate'>('alphabetical')
   const [showSortMenu, setShowSortMenu] = useState(false)
@@ -579,6 +580,12 @@ export default function InventoryList({ projectId, projectName, items: propItems
       case 'from-inventory':
         matchesFilter = item.source === 'Inventory'
         break
+      case 'to-return':
+        matchesFilter = item.disposition === 'to return'
+        break
+      case 'returned':
+        matchesFilter = item.disposition === 'returned'
+        break
       default:
         matchesFilter = true
     }
@@ -755,6 +762,28 @@ export default function InventoryList({ projectId, projectName, items: propItems
                   >
                     From Inventory
                   </button>
+                  <button
+                    onClick={() => {
+                      setFilterMode('to-return')
+                      setShowFilterMenu(false)
+                    }}
+                    className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                      filterMode === 'to-return' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                    }`}
+                  >
+                    To Return
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilterMode('returned')
+                      setShowFilterMenu(false)
+                    }}
+                    className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                      filterMode === 'returned' ? 'bg-primary-50 text-primary-600' : 'text-gray-700'
+                    }`}
+                  >
+                    Returned
+                  </button>
                 </div>
               </div>
             )}
@@ -784,8 +813,20 @@ export default function InventoryList({ projectId, projectName, items: propItems
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-        </div>
       </div>
+    </div>
+
+      {/* Conflict Resolution */}
+      {currentAccountId && (
+        <ConflictResolutionView
+          accountId={currentAccountId}
+          projectId={projectId}
+          onConflictsResolved={() => {
+            // Refresh items after conflicts are resolved
+            refreshRealtimeAfterWrite()
+          }}
+        />
+      )}
 
       {/* Loading State */}
       {isLoading && (

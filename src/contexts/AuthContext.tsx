@@ -7,6 +7,8 @@ import {
   createOrUpdateUserDocument,
   supabase
 } from '../services/supabase'
+import { updateOfflineContext } from '../services/offlineContext'
+import { isNetworkOnline } from '../services/networkStatusService'
 import { User, UserRole } from '../types'
 
 interface AuthContextType {
@@ -94,6 +96,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [supabaseUser, user, timedOutWithoutAuth])
 
   useEffect(() => {
+    const userId = supabaseUser?.id ?? null
+    updateOfflineContext({ userId }).catch(error => {
+      console.warn('[AuthContext] Failed to persist offline user context', error)
+    })
+  }, [supabaseUser])
+
+  useEffect(() => {
     const instanceId = instanceIdRef.current
     const initStartTime = Date.now()
     initStartTimeRef.current = initStartTime
@@ -109,7 +118,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // Environment preflight (dev only) - helps diagnose stalls before subscription/getSession
     if (import.meta.env.DEV) {
-      const online = typeof navigator !== 'undefined' ? navigator.onLine : undefined
+      const online = isNetworkOnline()
       const swController = typeof navigator !== 'undefined' ? navigator.serviceWorker?.controller : undefined
       const hasServiceWorker = !!swController
       const swUrl = hasServiceWorker ? (swController as ServiceWorker).scriptURL : null
@@ -148,7 +157,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const elapsedMs = Date.now() - initStartTime
         const nowTs = Date.now()
         const getSessionElapsedMsSnapshot = getSessionStartTime ? nowTs - getSessionStartTime : null
-        const online = typeof navigator !== 'undefined' ? navigator.onLine : undefined
+        const online = isNetworkOnline()
         const swController = typeof navigator !== 'undefined' ? navigator.serviceWorker?.controller : undefined
         const hasServiceWorker = !!swController
         const swUrl = hasServiceWorker ? (swController as ServiceWorker).scriptURL : null

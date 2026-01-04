@@ -21,6 +21,8 @@ import { projectItemEdit, projectItems, projectTransactionDetail } from '@/utils
 import { Combobox } from '@/components/ui/Combobox'
 import { supabase } from '@/services/supabase'
 import { useProjectRealtime } from '@/contexts/ProjectRealtimeContext'
+import { getGlobalQueryClient } from '@/utils/queryClient'
+import { hydrateItemCache, hydrateProjectCache } from '@/utils/hydrationHelpers'
 
 export default function ItemDetail({ itemId: propItemId, projectId: propProjectId, onClose }: { itemId?: string; projectId?: string; onClose?: () => void } = {}) {
   const { id, projectId: routeProjectId, itemId } = useParams<{ id?: string; projectId?: string; itemId?: string }>()
@@ -91,6 +93,61 @@ export default function ItemDetail({ itemId: propItemId, projectId: propProjectI
         try {
           if (!currentAccountId) return
           
+          // First, try to hydrate from offlineStore to React Query cache
+          // This ensures optimistic items created offline are available
+          try {
+            await hydrateItemCache(getGlobalQueryClient(), currentAccountId, actualItemId)
+          } catch (error) {
+            console.warn('Failed to hydrate item cache (non-fatal):', error)
+          }
+
+          if (projectId) {
+            try {
+              await hydrateProjectCache(getGlobalQueryClient(), currentAccountId, projectId)
+            } catch (error) {
+              console.warn('Failed to hydrate project cache (non-fatal):', error)
+            }
+          }
+
+          // Check React Query cache first (for optimistic items created offline)
+          const queryClient = getGlobalQueryClient()
+          const cachedItem = queryClient.getQueryData<Item>(['item', currentAccountId, actualItemId])
+          
+          if (cachedItem) {
+            console.log('✅ Item found in React Query cache:', cachedItem.itemId)
+            setItem(cachedItem)
+            if (isBusinessInventoryItem) {
+              setProjectName('Business Inventory')
+            } else if (projectId) {
+              // Still fetch project name
+              try {
+                const project = await projectService.getProject(currentAccountId, projectId)
+                if (project) {
+                  setProjectName(project.name)
+                }
+              } catch (error) {
+                console.warn('Failed to fetch project name:', error)
+              }
+            }
+            setIsLoadingItem(false)
+
+            // Background refresh to replace stale cache entry
+            ;(async () => {
+              try {
+                const freshItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
+                if (freshItem) {
+                  queryClient.setQueryData(['item', currentAccountId, actualItemId], freshItem)
+                  setItem(freshItem)
+                }
+              } catch (error) {
+                console.warn('Failed to refresh item after serving cache:', error)
+              }
+            })().catch(() => {
+              // errors already logged above
+            })
+            return
+          }
+          
           if (isBusinessInventoryItem) {
             console.log('📦 Fetching business inventory item (no project context)...')
             const fetchedItem = await unifiedItemsService.getItemById(currentAccountId, actualItemId)
@@ -143,7 +200,11 @@ export default function ItemDetail({ itemId: propItemId, projectId: propProjectI
   }, [actualItemId, id, projectId, currentAccountId, isBusinessInventoryItem])
 
   // Set up real-time listener for item updates
-  const subscriptionProjectId = id || queryProjectId
+  const subscriptionProjectId = useMemo(() => {
+    if (projectId) return projectId
+    if (item?.projectId) return item.projectId
+    return queryProjectId || null
+  }, [projectId, item?.projectId, queryProjectId])
 
   useEffect(() => {
     if (!subscriptionProjectId || !actualItemId || !currentAccountId) return
@@ -528,13 +589,50 @@ export default function ItemDetail({ itemId: propItemId, projectId: propProjectI
       console.log('After update - updatedImages length:', updatedImages.length)
       console.log('New images URLs:', newImages.map(img => img.url))
 
-      if (projectId && currentAccountId) {
+      const updatedItemState = { ...item, images: updatedImages }
+
+      if (currentAccountId) {
         console.log('Updating item in database with multiple new images')
         await unifiedItemsService.updateItem(currentAccountId, item.itemId, { images: updatedImages })
+
+        const queryClient = getGlobalQueryClient()
+        const itemCacheKey = ['item', currentAccountId, item.itemId]
+
+        queryClient.setQueryData<Item | undefined>(itemCacheKey, (cached) => {
+          if (!cached) {
+            return updatedItemState
+          }
+          return { ...cached, images: updatedImages }
+        })
+
+        const effectiveProjectId = projectId || item.projectId || null
+        const updateItemCollection = (key: unknown[]) => {
+          queryClient.setQueryData<Item[] | undefined>(key, (old) => {
+            if (!old) return old
+            return old.map(existing =>
+              existing.itemId === item.itemId ? { ...existing, images: updatedImages } : existing
+            )
+          })
+        }
+
+        if (effectiveProjectId) {
+          updateItemCollection(['project-items', currentAccountId, effectiveProjectId])
+        } else {
+          updateItemCollection(['business-inventory', currentAccountId])
+        }
+
+        if (item.transactionId) {
+          updateItemCollection(['transaction-items', currentAccountId, item.transactionId])
+        }
+
+        queryClient.invalidateQueries({ queryKey: itemCacheKey })
+      } else {
+        console.warn('Unable to persist images without an authenticated account context.')
       }
 
       // Update local state
-      setItem({ ...item, images: updatedImages })
+      setItem(updatedItemState)
+
       setUploadProgress(100)
 
       console.log('Multiple image upload completed successfully')

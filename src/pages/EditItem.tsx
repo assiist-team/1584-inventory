@@ -6,10 +6,13 @@ import { transactionService, unifiedItemsService } from '@/services/inventorySer
 import { getAvailableVendors } from '@/services/vendorDefaultsService'
 import { Transaction } from '@/types'
 import { Combobox } from '@/components/ui/Combobox'
+import { RetrySyncButton } from '@/components/ui/RetrySyncButton'
 import { useAuth } from '../contexts/AuthContext'
 import { useAccount } from '../contexts/AccountContext'
 import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
+import { hydrateProjectTransactionsCache } from '@/utils/hydrationHelpers'
+import { getGlobalQueryClient } from '@/utils/queryClient'
 
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, COMPANY_NAME } from '@/constants/company'
 import { projectItemDetail, projectItems } from '@/utils/routes'
@@ -168,12 +171,28 @@ export default function EditItem() {
     fetchItem()
   }, [itemId, projectId, currentAccountId])
 
-  // Fetch transactions when component mounts
+  // Hydrate and fetch transactions when component mounts
   useEffect(() => {
     const fetchTransactions = async () => {
       if (projectId && currentAccountId) {
         setLoadingTransactions(true)
         try {
+          // Hydrate cache first to prevent empty state flash
+          try {
+            const queryClient = getGlobalQueryClient()
+            if (queryClient) {
+              await hydrateProjectTransactionsCache(queryClient, currentAccountId, projectId)
+              // Check if React Query cache has transactions
+              const cached = queryClient.getQueryData<Transaction[]>(['project-transactions', currentAccountId, projectId])
+              if (cached && cached.length > 0) {
+                setTransactions(cached)
+              }
+            }
+          } catch (hydrateError) {
+            console.warn('Failed to hydrate transaction cache:', hydrateError)
+          }
+          
+          // Fetch fresh transactions (will update cache)
           const fetchedTransactions = await transactionService.getTransactions(currentAccountId, projectId)
           setTransactions(fetchedTransactions)
         } catch (error) {
@@ -323,6 +342,7 @@ export default function EditItem() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </ContextBackLink>
+          <RetrySyncButton size="sm" variant="secondary" />
         </div>
       </div>
 
@@ -371,7 +391,12 @@ export default function EditItem() {
               {/* Transaction Selection */}
               <Combobox
                 label="Associate with Transaction (Optional)"
-                value={formData.selectedTransactionId}
+                value={
+                  // Guard: if selectedTransactionId is not in options yet, use empty string to avoid uncontrolled/controlled warning
+                  formData.selectedTransactionId && transactions.some(tx => tx.transactionId === formData.selectedTransactionId)
+                    ? formData.selectedTransactionId
+                    : ''
+                }
                 onChange={handleTransactionChange}
                 error={errors.selectedTransactionId}
                 disabled={loadingTransactions}
@@ -389,6 +414,9 @@ export default function EditItem() {
               />
               {!loadingTransactions && transactions.length === 0 && (
                 <p className="mt-1 text-sm text-gray-500">No transactions available for this project</p>
+              )}
+              {formData.selectedTransactionId && !transactions.some(tx => tx.transactionId === formData.selectedTransactionId) && !loadingTransactions && (
+                <p className="mt-1 text-sm text-amber-600">Selected transaction is loading...</p>
               )}
 
               {/* Source */}

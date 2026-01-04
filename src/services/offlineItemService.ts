@@ -1,19 +1,32 @@
-import { offlineStore, type DBItem } from './offlineStore'
+import { offlineStore, type DBItem, mapSupabaseItemToOfflineRecord } from './offlineStore'
 import { supabase } from './supabase'
 import { operationQueue } from './operationQueue'
-import { useOfflineAwareQuery } from '../hooks/useOfflineAwareQuery'
 import type { Item } from '../types'
 import type { Operation } from '../types/operations'
+import { isNetworkOnline } from './networkStatusService'
+import { refreshProjectSnapshot } from '../utils/realtimeSnapshotUpdater'
+
+export interface OfflineOperationResult {
+  operationId: string
+  wasQueued: boolean
+  itemId?: string
+}
+
+export class OfflineStorageError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message)
+    this.name = 'OfflineStorageError'
+  }
+}
+
+export class OfflineQueueUnavailableError extends OfflineStorageError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause)
+    this.name = 'OfflineQueueUnavailableError'
+  }
+}
 
 export class OfflineItemService {
-  private isOnline = navigator.onLine
-
-  constructor() {
-    // Listen for network changes
-    window.addEventListener('online', () => this.isOnline = true)
-    window.addEventListener('offline', () => this.isOnline = false)
-  }
-
   async getItemsByProject(
     accountId: string,
     projectId: string,
@@ -22,7 +35,7 @@ export class OfflineItemService {
   ): Promise<Item[]> {
     // Offline-aware query: try network first, fall back to cache
     try {
-      if (this.isOnline) {
+      if (isNetworkOnline()) {
         // Fetch from Supabase
         const { data, error } = await supabase
           .from('items')
@@ -39,6 +52,8 @@ export class OfflineItemService {
           accountId: item.account_id,
           projectId: item.project_id,
           transactionId: item.transaction_id,
+          previousProjectTransactionId: item.previous_project_transaction_id ?? null,
+          previousProjectId: item.previous_project_id ?? null,
           name: item.name,
           description: item.description,
           source: item.source,
@@ -55,6 +70,8 @@ export class OfflineItemService {
           bookmark: item.bookmark,
           dateCreated: item.date_created,
           lastUpdated: item.last_updated,
+          createdAt: item.created_at,
+          images: item.images ?? [],
           taxRatePct: item.tax_rate_pct,
           taxAmountPurchasePrice: item.tax_amount_purchase_price,
           taxAmountProjectPrice: item.tax_amount_project_price,
@@ -80,94 +97,263 @@ export class OfflineItemService {
     return cached.map(this.convertDbItemToItem)
   }
 
-  async createItem(itemData: {
-    projectId: string
-    name: string
-    description?: string
-    quantity: number
-    unitCost: number
-  }): Promise<void> {
-    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount'> = {
-      type: 'CREATE_ITEM',
-      data: itemData
+  /**
+   * Create an item offline by queuing it for sync
+   * Returns the operation ID for tracking/retry purposes
+   */
+  async createItem(
+    accountId: string,
+    itemData: Omit<Item, 'itemId' | 'dateCreated' | 'lastUpdated'>
+  ): Promise<OfflineOperationResult> {
+    try {
+      await offlineStore.init()
+    } catch (error) {
+      console.error('Offline storage unavailable during createItem:', error)
+      throw new OfflineQueueUnavailableError(
+        'Offline storage is unavailable. Please refresh or try again online.',
+        error
+      )
     }
 
-    await operationQueue.add(operation)
+    const timestamp = new Date().toISOString()
+    const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    const qrKey = itemData.qrKey || `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+    // Optimistically update local store with full item data
+    const tempItem: DBItem = {
+      itemId,
+      accountId,
+      projectId: itemData.projectId ?? null,
+      transactionId: itemData.transactionId ?? null,
+      previousProjectTransactionId: itemData.previousProjectTransactionId ?? null,
+      previousProjectId: itemData.previousProjectId ?? null,
+      name: itemData.name,
+      description: itemData.description ?? null,
+      source: itemData.source ?? null,
+      sku: itemData.sku ?? null,
+      purchasePrice: itemData.purchasePrice ?? null,
+      projectPrice: itemData.projectPrice ?? null,
+      marketValue: itemData.marketValue ?? null,
+      paymentMethod: itemData.paymentMethod ?? null,
+      disposition: itemData.disposition ?? null,
+      notes: itemData.notes,
+      space: itemData.space,
+      qrKey,
+      bookmark: itemData.bookmark ?? false,
+      dateCreated: itemData.dateCreated || timestamp,
+      lastUpdated: timestamp,
+      createdAt: itemData.createdAt ? (typeof itemData.createdAt === 'string' ? itemData.createdAt : itemData.createdAt.toISOString()) : timestamp,
+      images: itemData.images || [],
+      taxRatePct: itemData.taxRatePct,
+      taxAmountPurchasePrice: itemData.taxAmountPurchasePrice,
+      taxAmountProjectPrice: itemData.taxAmountProjectPrice,
+      createdBy: itemData.createdBy,
+      inventoryStatus: itemData.inventoryStatus,
+      businessInventoryLocation: itemData.businessInventoryLocation,
+      originTransactionId: itemData.originTransactionId ?? null,
+      latestTransactionId: itemData.latestTransactionId ?? null,
+      version: 1,
+      last_synced_at: null // Not synced yet
+    }
+
+    try {
+      await offlineStore.saveItems([tempItem])
+      console.debug('Persisted optimistic offline item before queueing create', {
+        itemId,
+        projectId: tempItem.projectId
+      })
+    } catch (error) {
+      console.error('Failed to cache optimistic item before queueing CREATE operation', error)
+      throw new OfflineQueueUnavailableError(
+        'Unable to cache the item for offline sync. Free some storage or retry online.',
+        error
+      )
+    }
+
+    // Convert Item to operation format
+    // Note: operationQueue.executeCreateItem expects simplified data, but we'll store full itemData
+    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount' | 'accountId' | 'updatedBy' | 'version'> = {
+      type: 'CREATE_ITEM',
+      data: {
+        id: itemId, // item_id (business identifier) - must be provided
+        accountId,
+        projectId: itemData.projectId || '',
+        name: itemData.name || '',
+        description: itemData.description,
+        purchasePrice: itemData.purchasePrice // Include actual purchase price
+      }
+    }
+
+    let operationId: string
+    try {
+      operationId = await operationQueue.add(operation, {
+        accountId,
+        version: 1,
+        timestamp
+      })
+    } catch (error) {
+      console.error('Failed to enqueue CREATE_ITEM operation after caching optimistic data', error)
+      // Attempt to roll back local cache entry so we do not keep orphaned items
+      try {
+        await offlineStore.deleteItem(itemId)
+      } catch (rollbackError) {
+        console.warn('Unable to roll back optimistic item after queue failure', rollbackError)
+      }
+      throw error
+    }
+
+    // Trigger immediate processing if online
+    if (isNetworkOnline()) {
+      operationQueue.processQueue()
+    }
+
+    if (import.meta.env.DEV) {
+      console.info('[offlineItemService] queued CREATE_ITEM for offline sync', {
+        accountId,
+        itemId,
+        operationId
+      })
+    }
+
+    // Refresh realtime snapshot if item belongs to a project
+    if (itemData.projectId) {
+      refreshProjectSnapshot(itemData.projectId)
+    }
+
+    return { operationId, wasQueued: true, itemId }
+  }
+
+  /**
+   * Update an item offline by queuing it for sync
+   * Returns the operation ID for tracking/retry purposes
+   */
+  async updateItem(
+    accountId: string,
+    itemId: string,
+    updates: Partial<Item>
+  ): Promise<OfflineOperationResult> {
+    await offlineStore.init().catch(() => {})
+    
+    // Hydrate from offlineStore first
+    const allItems = await offlineStore.getAllItems().catch(() => []) as DBItem[]
+    const itemToUpdate = allItems.find(item => item.itemId === itemId) || null
+    
+    if (!itemToUpdate) {
+      throw new Error(`Item ${itemId} not found in offline store`)
+    }
+    
+    const nextVersion = (itemToUpdate.version ?? 0) + 1
+    const timestamp = new Date().toISOString()
+
+    // Convert Item updates to operation format
+    // Note: operationQueue.executeUpdateItem expects simplified updates, but we'll store full updates
+    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount' | 'accountId' | 'updatedBy' | 'version'> = {
+      type: 'UPDATE_ITEM',
+      data: {
+        id: itemId,
+        accountId,
+        updates: {
+          name: updates.name,
+          description: updates.description,
+          purchasePrice: updates.purchasePrice // Include actual purchase price if updated
+        }
+      }
+    }
+
+    const operationId = await operationQueue.add(operation, {
+      accountId,
+      version: nextVersion,
+      timestamp
+    })
 
     // Optimistically update local store
-    const tempId = `temp-${Date.now()}`
-    const tempItem: DBItem = {
-      itemId: tempId,
-      projectId: itemData.projectId,
-      name: itemData.name,
-      description: itemData.description || '',
-      source: 'manual',
-      sku: `TEMP-${Date.now()}`,
-      paymentMethod: 'cash',
-      qrKey: crypto.randomUUID(),
-      bookmark: false,
-      dateCreated: new Date().toISOString(),
-      lastUpdated: new Date().toISOString(),
-      version: 1
+    const optimisticItem: DBItem = {
+      ...itemToUpdate,
+      ...(updates.projectId !== undefined && { projectId: updates.projectId ?? null }),
+      ...(updates.transactionId !== undefined && { transactionId: updates.transactionId ?? null }),
+      ...(updates.previousProjectTransactionId !== undefined && { previousProjectTransactionId: updates.previousProjectTransactionId ?? null }),
+      ...(updates.previousProjectId !== undefined && { previousProjectId: updates.previousProjectId ?? null }),
+      ...(updates.name !== undefined && { name: updates.name }),
+      ...(updates.description !== undefined && { description: updates.description ?? null }),
+      ...(updates.source !== undefined && { source: updates.source ?? null }),
+      ...(updates.sku !== undefined && { sku: updates.sku ?? null }),
+      ...(updates.purchasePrice !== undefined && { purchasePrice: updates.purchasePrice ?? null }),
+      ...(updates.projectPrice !== undefined && { projectPrice: updates.projectPrice ?? null }),
+      ...(updates.marketValue !== undefined && { marketValue: updates.marketValue ?? null }),
+      ...(updates.paymentMethod !== undefined && { paymentMethod: updates.paymentMethod ?? null }),
+      ...(updates.disposition !== undefined && { disposition: updates.disposition ?? null }),
+      ...(updates.notes !== undefined && { notes: updates.notes }),
+      ...(updates.space !== undefined && { space: updates.space }),
+      ...(updates.bookmark !== undefined && { bookmark: updates.bookmark ?? false }),
+      ...(updates.images !== undefined && { images: updates.images || [] }),
+      ...(updates.taxRatePct !== undefined && { taxRatePct: updates.taxRatePct }),
+      ...(updates.taxAmountPurchasePrice !== undefined && { taxAmountPurchasePrice: updates.taxAmountPurchasePrice }),
+      ...(updates.taxAmountProjectPrice !== undefined && { taxAmountProjectPrice: updates.taxAmountProjectPrice }),
+      ...(updates.inventoryStatus !== undefined && { inventoryStatus: updates.inventoryStatus }),
+      ...(updates.businessInventoryLocation !== undefined && { businessInventoryLocation: updates.businessInventoryLocation }),
+      ...(updates.createdAt !== undefined && { createdAt: typeof updates.createdAt === 'string' ? updates.createdAt : updates.createdAt.toISOString() }),
+      lastUpdated: timestamp,
+      version: nextVersion
     }
-
-    await offlineStore.saveItems([tempItem])
+    
+    await offlineStore.saveItems([optimisticItem])
 
     // Trigger immediate processing if online
-    if (navigator.onLine) {
+    if (isNetworkOnline()) {
       operationQueue.processQueue()
     }
+
+    // Refresh realtime snapshot if item belongs to a project
+    const projectId = optimisticItem.projectId || itemToUpdate.projectId
+    if (projectId) {
+      refreshProjectSnapshot(projectId)
+    }
+
+    return { operationId, wasQueued: true, itemId }
   }
 
-  async updateItem(itemId: string, updates: Partial<{
-    name: string
-    description: string
-    quantity: number
-    unitCost: number
-  }>): Promise<void> {
-    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount'> = {
-      type: 'UPDATE_ITEM',
-      data: { id: itemId, updates }
+  /**
+   * Delete an item offline by queuing it for sync
+   * Returns the operation ID for tracking/retry purposes
+   */
+  async deleteItem(accountId: string, itemId: string): Promise<OfflineOperationResult> {
+    await offlineStore.init().catch(() => {})
+    
+    // Hydrate from offlineStore first
+    const existingItem = await offlineStore.getItemById(itemId).catch(() => null as DBItem | null)
+    
+    if (!existingItem) {
+      throw new Error(`Item ${itemId} not found in offline store`)
     }
+    
+    const timestamp = new Date().toISOString()
 
-    await operationQueue.add(operation)
-
-    // Update local store optimistically
-    const existingItems = await offlineStore.getItems('') // Get all items for now
-    const itemToUpdate = existingItems.find(item => item.itemId === itemId)
-
-    if (itemToUpdate) {
-      const optimisticItem = {
-        ...itemToUpdate,
-        ...updates,
-        lastUpdated: new Date().toISOString(),
-        version: itemToUpdate.version + 1
-      }
-      await offlineStore.saveItems([optimisticItem])
-    }
-
-    // Trigger immediate processing if online
-    if (navigator.onLine) {
-      operationQueue.processQueue()
-    }
-  }
-
-  async deleteItem(itemId: string): Promise<void> {
-    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount'> = {
+    const operation: Omit<Operation, 'id' | 'timestamp' | 'retryCount' | 'accountId' | 'updatedBy' | 'version'> = {
       type: 'DELETE_ITEM',
-      data: { id: itemId }
+      data: { id: itemId, accountId }
     }
 
-    await operationQueue.add(operation)
+    const operationId = await operationQueue.add(operation, {
+      accountId,
+      version: existingItem.version ?? 1,
+      timestamp
+    })
 
     // Note: Optimistic deletion from local store would be complex
     // since we need to track deletions. For now, we'll let the
     // React Query invalidation handle this when sync completes.
 
     // Trigger immediate processing if online
-    if (navigator.onLine) {
+    if (isNetworkOnline()) {
       operationQueue.processQueue()
     }
+
+    // Refresh realtime snapshot if item belongs to a project
+    if (existingItem.projectId) {
+      refreshProjectSnapshot(existingItem.projectId)
+    }
+
+    return { operationId, wasQueued: true, itemId }
   }
 
   private convertDbItemToItem(dbItem: DBItem): Item {
@@ -175,6 +361,9 @@ export class OfflineItemService {
       itemId: dbItem.itemId,
       accountId: dbItem.accountId,
       projectId: dbItem.projectId,
+      transactionId: dbItem.transactionId,
+      previousProjectTransactionId: dbItem.previousProjectTransactionId,
+      previousProjectId: dbItem.previousProjectId,
       name: dbItem.name,
       description: dbItem.description,
       source: dbItem.source,
@@ -191,6 +380,8 @@ export class OfflineItemService {
       bookmark: dbItem.bookmark,
       dateCreated: dbItem.dateCreated,
       lastUpdated: dbItem.lastUpdated,
+      createdAt: dbItem.createdAt ? new Date(dbItem.createdAt) : undefined,
+      images: dbItem.images,
       taxRatePct: dbItem.taxRatePct,
       taxAmountPurchasePrice: dbItem.taxAmountPurchasePrice,
       taxAmountProjectPrice: dbItem.taxAmountProjectPrice,

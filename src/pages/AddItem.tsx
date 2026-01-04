@@ -16,7 +16,12 @@ import { UserRole } from '../types'
 import { Shield } from 'lucide-react'
 import { getUserFriendlyErrorMessage, getErrorAction } from '@/utils/imageUtils'
 import { useToast } from '@/components/ui/ToastContext'
+import { RetrySyncButton } from '@/components/ui/RetrySyncButton'
 import { DISPOSITION_OPTIONS, displayDispositionLabel } from '@/utils/dispositionUtils'
+import { useOfflineFeedback } from '@/utils/offlineUxFeedback'
+import { OfflineQueueUnavailableError } from '@/services/offlineItemService'
+import { OfflineContextError } from '@/services/operationQueue'
+import { hydrateOptimisticItem } from '@/utils/hydrationHelpers'
 
 import { COMPANY_INVENTORY_SALE, COMPANY_INVENTORY_PURCHASE, COMPANY_NAME } from '@/constants/company'
 import { projectItems } from '@/utils/routes'
@@ -59,7 +64,8 @@ export default function AddItem() {
 
   const { hasRole } = useAuth()
   const { currentAccountId } = useAccount()
-  const { showError } = useToast()
+  const { showError, showSuccess } = useToast()
+  const { showOfflineSaved } = useOfflineFeedback()
 
   const [projectName, setProjectName] = useState<string>('')
 
@@ -209,10 +215,35 @@ export default function AddItem() {
         showError('Account ID is required')
         return
       }
-      await unifiedItemsService.createItem(currentAccountId, itemData)
+
+      const createResult = await unifiedItemsService.createItem(currentAccountId, itemData)
+
+      // Hydrate optimistic item into React Query cache immediately
+      // This makes the item appear in lists before sync completes
+      await hydrateOptimisticItem(currentAccountId, createResult.itemId, itemData)
+
+      // Show appropriate feedback based on mode
+      if (createResult.mode === 'offline') {
+        // Offline: item is queued, not fully saved
+        showOfflineSaved(createResult.operationId)
+      } else {
+        // Online: item is fully saved
+        showSuccess('Item saved successfully')
+      }
+
       navigateToReturnToOrFallback(navigate, location, fallbackPath)
     } catch (error) {
       console.error('Error creating item:', error)
+      if (error instanceof OfflineQueueUnavailableError) {
+        setErrors({ submit: 'Offline storage is unavailable. Please refresh or try again online.' })
+        showError('Offline storage is unavailable. Please refresh or try again online.')
+        return
+      }
+      if (error instanceof OfflineContextError) {
+        setErrors({ submit: 'Sign in before working offline so we can save your changes.' })
+        showError('Sign in before working offline so we can save your changes.')
+        return
+      }
       setErrors({ submit: 'Failed to create item. Please try again.' })
     } finally {
       setIsSubmitting(false)
@@ -361,6 +392,7 @@ export default function AddItem() {
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </ContextBackLink>
+          <RetrySyncButton size="sm" variant="secondary" />
         </div>
 
       </div>

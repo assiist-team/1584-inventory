@@ -4,14 +4,39 @@ import { toDateOnlyString } from '@/utils/dateUtils'
 import { getTaxPresetById } from './taxPresetsService'
 import { CLIENT_OWES_COMPANY, COMPANY_OWES_CLIENT } from '@/constants/company'
 import { lineageService } from './lineageService'
+import { offlineStore, type DBItem, type DBTransaction, type DBProject } from './offlineStore'
+import { isNetworkOnline, withNetworkTimeout, NetworkTimeoutError } from './networkStatusService'
+import { OfflineQueueUnavailableError } from './offlineItemService'
+import { OfflineContextError } from './operationQueue'
 import type { Item, Project, FilterOptions, PaginationOptions, Transaction, TransactionItemFormData, TransactionCompleteness, CompletenessStatus, ItemImage } from '@/types'
 import type { RealtimeChannel } from '@supabase/supabase-js'
+
+// Lazy import to avoid circular dependencies
+let getGlobalQueryClient: (() => any) | null = null
+function tryGetQueryClient() {
+  try {
+    if (!getGlobalQueryClient) {
+      const queryClientModule = require('@/utils/queryClient')
+      getGlobalQueryClient = queryClientModule?.getGlobalQueryClient || null
+    }
+    if (!getGlobalQueryClient) {
+      return null
+    }
+    return getGlobalQueryClient()
+  } catch {
+    return null
+  }
+}
 
 type SharedRealtimeEntry<T> = {
   channel: RealtimeChannel
   callbacks: Set<(payload: T[]) => void>
   data: T[]
 }
+
+export type CreateItemResult =
+  | { mode: 'online'; itemId: string }
+  | { mode: 'offline'; itemId: string; operationId: string }
 
 const CANONICAL_TRANSACTION_PREFIXES = ['INV_PURCHASE_', 'INV_SALE_', 'INV_TRANSFER_'] as const
 
@@ -31,6 +56,300 @@ function syncProjectItemsRealtimeSnapshot(accountId: string, projectId: string, 
   if (!entry) return
   // Keep realtime cache aligned with server-truth so future events diff correctly.
   entry.data = [...nextItems]
+}
+
+async function cacheItemsOffline(rows: any[]) {
+  if (!rows || rows.length === 0) return
+  try {
+    await offlineStore.init()
+    const dbItems: DBItem[] = rows.map(mapSupabaseItemToOfflineRecord)
+    await offlineStore.saveItems(dbItems)
+  } catch (error) {
+    console.warn('Failed to cache items offline:', error)
+  }
+}
+
+async function cacheTransactionsOffline(rows: any[]) {
+  if (!rows || rows.length === 0) return
+  try {
+    await offlineStore.init()
+    const dbTransactions: DBTransaction[] = rows.map(mapSupabaseTransactionToOfflineRecord)
+    await offlineStore.saveTransactions(dbTransactions)
+  } catch (error) {
+    console.warn('Failed to cache transactions offline:', error)
+  }
+}
+
+async function cacheProjectsOffline(rows: any[]) {
+  if (!rows || rows.length === 0) return
+  try {
+    await offlineStore.init()
+    const dbProjects: DBProject[] = rows.map(mapSupabaseProjectToOfflineRecord)
+    await offlineStore.saveProjects(dbProjects)
+  } catch (error) {
+    console.warn('Failed to cache projects offline:', error)
+  }
+}
+
+function mapSupabaseItemToOfflineRecord(row: any): DBItem {
+  const converted = convertTimestamps(row)
+  const nowIso = new Date().toISOString()
+
+  return {
+    itemId: converted.item_id ?? converted.id,
+    accountId: converted.account_id,
+    projectId: converted.project_id ?? null,
+    transactionId: converted.transaction_id ?? null,
+    previousProjectTransactionId: converted.previous_project_transaction_id ?? null,
+    previousProjectId: converted.previous_project_id ?? null,
+    name: converted.name ?? undefined,
+    description: converted.description ?? '',
+    source: converted.source ?? '',
+    sku: converted.sku ?? '',
+    price: converted.price ?? undefined,
+    purchasePrice: converted.purchase_price ?? undefined,
+    projectPrice: converted.project_price ?? undefined,
+    marketValue: converted.market_value ?? undefined,
+    paymentMethod: converted.payment_method ?? '',
+    disposition: converted.disposition ?? undefined,
+    notes: converted.notes ?? undefined,
+    space: converted.space ?? undefined,
+    qrKey: converted.qr_key ?? '',
+    bookmark: converted.bookmark ?? false,
+    dateCreated: converted.date_created ?? converted.created_at ?? nowIso,
+    lastUpdated: converted.last_updated ?? converted.updated_at ?? nowIso,
+    createdAt: converted.created_at ?? converted.date_created ?? nowIso,
+    images: Array.isArray(converted.images) ? converted.images : [],
+    taxRatePct: converted.tax_rate_pct != null ? Number(converted.tax_rate_pct) : undefined,
+    taxAmountPurchasePrice: converted.tax_amount_purchase_price ?? undefined,
+    taxAmountProjectPrice: converted.tax_amount_project_price ?? undefined,
+    createdBy: converted.created_by ?? undefined,
+    inventoryStatus: converted.inventory_status ?? undefined,
+    businessInventoryLocation: converted.business_inventory_location ?? undefined,
+    originTransactionId: converted.origin_transaction_id ?? null,
+    latestTransactionId: converted.latest_transaction_id ?? null,
+    version: converted.version ?? 1,
+    last_synced_at: nowIso
+  }
+}
+
+function mapOfflineItemToSupabaseShape(item: DBItem) {
+  return {
+    item_id: item.itemId,
+    account_id: item.accountId,
+    project_id: item.projectId ?? null,
+    transaction_id: item.transactionId ?? null,
+    previous_project_transaction_id: item.previousProjectTransactionId ?? null,
+    previous_project_id: item.previousProjectId ?? null,
+    name: item.name ?? '',
+    description: item.description ?? '',
+    source: item.source ?? '',
+    sku: item.sku ?? '',
+    purchase_price: item.purchasePrice ?? null,
+    project_price: item.projectPrice ?? null,
+    market_value: item.marketValue ?? null,
+    payment_method: item.paymentMethod ?? '',
+    disposition: item.disposition ?? null,
+    notes: item.notes ?? null,
+    space: item.space ?? null,
+    qr_key: item.qrKey ?? '',
+    bookmark: item.bookmark ?? false,
+    date_created: item.dateCreated,
+    created_at: item.createdAt ?? item.dateCreated,
+    last_updated: item.lastUpdated,
+    updated_at: item.lastUpdated,
+    images: item.images ?? [],
+    tax_rate_pct: item.taxRatePct ?? null,
+    tax_amount_purchase_price: item.taxAmountPurchasePrice ?? null,
+    tax_amount_project_price: item.taxAmountProjectPrice ?? null,
+    created_by: item.createdBy ?? null,
+    inventory_status: item.inventoryStatus ?? null,
+    business_inventory_location: item.businessInventoryLocation ?? null,
+    origin_transaction_id: item.originTransactionId ?? null,
+    latest_transaction_id: item.latestTransactionId ?? null,
+    version: item.version ?? 1
+  }
+}
+
+function mapSupabaseTransactionToOfflineRecord(row: any): DBTransaction {
+  const converted = convertTimestamps(row)
+  return {
+    transactionId: converted.transaction_id,
+    accountId: converted.account_id,
+    projectId: converted.project_id ?? null,
+    transactionDate: converted.transaction_date,
+    source: converted.source || '',
+    transactionType: converted.transaction_type || '',
+    paymentMethod: converted.payment_method || '',
+    amount: converted.amount || '0.00',
+    budgetCategory: converted.budget_category || undefined,
+    categoryId: converted.category_id || undefined,
+    notes: converted.notes || undefined,
+    receiptEmailed: converted.receipt_emailed ?? false,
+    createdAt: converted.created_at,
+    createdBy: converted.created_by || '',
+    status: converted.status || undefined,
+    reimbursementType: converted.reimbursement_type || undefined,
+    triggerEvent: converted.trigger_event || undefined,
+    taxRatePreset: converted.tax_rate_preset || undefined,
+    taxRatePct: converted.tax_rate_pct ? Number(converted.tax_rate_pct) : undefined,
+    subtotal: converted.subtotal || undefined,
+    needsReview: converted.needs_review ?? undefined,
+    sumItemPurchasePrices: converted.sum_item_purchase_prices !== undefined ? String(converted.sum_item_purchase_prices) : undefined,
+    itemIds: Array.isArray(converted.item_ids) ? converted.item_ids : [],
+    version: converted.version ?? 1,
+    last_synced_at: new Date().toISOString()
+  }
+}
+
+function mapSupabaseProjectToOfflineRecord(row: any): DBProject {
+  const converted = convertTimestamps(row)
+  return {
+    id: converted.id,
+    accountId: converted.account_id,
+    name: converted.name || '',
+    description: converted.description || '',
+    clientName: converted.client_name || '',
+    budget: converted.budget !== undefined && converted.budget !== null ? Number(converted.budget) : undefined,
+    designFee: converted.design_fee !== undefined && converted.design_fee !== null ? Number(converted.design_fee) : undefined,
+    budgetCategories: converted.budget_categories || undefined,
+    defaultCategoryId: converted.default_category_id ?? null,
+    mainImageUrl: converted.main_image_url || undefined,
+    createdAt: converted.created_at,
+    updatedAt: converted.updated_at,
+    createdBy: converted.created_by || '',
+    settings: converted.settings || undefined,
+    metadata: converted.metadata || undefined,
+    itemCount: converted.item_count ?? 0,
+    transactionCount: converted.transaction_count ?? 0,
+    totalValue: converted.total_value !== undefined && converted.total_value !== null ? Number(converted.total_value) : undefined,
+    version: converted.version ?? 1,
+    last_synced_at: new Date().toISOString()
+  }
+}
+
+function mapOfflineProjectToProject(project: DBProject): Project {
+  return {
+    id: project.id,
+    accountId: project.accountId,
+    name: project.name,
+    description: project.description || '',
+    clientName: project.clientName || '',
+    budget: project.budget,
+    designFee: project.designFee,
+    budgetCategories: project.budgetCategories,
+    defaultCategoryId: project.defaultCategoryId ?? undefined,
+    mainImageUrl: project.mainImageUrl,
+    createdAt: new Date(project.createdAt),
+    updatedAt: new Date(project.updatedAt),
+    createdBy: project.createdBy || '',
+    settings: (project.settings ?? undefined) as Project['settings'],
+    metadata: (project.metadata ?? undefined) as Project['metadata'],
+    itemCount: project.itemCount ?? 0,
+    transactionCount: project.transactionCount ?? 0,
+    totalValue: project.totalValue ?? 0
+  }
+}
+
+async function getProjectFromOfflineCache(accountId: string, projectId: string): Promise<Project | null> {
+  try {
+    await offlineStore.init()
+    const cached = await offlineStore.getProjectById(projectId)
+    if (!cached) return null
+    if (cached.accountId && cached.accountId !== accountId) {
+      return null
+    }
+    return mapOfflineProjectToProject(cached)
+  } catch (error) {
+    console.debug('Failed to read project from offline cache:', error)
+    return null
+  }
+}
+
+function mapOfflineTransactionToSupabaseShape(tx: DBTransaction) {
+  return {
+    transaction_id: tx.transactionId,
+    account_id: tx.accountId,
+    project_id: tx.projectId ?? null,
+    transaction_date: tx.transactionDate,
+    source: tx.source ?? '',
+    transaction_type: tx.transactionType ?? '',
+    payment_method: tx.paymentMethod ?? '',
+    amount: tx.amount ?? '0.00',
+    budget_category: tx.budgetCategory ?? null,
+    category_id: tx.categoryId ?? null,
+    notes: tx.notes ?? null,
+    receipt_emailed: tx.receiptEmailed ?? false,
+    created_at: tx.createdAt,
+    created_by: tx.createdBy ?? '',
+    status: tx.status ?? null,
+    reimbursement_type: tx.reimbursementType ?? null,
+    trigger_event: tx.triggerEvent ?? null,
+    tax_rate_preset: tx.taxRatePreset ?? null,
+    tax_rate_pct: tx.taxRatePct ?? null,
+    subtotal: tx.subtotal ?? null,
+    needs_review: tx.needsReview ?? null,
+    sum_item_purchase_prices: tx.sumItemPurchasePrices ?? null,
+    item_ids: tx.itemIds ?? [],
+    version: tx.version ?? 1
+  }
+}
+
+function applyItemFiltersOffline(items: Item[], filters?: FilterOptions) {
+  if (!filters) return items
+  let result = [...items]
+
+  if (filters.status) {
+    result = result.filter(item => item.disposition === filters.status)
+  }
+
+  if (filters.category) {
+    result = result.filter(item => (item.source || '').toLowerCase() === filters.category?.toLowerCase())
+  }
+
+  if (filters.priceRange) {
+    result = result.filter(item => {
+      const value = parseFloat(item.projectPrice || item.purchasePrice || '0')
+      return value >= filters.priceRange!.min && value <= filters.priceRange!.max
+    })
+  }
+
+  if (filters.searchQuery) {
+    const query = filters.searchQuery.toLowerCase()
+    result = result.filter(item => {
+      return (
+        (item.description || '').toLowerCase().includes(query) ||
+        (item.source || '').toLowerCase().includes(query) ||
+        (item.sku || '').toLowerCase().includes(query) ||
+        (item.paymentMethod || '').toLowerCase().includes(query)
+      )
+    })
+  }
+
+  return result
+}
+
+function applyPagination<T>(items: T[], pagination?: PaginationOptions) {
+  if (!pagination) return items
+  const page = Math.max(1, pagination.page)
+  const start = (page - 1) * pagination.limit
+  return items.slice(start, start + pagination.limit)
+}
+
+function sortItemsOffline(items: Item[]) {
+  return [...items].sort((a, b) => {
+    const aDate = new Date(a.dateCreated || a.lastUpdated || 0).getTime()
+    const bDate = new Date(b.dateCreated || b.lastUpdated || 0).getTime()
+    return bDate - aDate
+  })
+}
+
+function sortTransactionsOffline(transactions: Transaction[]) {
+  return [...transactions].sort((a, b) => {
+    const aDate = new Date(a.createdAt || a.transactionDate || 0).getTime()
+    const bDate = new Date(b.createdAt || b.transactionDate || 0).getTime()
+    return bDate - aDate
+  })
 }
 
 async function detachItemsFromTransaction(accountId: string, transactionId: string): Promise<string[]> {
@@ -160,6 +479,11 @@ export const projectService = {
 
     if (error) throw error
 
+    // Cache projects offline for offline access
+    if (data && data.length > 0) {
+      void cacheProjectsOffline(data)
+    }
+
     return (data || []).map(project => {
       const converted = convertTimestamps(project)
       return {
@@ -186,117 +510,288 @@ export const projectService = {
 
   // Get single project
   async getProject(accountId: string, projectId: string): Promise<Project | null> {
-    await ensureAuthenticatedForDatabase()
+    // Check React Query cache first (for optimistic projects created offline)
+    try {
+      const queryClient = tryGetQueryClient()
+      if (queryClient) {
+        const cachedProject = queryClient.getQueryData<Project>(['project', accountId, projectId])
+        if (cachedProject) {
+          return cachedProject
+        }
+      }
+    } catch (error) {
+      // Non-fatal - continue to network fetch
+      console.debug('Failed to check React Query cache for project:', error)
+    }
 
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('id', projectId)
-      .eq('account_id', accountId)
-      .single()
+    const offlineProject = await getProjectFromOfflineCache(accountId, projectId)
+    if (offlineProject) {
+      try {
+        const queryClient = tryGetQueryClient()
+        if (queryClient) {
+          queryClient.setQueryData(['project', accountId, projectId], offlineProject)
+        }
+      } catch (cacheError) {
+        console.debug('Failed to prime React Query with offline project:', cacheError)
+      }
+    }
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null
+    if (!isNetworkOnline()) {
+      return offlineProject
+    }
+
+    try {
+      await ensureAuthenticatedForDatabase()
+
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .eq('account_id', accountId)
+        .single()
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null
+        }
+        throw error
+      }
+
+      if (!data) return null
+
+      void cacheProjectsOffline([data])
+
+      const project = this._convertProjectFromDb(data)
+
+      // Update React Query cache with fetched project
+      try {
+        const queryClient = tryGetQueryClient()
+        if (queryClient) {
+          queryClient.setQueryData(['project', accountId, projectId], project)
+        }
+      } catch (cacheError) {
+        // Non-fatal - cache update failed
+        console.debug('Failed to update React Query cache for project:', cacheError)
+      }
+
+      return project
+    } catch (error) {
+      console.warn('Failed to fetch project online, using offline cache when available:', error)
+      if (offlineProject) {
+        return offlineProject
       }
       throw error
     }
-
-    if (!data) return null
-
-    const converted = convertTimestamps(data)
-    return {
-      id: converted.id,
-      accountId: converted.account_id,
-      name: converted.name,
-      description: converted.description || '',
-      clientName: converted.client_name || '',
-      budget: converted.budget ? parseFloat(converted.budget) : undefined,
-      designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
-      budgetCategories: converted.budget_categories || undefined,
-      mainImageUrl: converted.main_image_url || undefined,
-      createdAt: converted.created_at,
-      updatedAt: converted.updated_at,
-      createdBy: converted.created_by,
-      settings: converted.settings || undefined,
-      metadata: converted.metadata || undefined,
-      itemCount: converted.item_count || 0,
-      transactionCount: converted.transaction_count || 0,
-      totalValue: converted.total_value ? parseFloat(converted.total_value) : 0
-    } as Project
   },
 
   // Create new project
   async createProject(accountId: string, projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    await ensureAuthenticatedForDatabase()
+    // Generate optimistic ID upfront so we always have one, even if operations fail
+    const optimisticProjectId = `P-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    
+    const queueOfflineCreate = async (reason: 'offline' | 'fallback' | 'timeout'): Promise<string> => {
+      try {
+        const { offlineProjectService } = await import('./offlineProjectService')
+        const result = await offlineProjectService.createProject(accountId, projectData)
+        if (import.meta.env.DEV) {
+          console.info('[projectService] createProject queued for offline processing', {
+            accountId,
+            projectId: result.projectId,
+            operationId: result.operationId,
+            reason
+          })
+        }
+        return result.projectId ?? optimisticProjectId
+      } catch (error) {
+        // Propagate typed errors that the UI should handle
+        if (error instanceof OfflineQueueUnavailableError || error instanceof OfflineContextError) {
+          console.error('[projectService] typed error during offline queue, propagating', {
+            accountId,
+            projectId: optimisticProjectId,
+            reason,
+            errorType: error.constructor.name,
+            errorMessage: error.message
+          })
+          throw error
+        }
+        
+        // For unexpected errors, return optimistic ID so UI can still show feedback
+        console.error('[projectService] unexpected error during offline queue, returning optimistic ID', {
+          accountId,
+          projectId: optimisticProjectId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.constructor.name : typeof error
+        })
+        return optimisticProjectId
+      }
+    }
 
-    const { data, error } = await supabase
-      .from('projects')
-      .insert({
-        account_id: accountId,
-        name: projectData.name,
-        description: projectData.description || null,
-        client_name: projectData.clientName || null,
-        budget: projectData.budget || null,
-        design_fee: projectData.designFee || null,
-        budget_categories: projectData.budgetCategories || {},
-        main_image_url: projectData.mainImageUrl || null,
-        // default_category_id removed - default category is now account-wide preset
-        settings: projectData.settings || {},
-        metadata: projectData.metadata || {},
-        created_by: projectData.createdBy,
-        item_count: 0,
-        transaction_count: 0,
-        total_value: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+    // Hydrate from offlineStore before attempting Supabase operations
+    try {
+      await offlineStore.init()
+      await offlineStore.getProjects().catch(() => [])
+    } catch (e) {
+      console.warn('Failed to hydrate from offlineStore:', e)
+    }
+
+    if (!isNetworkOnline()) {
+      return queueOfflineCreate('offline')
+    }
+
+    try {
+      await ensureAuthenticatedForDatabase()
+
+      const { data, error } = await withNetworkTimeout(async () => {
+        return await supabase
+          .from('projects')
+          .insert({
+            account_id: accountId,
+            name: projectData.name,
+            description: projectData.description || null,
+            client_name: projectData.clientName || null,
+            budget: projectData.budget || null,
+            design_fee: projectData.designFee || null,
+            budget_categories: projectData.budgetCategories || {},
+            main_image_url: projectData.mainImageUrl || null,
+            // default_category_id removed - default category is now account-wide preset
+            settings: projectData.settings || {},
+            metadata: projectData.metadata || {},
+            created_by: projectData.createdBy,
+            item_count: 0,
+            transaction_count: 0,
+            total_value: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select('id')
+          .single()
       })
-      .select('id')
-      .single()
 
-    if (error) throw error
-    return data.id
+      if (error) throw error
+      return data.id
+    } catch (error) {
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase insert timed out, queuing project for offline sync.')
+        return queueOfflineCreate('timeout')
+      }
+      console.warn('Failed to create project online, falling back to offline queue:', error)
+      return queueOfflineCreate('fallback')
+    }
   },
 
   // Update project
   async updateProject(accountId: string, projectId: string, updates: Partial<Project>): Promise<void> {
-    await ensureAuthenticatedForDatabase()
-
-    const updateData: any = {
-      updated_at: new Date().toISOString()
+    // Check network state and hydrate from offlineStore first
+    const online = isNetworkOnline()
+    
+    // Hydrate from offlineStore before attempting Supabase operations
+    try {
+      await offlineStore.init()
+      const existingOfflineProject = await offlineStore.getProjectById(projectId).catch(() => null)
+      if (existingOfflineProject) {
+        // Pre-hydrate React Query cache if needed
+        // This prevents empty state flashes
+      }
+    } catch (e) {
+      console.warn('Failed to hydrate from offlineStore:', e)
     }
 
-    if (updates.name !== undefined) updateData.name = updates.name
-    if (updates.description !== undefined) updateData.description = updates.description
-    if (updates.clientName !== undefined) updateData.client_name = updates.clientName
-    if (updates.budget !== undefined) updateData.budget = updates.budget
-    if (updates.designFee !== undefined) updateData.design_fee = updates.designFee
-    if (updates.budgetCategories !== undefined) updateData.budget_categories = updates.budgetCategories
-    if (updates.mainImageUrl !== undefined) updateData.main_image_url = updates.mainImageUrl || null
-    // defaultCategoryId updates removed - default category is now account-wide preset
-    if (updates.settings !== undefined) updateData.settings = updates.settings
-    if (updates.metadata !== undefined) updateData.metadata = updates.metadata
+    // If offline, delegate to offlineProjectService
+    if (!online) {
+      const { offlineProjectService } = await import('./offlineProjectService')
+      await offlineProjectService.updateProject(accountId, projectId, updates)
+      return
+    }
 
-    const { error } = await supabase
-      .from('projects')
-      .update(updateData)
-      .eq('id', projectId)
-      .eq('account_id', accountId)
+    // Online: try Supabase first, fall back to offline if it fails
+    try {
+      await ensureAuthenticatedForDatabase()
 
-    if (error) throw error
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      }
+
+      if (updates.name !== undefined) updateData.name = updates.name
+      if (updates.description !== undefined) updateData.description = updates.description
+      if (updates.clientName !== undefined) updateData.client_name = updates.clientName
+      if (updates.budget !== undefined) updateData.budget = updates.budget
+      if (updates.designFee !== undefined) updateData.design_fee = updates.designFee
+      if (updates.budgetCategories !== undefined) updateData.budget_categories = updates.budgetCategories
+      if (updates.mainImageUrl !== undefined) updateData.main_image_url = updates.mainImageUrl || null
+      // defaultCategoryId updates removed - default category is now account-wide preset
+      if (updates.settings !== undefined) updateData.settings = updates.settings
+      if (updates.metadata !== undefined) updateData.metadata = updates.metadata
+
+      await withNetworkTimeout(async () => {
+        const { error } = await supabase
+          .from('projects')
+          .update(updateData)
+          .eq('id', projectId)
+          .eq('account_id', accountId)
+
+        if (error) throw error
+      })
+    } catch (error) {
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase update timed out, queuing project update for offline sync.')
+        const { offlineProjectService } = await import('./offlineProjectService')
+        await offlineProjectService.updateProject(accountId, projectId, updates)
+        return
+      }
+      console.warn('Failed to update project online, falling back to offline queue:', error)
+      const { offlineProjectService } = await import('./offlineProjectService')
+      await offlineProjectService.updateProject(accountId, projectId, updates)
+    }
   },
 
   // Delete project
   async deleteProject(accountId: string, projectId: string): Promise<void> {
-    await ensureAuthenticatedForDatabase()
+    // Check network state and hydrate from offlineStore first
+    const online = isNetworkOnline()
+    
+    // Hydrate from offlineStore before attempting Supabase operations
+    try {
+      await offlineStore.init()
+      const existingOfflineProject = await offlineStore.getProjectById(projectId).catch(() => null)
+      if (existingOfflineProject) {
+        // Pre-hydrate React Query cache if needed
+      }
+    } catch (e) {
+      console.warn('Failed to hydrate from offlineStore:', e)
+    }
 
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', projectId)
-      .eq('account_id', accountId)
+    // If offline, delegate to offlineProjectService
+    if (!online) {
+      const { offlineProjectService } = await import('./offlineProjectService')
+      await offlineProjectService.deleteProject(accountId, projectId)
+      return
+    }
 
-    if (error) throw error
+    // Online: try Supabase first, fall back to offline if it fails
+    try {
+      await ensureAuthenticatedForDatabase()
+
+      await withNetworkTimeout(async () => {
+        const { error } = await supabase
+          .from('projects')
+          .delete()
+          .eq('id', projectId)
+          .eq('account_id', accountId)
+
+        if (error) throw error
+      })
+    } catch (error) {
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase delete timed out, queuing project delete for offline sync.')
+        const { offlineProjectService } = await import('./offlineProjectService')
+        await offlineProjectService.deleteProject(accountId, projectId)
+        return
+      }
+      console.warn('Failed to delete project online, falling back to offline queue:', error)
+      const { offlineProjectService } = await import('./offlineProjectService')
+      await offlineProjectService.deleteProject(accountId, projectId)
+    }
   },
 
   // Subscribe to projects with real-time updates
@@ -314,12 +809,16 @@ export const projectService = {
         {
           event: '*',
           schema: 'public',
-          table: 'projects',
-          filter: 'account_id=eq.' + accountId
+          table: 'projects'
         },
         (payload) => {
-          console.log('Projects change received!', payload)
           const { eventType, new: newRecord, old: oldRecord } = payload
+          const recordAccountId = (eventType === 'DELETE' ? oldRecord?.account_id : newRecord?.account_id) ?? null
+          if (recordAccountId && recordAccountId !== accountId) {
+            return
+          }
+
+          console.log('Projects change received!', payload)
 
           if (eventType === 'INSERT') {
             const newProject = projectService._convertProjectFromDb(newRecord)
@@ -361,6 +860,7 @@ export const projectService = {
       budget: converted.budget ? parseFloat(converted.budget) : undefined,
       designFee: converted.design_fee ? parseFloat(converted.design_fee) : undefined,
       budgetCategories: converted.budget_categories || undefined,
+      mainImageUrl: converted.main_image_url || undefined,
       createdAt: converted.created_at,
       updatedAt: converted.updated_at,
       createdBy: converted.created_by,
@@ -434,14 +934,38 @@ async function _enrichTransactionsWithProjectNames(
 
   // Batch fetch all projects
   const projectMap = new Map<string, string>()
-  try {
-    const projects = await projectService.getProjects(accountId)
+  
+  // Use provided projects if available
+  if (projects && projects.length > 0) {
     projects.forEach(project => {
       projectMap.set(project.id, project.name)
     })
-  } catch (error) {
-    console.warn('Failed to fetch projects for transaction enrichment:', error)
-    // Continue without enrichment rather than failing
+  } else {
+    // Only fetch from network if online
+    if (isNetworkOnline()) {
+      try {
+        const fetchedProjects = await projectService.getProjects(accountId)
+        fetchedProjects.forEach(project => {
+          projectMap.set(project.id, project.name)
+        })
+      } catch (error) {
+        console.warn('Failed to fetch projects for transaction enrichment:', error)
+        // Continue without enrichment rather than failing
+      }
+    } else {
+      // Offline: try to use cached projects from offlineStore
+      try {
+        await offlineStore.init()
+        const cachedProjects = await offlineStore.getProjects()
+        cachedProjects.forEach(project => {
+          // Convert DBProject to Project format for name lookup
+          projectMap.set(project.id, project.name)
+        })
+      } catch (error) {
+        console.warn('Failed to load cached projects for transaction enrichment:', error)
+        // Continue without enrichment rather than failing
+      }
+    }
   }
 
   // Enrich transactions with project names
@@ -620,90 +1144,162 @@ export const transactionService = {
   },
   // Get transactions for a project (account-scoped)
   async getTransactions(accountId: string, projectId: string): Promise<Transaction[]> {
-    await ensureAuthenticatedForDatabase()
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: false })
 
-    if (error) throw error
+        if (error) throw error
+        void cacheTransactionsOffline(data || [])
 
-    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
-    return await _enrichTransactionsWithProjectNames(accountId, transactions)
+        const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+        return await _enrichTransactionsWithProjectNames(accountId, transactions)
+      } catch (error) {
+        console.warn('Failed to fetch project transactions from network, using offline cache:', error)
+      }
+    }
+
+    return await this._getTransactionsOffline(accountId, projectId)
   },
 
   // Get transactions for multiple projects (account-scoped)
   async getTransactionsForProjects(accountId: string, projectIds: string[], projects?: Project[]): Promise<Transaction[]> {
-    await ensureAuthenticatedForDatabase()
-
     if (projectIds.length === 0) {
       return []
     }
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('account_id', accountId)
-      .in('project_id', projectIds)
-      .order('created_at', { ascending: false })
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    if (error) throw error
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .in('project_id', projectIds)
+          .order('created_at', { ascending: false })
 
-    const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
-    return await _enrichTransactionsWithProjectNames(accountId, transactions, projects)
+        if (error) throw error
+        void cacheTransactionsOffline(data || [])
+
+        const transactions = (data || []).map(tx => _convertTransactionFromDb(tx))
+        return await _enrichTransactionsWithProjectNames(accountId, transactions, projects)
+      } catch (error) {
+        console.warn('Failed to fetch multi-project transactions, using offline cache:', error)
+      }
+    }
+
+    return await this._getTransactionsForProjectsOffline(accountId, projectIds, projects)
   },
 
   // Get single transaction (account-scoped)
   async getTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Transaction | null> {
-    await ensureAuthenticatedForDatabase()
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('transaction_id', transactionId)
-      .single()
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+          .single()
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null
+        if (error) {
+          if (error.code === 'PGRST116') {
+            return null
+          }
+          throw error
+        }
+
+        if (!data) return null
+        void cacheTransactionsOffline([data])
+
+        const transaction = _convertTransactionFromDb(data)
+        const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+        return enriched[0] || null
+      } catch (error) {
+        console.warn('Failed to fetch transaction from network, falling back to offline cache:', error)
       }
-      throw error
     }
 
-    if (!data) return null
-
-    const transaction = _convertTransactionFromDb(data)
-    const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
-    return enriched[0] || null
+    const offline = await this._getTransactionByIdOffline(accountId, transactionId)
+    return offline.transaction
   },
 
   // Get transaction by ID across all projects (for business inventory) - account-scoped
   async getTransactionById(accountId: string, transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
-    await ensureAuthenticatedForDatabase()
-
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('transaction_id', transactionId)
-      .single()
-
-    if (error || !data) {
-      return { transaction: null, projectId: null }
+    // Check React Query cache first (for optimistic transactions created offline)
+    try {
+      const { tryGetQueryClient } = await import('../utils/queryClient')
+      const queryClient = tryGetQueryClient()
+      if (queryClient) {
+        const cachedTransaction = queryClient.getQueryData<Transaction>(['transaction', accountId, transactionId])
+        if (cachedTransaction) {
+          return {
+            transaction: cachedTransaction,
+            projectId: cachedTransaction.projectId ?? null
+          }
+        }
+      }
+    } catch (error) {
+      // Non-fatal - continue to offline/network fetch
+      console.debug('Failed to check React Query cache for transaction:', error)
     }
 
-    const converted = convertTimestamps(data)
-    const transaction = _convertTransactionFromDb(data)
-    const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    return {
-      transaction: enriched[0] || transaction,
-      projectId: converted.project_id || null
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+          .single()
+
+        if (error || !data) {
+          return { transaction: null, projectId: null }
+        }
+
+        void cacheTransactionsOffline([data])
+
+        const converted = convertTimestamps(data)
+        const transaction = _convertTransactionFromDb(data)
+        const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+
+        // Update React Query cache with fetched transaction
+        try {
+          const { tryGetQueryClient } = await import('../utils/queryClient')
+          const queryClient = tryGetQueryClient()
+          if (queryClient) {
+            queryClient.setQueryData(['transaction', accountId, transactionId], enriched[0] || transaction)
+          }
+        } catch (cacheError) {
+          // Non-fatal - cache update failed
+          console.debug('Failed to update React Query cache for transaction:', cacheError)
+        }
+
+        return {
+          transaction: enriched[0] || transaction,
+          projectId: converted.project_id || null
+        }
+      } catch (error) {
+        console.warn('Failed to fetch transaction by ID, using offline cache:', error)
+      }
     }
+
+    return await this._getTransactionByIdOffline(accountId, transactionId)
   },
 
   // Calculate transaction completeness metrics
@@ -1046,6 +1642,62 @@ export const transactionService = {
     return p
   },
 
+  _convertOfflineTransaction(dbTransaction: DBTransaction): Transaction {
+    return _convertTransactionFromDb(mapOfflineTransactionToSupabaseShape(dbTransaction))
+  },
+
+  async _getTransactionsOffline(accountId: string, projectId: string): Promise<Transaction[]> {
+    try {
+      await offlineStore.init()
+      const cached = await offlineStore.getTransactions(projectId)
+      const filtered = cached.filter(tx => tx.accountId === accountId)
+      const transactions = filtered.map(tx => this._convertOfflineTransaction(tx))
+      const sorted = sortTransactionsOffline(transactions)
+      return await _enrichTransactionsWithProjectNames(accountId, sorted)
+    } catch (error) {
+      console.warn('Failed to read offline transactions for project:', error)
+      return []
+    }
+  },
+
+  async _getTransactionsForProjectsOffline(accountId: string, projectIds: string[], projects?: Project[]): Promise<Transaction[]> {
+    try {
+      await offlineStore.init()
+      const aggregated: Transaction[] = []
+      for (const projectId of projectIds) {
+        const cached = await offlineStore.getTransactions(projectId)
+        cached
+          .filter(tx => tx.accountId === accountId)
+          .forEach(tx => aggregated.push(this._convertOfflineTransaction(tx)))
+      }
+      const sorted = sortTransactionsOffline(aggregated)
+      return await _enrichTransactionsWithProjectNames(accountId, sorted, projects)
+    } catch (error) {
+      console.warn('Failed to read offline transactions for projects:', error)
+      return []
+    }
+  },
+
+  async _getTransactionByIdOffline(accountId: string, transactionId: string): Promise<{ transaction: Transaction | null; projectId: string | null }> {
+    try {
+      await offlineStore.init()
+      const cached = await offlineStore.getTransactionById(transactionId)
+      if (!cached || cached.accountId !== accountId) {
+        return { transaction: null, projectId: null }
+      }
+
+      const transaction = this._convertOfflineTransaction(cached)
+      const enriched = await _enrichTransactionsWithProjectNames(accountId, [transaction])
+      return {
+        transaction: enriched[0] || transaction,
+        projectId: cached.projectId ?? null
+      }
+    } catch (error) {
+      console.warn('Failed to read offline transaction:', error)
+      return { transaction: null, projectId: null }
+    }
+  },
+
   // Find suggested items to add to transaction (unassociated items with same vendor)
   async getSuggestedItemsForTransaction(
     accountId: string,
@@ -1075,6 +1727,64 @@ export const transactionService = {
     transactionData: Omit<Transaction, 'transactionId' | 'createdAt'>,
     items?: TransactionItemFormData[]
   ): Promise<string> {
+    // Generate optimistic ID upfront so we always have one, even if operations fail
+    const optimisticTransactionId = `T-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+    
+    const queueOfflineCreate = async (reason: 'offline' | 'fallback' | 'timeout'): Promise<string> => {
+      try {
+        const { offlineTransactionService } = await import('./offlineTransactionService')
+        const result = await offlineTransactionService.createTransaction(
+          accountId,
+          projectId,
+          transactionData,
+          items
+        )
+        if (import.meta.env.DEV) {
+          console.info('[transactionService] createTransaction queued for offline processing', {
+            accountId,
+            transactionId: result.transactionId,
+            operationId: result.operationId,
+            reason
+          })
+        }
+        return result.transactionId ?? optimisticTransactionId
+      } catch (error) {
+        // Propagate typed errors that the UI should handle
+        if (error instanceof OfflineQueueUnavailableError || error instanceof OfflineContextError) {
+          console.error('[transactionService] typed error during offline queue, propagating', {
+            accountId,
+            transactionId: optimisticTransactionId,
+            reason,
+            errorType: error.constructor.name,
+            errorMessage: error.message
+          })
+          throw error
+        }
+        
+        // For unexpected errors, return optimistic ID so UI can still show feedback
+        console.error('[transactionService] unexpected error during offline queue, returning optimistic ID', {
+          accountId,
+          transactionId: optimisticTransactionId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.constructor.name : typeof error
+        })
+        return optimisticTransactionId
+      }
+    }
+
+    // Hydrate from offlineStore before attempting Supabase operations
+    try {
+      await offlineStore.init()
+      await offlineStore.getAllTransactions().catch(() => [])
+    } catch (e) {
+      console.warn('Failed to hydrate from offlineStore:', e)
+    }
+
+    if (!isNetworkOnline()) {
+      return queueOfflineCreate('offline')
+    }
+
     try {
       await ensureAuthenticatedForDatabase()
 
@@ -1087,8 +1797,8 @@ export const transactionService = {
       }
 
       const now = new Date()
-      // Generate a unique transaction_id (UUID format)
-      const transactionId = crypto.randomUUID()
+      // Use the pre-generated optimistic ID for consistency
+      const transactionId = optimisticTransactionId
 
       // Convert camelCase transactionData to database format
       const dbTransaction = _convertTransactionToDb({
@@ -1106,7 +1816,7 @@ export const transactionService = {
       // Validate category_id belongs to account if provided
       if (dbTransaction.category_id) {
         const { data: category, error: categoryError } = await supabase
-          .from('budget_categories')
+          .from('vw_budget_categories')
           .select('id, account_id')
           .eq('id', dbTransaction.category_id)
           .eq('account_id', accountId)
@@ -1146,11 +1856,13 @@ export const transactionService = {
         }
       }
 
-      const { error } = await supabase
-        .from('transactions')
-        .insert(dbTransaction)
+      await withNetworkTimeout(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .insert(dbTransaction)
 
-      if (error) throw error
+        if (error) throw error
+      })
 
       console.log('Transaction created successfully:', transactionId)
 
@@ -1159,6 +1871,14 @@ export const transactionService = {
         console.log('Creating items for transaction:', transactionId)
         // Propagate tax_rate_pct to created items if present on transaction
         const itemsToCreate = items.map(i => ({ ...i }))
+        
+        // Check if we're still online before creating items
+        if (!isNetworkOnline()) {
+          // If we went offline during transaction creation, queue the whole thing offline
+          console.warn('Network went offline during transaction creation, queuing for offline sync')
+          return queueOfflineCreate('fallback')
+        }
+        
         const createdItemIds = await unifiedItemsService.createTransactionItems(
           accountId,
           projectId || '',
@@ -1196,148 +1916,225 @@ export const transactionService = {
 
       return transactionId
     } catch (error) {
-      console.error('Error creating transaction:', error)
-      throw error // Re-throw to preserve original error for debugging
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase insert timed out, queuing transaction for offline sync.')
+        return queueOfflineCreate('timeout')
+      }
+      console.warn('Failed to create transaction online, falling back to offline queue:', error)
+      return queueOfflineCreate('fallback')
     }
   },
 
   // Update transaction (account-scoped)
   async updateTransaction(accountId: string, _projectId: string, transactionId: string, updates: Partial<Transaction>): Promise<void> {
-    await ensureAuthenticatedForDatabase()
-
-    // Apply business rules for reimbursement type and status (using camelCase)
-    const finalUpdates: Partial<Transaction> = { ...updates }
-
-    // If status is being set to 'completed', clear reimbursementType
-    if (finalUpdates.status === 'completed' && finalUpdates.reimbursementType !== undefined) {
-      finalUpdates.reimbursementType = null
+    // Check network state and hydrate from offlineStore first
+    const online = isNetworkOnline()
+    
+    // Hydrate from offlineStore before attempting Supabase operations
+    try {
+      await offlineStore.init()
+      const existingOfflineTransaction = await offlineStore.getTransactionById(transactionId).catch(() => null)
+      if (existingOfflineTransaction) {
+        // Pre-hydrate React Query cache if needed
+        // This prevents empty state flashes
+      }
+    } catch (e) {
+      console.warn('Failed to hydrate from offlineStore:', e)
     }
 
-    // If reimbursementType is being set to empty string, also clear it
-    if (finalUpdates.reimbursementType === '') {
-      finalUpdates.reimbursementType = null
+    // If offline, delegate to offlineTransactionService
+    if (!online) {
+      const { offlineTransactionService } = await import('./offlineTransactionService')
+      await offlineTransactionService.updateTransaction(accountId, transactionId, updates)
+      return
     }
 
-    // If reimbursementType is being set to a non-empty value, ensure status is not 'completed'
-    if (finalUpdates.reimbursementType && finalUpdates.status === 'completed') {
-      // Set status to 'pending' if reimbursementType is being set to a non-empty value and status is 'completed'
-      finalUpdates.status = 'pending'
-    }
+    // Online: try Supabase first, fall back to offline if it fails
+    try {
+      await ensureAuthenticatedForDatabase()
 
-    // Apply tax mapping / computation before save (using camelCase)
-    if (finalUpdates.taxRatePreset !== undefined) {
-      if (finalUpdates.taxRatePreset === 'Other') {
-        // Compute from provided subtotal and amount if present in updates or existing doc
-        const { data: existing } = await supabase
-          .from('transactions')
-          .select('amount, subtotal')
+      // Apply business rules for reimbursement type and status (using camelCase)
+      const finalUpdates: Partial<Transaction> = { ...updates }
+
+      // If status is being set to 'completed', clear reimbursementType
+      if (finalUpdates.status === 'completed' && finalUpdates.reimbursementType !== undefined) {
+        finalUpdates.reimbursementType = null
+      }
+
+      // If reimbursementType is being set to empty string, also clear it
+      if (finalUpdates.reimbursementType === '') {
+        finalUpdates.reimbursementType = null
+      }
+
+      // If reimbursementType is being set to a non-empty value, ensure status is not 'completed'
+      if (finalUpdates.reimbursementType && finalUpdates.status === 'completed') {
+        // Set status to 'pending' if reimbursementType is being set to a non-empty value and status is 'completed'
+        finalUpdates.status = 'pending'
+      }
+
+      // Apply tax mapping / computation before save (using camelCase)
+      if (finalUpdates.taxRatePreset !== undefined) {
+        if (finalUpdates.taxRatePreset === 'Other') {
+          // Compute from provided subtotal and amount if present in updates or existing doc
+          const { data: existing } = await supabase
+            .from('transactions')
+            .select('amount, subtotal')
+            .eq('account_id', accountId)
+            .eq('transaction_id', transactionId)
+            .single()
+
+          const existingData = existing as { amount?: string; subtotal?: string } | null
+          const amountVal = finalUpdates.amount !== undefined ? parseFloat(finalUpdates.amount) : parseFloat(existingData?.amount || '0')
+          const subtotalVal = finalUpdates.subtotal !== undefined ? parseFloat(finalUpdates.subtotal) : parseFloat(existingData?.subtotal || '0')
+          if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
+            const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
+            finalUpdates.taxRatePct = rate
+          }
+        } else {
+          // Look up preset by ID
+          try {
+            const preset = await getTaxPresetById(accountId, finalUpdates.taxRatePreset)
+            if (preset) {
+              finalUpdates.taxRatePct = preset.rate
+              // Remove subtotal when using presets
+              finalUpdates.subtotal = undefined
+            } else {
+              console.warn(`Tax preset with ID '${finalUpdates.taxRatePreset}' not found during update`)
+            }
+          } catch (e) {
+            console.warn('Tax preset lookup failed during update:', e)
+          }
+        }
+      }
+
+      // Convert camelCase updates to database format
+      const dbUpdates = _convertTransactionToDb(finalUpdates)
+      
+      // Validate category_id belongs to account if provided
+      if (dbUpdates.category_id !== undefined && dbUpdates.category_id !== null) {
+        const { data: category, error: categoryError } = await supabase
+          .from('vw_budget_categories')
+          .select('id, account_id')
+          .eq('id', dbUpdates.category_id)
           .eq('account_id', accountId)
-          .eq('transaction_id', transactionId)
           .single()
 
-        const existingData = existing as { amount?: string; subtotal?: string } | null
-        const amountVal = finalUpdates.amount !== undefined ? parseFloat(finalUpdates.amount) : parseFloat(existingData?.amount || '0')
-        const subtotalVal = finalUpdates.subtotal !== undefined ? parseFloat(finalUpdates.subtotal) : parseFloat(existingData?.subtotal || '0')
-        if (!isNaN(amountVal) && !isNaN(subtotalVal) && subtotalVal > 0 && amountVal >= subtotalVal) {
-          const rate = ((amountVal - subtotalVal) / subtotalVal) * 100
-          finalUpdates.taxRatePct = rate
+        if (categoryError || !category) {
+          throw new Error(`Category ID '${dbUpdates.category_id}' not found or does not belong to this account.`)
         }
-      } else {
-        // Look up preset by ID
+      }
+      
+      // Add updated_at timestamp for database
+      dbUpdates.updated_at = new Date().toISOString()
+
+      await withNetworkTimeout(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .update(dbUpdates)
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+
+        if (error) throw error
+      })
+
+      // If taxRatePct is set in updates, propagate to items
+      if (finalUpdates.taxRatePct !== undefined) {
         try {
-          const preset = await getTaxPresetById(accountId, finalUpdates.taxRatePreset)
-          if (preset) {
-            finalUpdates.taxRatePct = preset.rate
-            // Remove subtotal when using presets
-            finalUpdates.subtotal = undefined
-          } else {
-            console.warn(`Tax preset with ID '${finalUpdates.taxRatePreset}' not found during update`)
+          const items = await unifiedItemsService.getItemsForTransaction(accountId, _projectId, transactionId)
+          if (items && items.length > 0) {
+            // Update each item individually (Supabase batch operations)
+            for (const item of items) {
+              await unifiedItemsService.updateItem(accountId, item.itemId, {
+                taxRatePct: finalUpdates.taxRatePct
+              })
+            }
           }
         } catch (e) {
-          console.warn('Tax preset lookup failed during update:', e)
+          console.warn('Failed to propagate tax_rate_pct to items:', e)
         }
       }
-    }
-
-    // Convert camelCase updates to database format
-    const dbUpdates = _convertTransactionToDb(finalUpdates)
-    
-    // Validate category_id belongs to account if provided
-    if (dbUpdates.category_id !== undefined && dbUpdates.category_id !== null) {
-      const { data: category, error: categoryError } = await supabase
-        .from('budget_categories')
-        .select('id, account_id')
-        .eq('id', dbUpdates.category_id)
-        .eq('account_id', accountId)
-        .single()
-
-      if (categoryError || !category) {
-        throw new Error(`Category ID '${dbUpdates.category_id}' not found or does not belong to this account.`)
+      // Recompute and persist needs_review unless caller explicitly provided it
+      if (finalUpdates.needsReview === undefined) {
+      // Schedule recompute asynchronously; do not await to keep updates fast
+      this._enqueueRecomputeNeedsReview(accountId, _projectId, transactionId).catch((e: any) => {
+        console.warn('Failed to recompute needs_review after transaction update:', e)
+      })
       }
-    }
-    
-    // Add updated_at timestamp for database
-    dbUpdates.updated_at = new Date().toISOString()
 
-    const { error } = await supabase
-      .from('transactions')
-      .update(dbUpdates)
-      .eq('account_id', accountId)
-      .eq('transaction_id', transactionId)
-
-    if (error) throw error
-
-    // If taxRatePct is set in updates, propagate to items
-    if (finalUpdates.taxRatePct !== undefined) {
+      // Invalidate transaction display info cache so UI updates immediately
       try {
-        const items = await unifiedItemsService.getItemsForTransaction(accountId, _projectId, transactionId)
-        if (items && items.length > 0) {
-          // Update each item individually (Supabase batch operations)
-          for (const item of items) {
-            await unifiedItemsService.updateItem(accountId, item.itemId, {
-              taxRatePct: finalUpdates.taxRatePct
-            })
-          }
-        }
+        const { invalidateTransactionDisplayInfo } = await import('@/hooks/useTransactionDisplayInfo')
+        invalidateTransactionDisplayInfo(accountId, transactionId)
       } catch (e) {
-        console.warn('Failed to propagate tax_rate_pct to items:', e)
+        console.warn('Failed to invalidate transaction display info cache:', e)
       }
-    }
-    // Recompute and persist needs_review unless caller explicitly provided it
-    if (finalUpdates.needsReview === undefined) {
-    // Schedule recompute asynchronously; do not await to keep updates fast
-    this._enqueueRecomputeNeedsReview(accountId, _projectId, transactionId).catch((e: any) => {
-      console.warn('Failed to recompute needs_review after transaction update:', e)
-    })
-    }
-
-    // Invalidate transaction display info cache so UI updates immediately
-    try {
-      const { invalidateTransactionDisplayInfo } = await import('@/hooks/useTransactionDisplayInfo')
-      invalidateTransactionDisplayInfo(accountId, transactionId)
-    } catch (e) {
-      console.warn('Failed to invalidate transaction display info cache:', e)
+    } catch (error) {
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase update timed out, queuing transaction update for offline sync.')
+        const { offlineTransactionService } = await import('./offlineTransactionService')
+        await offlineTransactionService.updateTransaction(accountId, transactionId, updates)
+        return
+      }
+      console.warn('Failed to update transaction online, falling back to offline queue:', error)
+      const { offlineTransactionService } = await import('./offlineTransactionService')
+      await offlineTransactionService.updateTransaction(accountId, transactionId, updates)
     }
   },
 
   // Delete transaction (account-scoped)
   async deleteTransaction(accountId: string, _projectId: string, transactionId: string): Promise<void> {
-    await ensureAuthenticatedForDatabase()
-
+    // Check network state and hydrate from offlineStore first
+    const online = isNetworkOnline()
+    
+    // Hydrate from offlineStore before attempting Supabase operations
     try {
-      await detachItemsFromTransaction(accountId, transactionId)
-    } catch (error) {
-      console.warn('deleteTransaction - failed to detach items before delete', error)
-      // Continue with delete so the transaction does not linger, but surface the warning.
+      await offlineStore.init()
+      const existingOfflineTransaction = await offlineStore.getTransactionById(transactionId).catch(() => null)
+      if (existingOfflineTransaction) {
+        // Pre-hydrate React Query cache if needed
+      }
+    } catch (e) {
+      console.warn('Failed to hydrate from offlineStore:', e)
     }
 
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('account_id', accountId)
-      .eq('transaction_id', transactionId)
+    // If offline, delegate to offlineTransactionService
+    if (!online) {
+      const { offlineTransactionService } = await import('./offlineTransactionService')
+      await offlineTransactionService.deleteTransaction(accountId, transactionId)
+      return
+    }
 
-    if (error) throw error
+    // Online: try Supabase first, fall back to offline if it fails
+    try {
+      await ensureAuthenticatedForDatabase()
+
+      try {
+        await detachItemsFromTransaction(accountId, transactionId)
+      } catch (error) {
+        console.warn('deleteTransaction - failed to detach items before delete', error)
+        // Continue with delete so the transaction does not linger, but surface the warning.
+      }
+
+      await withNetworkTimeout(async () => {
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+
+        if (error) throw error
+      })
+    } catch (error) {
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase delete timed out, queuing transaction delete for offline sync.')
+        const { offlineTransactionService } = await import('./offlineTransactionService')
+        await offlineTransactionService.deleteTransaction(accountId, transactionId)
+        return
+      }
+      console.warn('Failed to delete transaction online, falling back to offline queue:', error)
+      const { offlineTransactionService } = await import('./offlineTransactionService')
+      await offlineTransactionService.deleteTransaction(accountId, transactionId)
+    }
   },
 
   // Subscribe to transactions with real-time updates
@@ -1366,13 +2163,17 @@ export const transactionService = {
           {
             event: '*',
             schema: 'public',
-            table: 'transactions',
-            filter: 'account_id=eq.' + accountId
+            table: 'transactions'
           },
           async (payload) => {
             const { eventType, new: newRecord, old: oldRecord } = payload
-            const newProjectId = newRecord?.project_id ?? null
-            const oldProjectId = oldRecord?.project_id ?? null
+            const recordAccountId = (eventType === 'DELETE' ? oldRecord?.account_id : newRecord?.account_id) ?? null
+            if (recordAccountId && recordAccountId !== accountId) {
+              return
+            }
+
+            const newProjectId = (newRecord as any)?.project_id ?? null
+            const oldProjectId = (oldRecord as any)?.project_id ?? null
 
             const matchesProject = (candidate: string | null | undefined) => candidate === projectId
             let nextTransactions = entry?.data ?? []
@@ -1486,12 +2287,16 @@ export const transactionService = {
         {
           event: '*',
           schema: 'public',
-          table: 'transactions',
-          filter: 'account_id=eq.' + accountId
+          table: 'transactions'
         },
         async (payload) => {
-          console.log('All transactions change received!', payload)
           const { eventType, new: newRecord, old: oldRecord } = payload
+          const recordAccountId = (eventType === 'DELETE' ? oldRecord?.account_id : newRecord?.account_id) ?? null
+          if (recordAccountId && recordAccountId !== accountId) {
+            return
+          }
+
+          console.log('All transactions change received!', payload)
 
           if (eventType === 'INSERT') {
             const newTransaction = _convertTransactionFromDb(newRecord)
@@ -1538,10 +2343,20 @@ export const transactionService = {
         {
           event: '*',
           schema: 'public',
-          table: 'transactions',
-          filter: 'account_id=eq.' + accountId + ' AND transaction_id=eq.' + transactionId
+          table: 'transactions'
         },
-        async () => {
+        async (payload) => {
+          const newRow = payload.new as Record<string, any> | null
+          const oldRow = payload.old as Record<string, any> | null
+          const recordAccountId = (newRow?.account_id ?? oldRow?.account_id) ?? null
+          if (recordAccountId && recordAccountId !== accountId) {
+            return
+          }
+          const recordTransactionId = (newRow?.transaction_id ?? oldRow?.transaction_id) ?? null
+          if (recordTransactionId && recordTransactionId !== transactionId) {
+            return
+          }
+
           // Refetch transaction on any change
           try {
             const { data, error } = await supabase
@@ -1782,6 +2597,103 @@ export const unifiedItemsService = {
     return dbItem
   },
 
+  _convertOfflineItem(dbItem: DBItem): Item {
+    return this._convertItemFromDb(mapOfflineItemToSupabaseShape(dbItem))
+  },
+
+  async _getProjectItemsOffline(
+    accountId: string,
+    projectId: string,
+    filters?: FilterOptions,
+    pagination?: PaginationOptions
+  ): Promise<Item[]> {
+    try {
+      await offlineStore.init()
+      const cached = await offlineStore.getItems(projectId)
+      const items = cached
+        .filter(item => !item.accountId || item.accountId === accountId)
+        .map(item => this._convertOfflineItem(item))
+      const filtered = applyItemFiltersOffline(items, filters)
+      const sorted = sortItemsOffline(filtered)
+      return applyPagination(sorted, pagination)
+    } catch (error) {
+      console.warn('Failed to read offline items for project:', error)
+      return []
+    }
+  },
+
+  async _getBusinessInventoryOffline(
+    accountId: string,
+    filters?: { status?: string; searchQuery?: string },
+    pagination?: PaginationOptions
+  ): Promise<Item[]> {
+    try {
+      await offlineStore.init()
+      const cached = await offlineStore.getAllItems()
+      let items = cached
+        .filter(item => !item.projectId)
+        .filter(item => !item.accountId || item.accountId === accountId)
+        .map(item => this._convertOfflineItem(item))
+
+      if (filters?.status) {
+        items = items.filter(item => item.inventoryStatus === filters.status)
+      }
+      if (filters?.searchQuery) {
+        const query = filters.searchQuery.toLowerCase()
+        items = items.filter(item =>
+          (item.description || '').toLowerCase().includes(query) ||
+          (item.source || '').toLowerCase().includes(query) ||
+          (item.sku || '').toLowerCase().includes(query) ||
+          (item.businessInventoryLocation || '').toLowerCase().includes(query)
+        )
+      }
+
+      const sorted = sortItemsOffline(items)
+      return applyPagination(sorted, pagination)
+    } catch (error) {
+      console.warn('Failed to read offline business inventory:', error)
+      return []
+    }
+  },
+
+  async _getTransactionItemsOffline(
+    accountId: string,
+    transactionId: string
+  ): Promise<Item[]> {
+    try {
+      await offlineStore.init()
+      const cached = await offlineStore.getAllItems()
+      const items = cached
+        .filter(item => item.transactionId === transactionId)
+        .filter(item => !item.accountId || item.accountId === accountId)
+        .map(item => this._convertOfflineItem(item))
+      return sortItemsOffline(items)
+    } catch (error) {
+      console.warn('Failed to read offline transaction items:', error)
+      return []
+    }
+  },
+
+  async _getItemByIdOffline(accountId: string, itemId: string): Promise<Item | null> {
+    try {
+      await offlineStore.init()
+      const cached = await offlineStore.getItemById(itemId)
+      if (!cached) {
+        console.debug('[getItemById] Item not found in offlineStore:', itemId)
+        return null
+      }
+      if (cached.accountId && cached.accountId !== accountId) {
+        console.debug('[getItemById] Item accountId mismatch:', { itemId, cachedAccountId: cached.accountId, requestedAccountId: accountId })
+        return null
+      }
+      console.debug('[getItemById] Found item in offlineStore:', itemId)
+      return this._convertOfflineItem(cached)
+    } catch (error) {
+      console.warn('[getItemById] Failed to read offline item:', error)
+      return null
+    }
+  },
+
   async bulkUpdateItemImages(
     accountId: string,
     updates: Array<{ itemId: string; images: ItemImage[] }>
@@ -1814,49 +2726,54 @@ export const unifiedItemsService = {
     filters?: FilterOptions,
     pagination?: PaginationOptions
   ): Promise<Item[]> {
-    await ensureAuthenticatedForDatabase()
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    let query = supabase
-      .from('items')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('project_id', projectId)
+        let query = supabase
+          .from('items')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('project_id', projectId)
 
-    // Apply filters
-    if (filters?.status) {
-      query = query.eq('disposition', filters.status)
+        if (filters?.status) {
+          query = query.eq('disposition', filters.status)
+        }
+
+        if (filters?.category) {
+          query = query.eq('source', filters.category)
+        }
+
+        if (filters?.priceRange) {
+          query = query.gte('project_price', filters.priceRange.min.toString())
+          query = query.lte('project_price', filters.priceRange.max.toString())
+        }
+
+        if (filters?.searchQuery) {
+          query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
+        }
+
+        query = query
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('date_created', { ascending: false, nullsFirst: false })
+
+        if (pagination) {
+          const offset = pagination.page > 0 ? (pagination.page - 1) * pagination.limit : 0
+          query = query.range(offset, offset + pagination.limit - 1)
+        }
+
+        const { data, error } = await query
+        if (error) throw error
+
+        void cacheItemsOffline(data || [])
+        return (data || []).map(item => this._convertItemFromDb(item))
+      } catch (error) {
+        console.warn('Failed to fetch project items from network, falling back to offline cache:', error)
+      }
     }
 
-    if (filters?.category) {
-      query = query.eq('source', filters.category)
-    }
-
-    if (filters?.priceRange) {
-      query = query.gte('project_price', filters.priceRange.min.toString())
-      query = query.lte('project_price', filters.priceRange.max.toString())
-    }
-
-    // Apply search (using ilike for case-insensitive search)
-    if (filters?.searchQuery) {
-      query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,payment_method.ilike.%${filters.searchQuery}%`)
-    }
-
-    // Apply sorting that remains stable when an item is edited
-    query = query
-      .order('created_at', { ascending: false, nullsFirst: false })
-      .order('date_created', { ascending: false, nullsFirst: false })
-
-    // Apply pagination
-    if (pagination) {
-      const offset = pagination.page > 0 ? (pagination.page - 1) * pagination.limit : 0
-      query = query.range(offset, offset + pagination.limit - 1)
-    }
-
-    const { data, error } = await query
-
-    if (error) throw error
-
-    return (data || []).map(item => this._convertItemFromDb(item))
+    return await this._getProjectItemsOffline(accountId, projectId, filters, pagination)
   },
 
   // Subscribe to items for a project with real-time updates
@@ -1885,11 +2802,15 @@ export const unifiedItemsService = {
           {
             event: '*',
             schema: 'public',
-            table: 'items',
-            filter: 'account_id=eq.' + accountId
+            table: 'items'
           },
           (payload) => {
             const { eventType, new: newRecord, old: oldRecord } = payload
+            const recordAccountId = (eventType === 'DELETE' ? oldRecord?.account_id : newRecord?.account_id) ?? null
+            if (recordAccountId && recordAccountId !== accountId) {
+              return
+            }
+
             let nextItems = entry?.data ?? []
 
             if (eventType === 'INSERT') {
@@ -1910,7 +2831,7 @@ export const unifiedItemsService = {
                 nextItems = nextItems.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
               }
             } else if (eventType === 'DELETE') {
-              if (oldRecord.item_id) {
+              if (oldRecord.item_id && oldRecord.account_id === accountId) {
                 nextItems = nextItems.filter(i => i.itemId !== oldRecord.item_id)
               }
             }
@@ -1985,40 +2906,45 @@ export const unifiedItemsService = {
     filters?: { status?: string; searchQuery?: string },
     pagination?: PaginationOptions
   ): Promise<Item[]> {
-    await ensureAuthenticatedForDatabase()
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    let query = supabase
-      .from('items')
-      .select('*')
-      .eq('account_id', accountId)
-      .is('project_id', null)
+        let query = supabase
+          .from('items')
+          .select('*')
+          .eq('account_id', accountId)
+          .is('project_id', null)
 
-    // Apply filters
-    if (filters?.status) {
-      query = query.eq('inventory_status', filters.status)
+        if (filters?.status) {
+          query = query.eq('inventory_status', filters.status)
+        }
+
+        if (filters?.searchQuery) {
+          query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
+        }
+
+        query = query
+          .order('created_at', { ascending: false, nullsFirst: false })
+          .order('date_created', { ascending: false, nullsFirst: false })
+
+        if (pagination) {
+          const offset = pagination.page > 0 ? (pagination.page - 1) * pagination.limit : 0
+          query = query.range(offset, offset + pagination.limit - 1)
+        }
+
+        const { data, error } = await query
+
+        if (error) throw error
+        void cacheItemsOffline(data || [])
+        return (data || []).map(item => this._convertItemFromDb(item))
+      } catch (error) {
+        console.warn('Failed to fetch business inventory from network, using offline cache:', error)
+      }
     }
 
-    // Apply search
-    if (filters?.searchQuery) {
-      query = query.or(`description.ilike.%${filters.searchQuery}%,source.ilike.%${filters.searchQuery}%,sku.ilike.%${filters.searchQuery}%,business_inventory_location.ilike.%${filters.searchQuery}%`)
-    }
-
-    // Apply sorting that remains stable when an item is edited
-    query = query
-      .order('created_at', { ascending: false, nullsFirst: false })
-      .order('date_created', { ascending: false, nullsFirst: false })
-
-    // Apply pagination
-    if (pagination) {
-      const offset = pagination.page > 0 ? (pagination.page - 1) * pagination.limit : 0
-      query = query.range(offset, offset + pagination.limit - 1)
-    }
-
-    const { data, error } = await query
-
-    if (error) throw error
-
-    return (data || []).map(item => this._convertItemFromDb(item))
+    return await this._getBusinessInventoryOffline(accountId, filters, pagination)
   },
 
   subscribeToBusinessInventory(
@@ -2036,27 +2962,27 @@ export const unifiedItemsService = {
         {
           event: '*',
           schema: 'public',
-          table: 'items',
-          filter: 'account_id=eq.' + accountId
+          table: 'items'
         },
         (payload) => {
-          console.log('Business inventory change received!', payload)
           const { eventType, new: newRecord, old: oldRecord } = payload
+          const recordAccountId = (eventType === 'DELETE' ? oldRecord?.account_id : newRecord?.account_id) ?? null
+          if (recordAccountId && recordAccountId !== accountId) {
+            return
+          }
+
+          console.log('Business inventory change received!', payload)
 
           if (eventType === 'INSERT') {
-            // Check raw DB record (snake_case)
             if (!newRecord.project_id) {
               const newItem = this._convertItemFromDb(newRecord)
               items = [newItem, ...items]
             }
           } else if (eventType === 'UPDATE') {
             const updatedItem = this._convertItemFromDb(newRecord)
-            // Check converted item (camelCase) - if projectId is null/undefined, it's business inventory
             if (!updatedItem.projectId) {
-              // It's a business inventory item, update it
               items = items.map(i => i.itemId === updatedItem.itemId ? updatedItem : i)
             } else {
-              // It's no longer a business inventory item (moved to a project), remove it
               items = items.filter(i => i.itemId !== updatedItem.itemId)
             }
           } else if (eventType === 'DELETE') {
@@ -2081,110 +3007,202 @@ export const unifiedItemsService = {
     }
   },
 
-  // Create new item (account-scoped)
-  async createItem(accountId: string, itemData: Omit<Item, 'itemId' | 'dateCreated' | 'lastUpdated'>): Promise<string> {
-    await ensureAuthenticatedForDatabase()
-
-    const now = new Date()
-    // Generate a unique item_id (using timestamp + random string format like the original)
-    const itemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-    const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
-
-    // Convert camelCase itemData to database format
-    const dbItem = this._convertItemToDb({
-      ...itemData,
-      itemId,
-      qrKey: itemData.qrKey || qrKey
-    } as Item)
+  // Create new item (account-scoped) - offline-aware orchestrator
+  async createItem(accountId: string, itemData: Omit<Item, 'itemId' | 'dateCreated' | 'lastUpdated'>): Promise<CreateItemResult> {
+    // Generate optimistic ID upfront so we always have one, even if operations fail
+    const optimisticItemId = `I-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
     
-    // Set dateCreated and lastUpdated separately since they're omitted from the type
-    dbItem.date_created = toDateOnlyString(now)
-    dbItem.last_updated = now.toISOString()
-
-    // Set account_id and timestamps
-    dbItem.account_id = accountId
-    dbItem.created_at = now.toISOString()
-    if (!dbItem.date_created) dbItem.date_created = toDateOnlyString(now)
-    if (!dbItem.last_updated) dbItem.last_updated = now.toISOString()
-    if (!dbItem.inventory_status) dbItem.inventory_status = 'available'
-
-    // If item is being created with a transaction_id but missing tax_rate_pct,
-    // attempt to read the transaction and inherit its tax_rate_pct.
-    try {
-      if (dbItem.transaction_id && dbItem.tax_rate_pct === null) {
-        const { data: txData } = await supabase
-          .from('transactions')
-          .select('tax_rate_pct')
-          .eq('account_id', accountId)
-          .eq('transaction_id', dbItem.transaction_id)
-          .single()
-
-        if (txData && txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
-          dbItem.tax_rate_pct = txData.tax_rate_pct
+    const queueOfflineCreate = async (reason: 'offline' | 'fallback' | 'timeout'): Promise<CreateItemResult> => {
+      try {
+        const { offlineItemService } = await import('./offlineItemService')
+        const result = await offlineItemService.createItem(accountId, itemData)
+        if (import.meta.env.DEV) {
+          console.info('[unifiedItemsService] createItem queued for offline processing', {
+            accountId,
+            itemId: result.itemId,
+            operationId: result.operationId,
+            reason
+          })
+        }
+        return {
+          mode: 'offline',
+          itemId: result.itemId ?? optimisticItemId,
+          operationId: result.operationId
+        }
+      } catch (error) {
+        // Propagate typed errors that the UI should handle (user needs to sign in, storage unavailable, etc.)
+        if (error instanceof OfflineQueueUnavailableError || error instanceof OfflineContextError) {
+          // Still include optimistic ID in error for UI reference, but throw the error
+          console.error('[unifiedItemsService] typed error during offline queue, propagating', {
+            accountId,
+            itemId: optimisticItemId,
+            reason,
+            errorType: error.constructor.name,
+            errorMessage: error.message
+          })
+          throw error
+        }
+        
+        // For unexpected errors, return optimistic result so UI can still show feedback
+        // This ensures deterministic UI messaging even when unexpected errors occur
+        const fallbackOperationId = `op-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        console.error('[unifiedItemsService] unexpected error during offline queue, returning optimistic result', {
+          accountId,
+          itemId: optimisticItemId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.constructor.name : typeof error
+        })
+        return {
+          mode: 'offline',
+          itemId: optimisticItemId,
+          operationId: fallbackOperationId
         }
       }
+    }
+
+    // Hydrate from offlineStore before attempting Supabase operations
+    try {
+      await offlineStore.init()
+      await offlineStore.getAllItems().catch(() => [])
     } catch (e) {
-      console.warn('Failed to inherit tax_rate_pct when creating item:', e)
+      console.warn('Failed to hydrate from offlineStore:', e)
     }
 
-    // Compute derived tax amounts (store as two-decimal strings). Treat empty/null prices as 0.
-    const computeTaxString = (priceStr: string | null | undefined, ratePct: number | undefined | null) => {
-      const priceNum = parseFloat(priceStr || '0')
-      const rate = (ratePct !== undefined && ratePct !== null) ? (Number(ratePct) / 100) : 0
-      const tax = Math.round((priceNum * rate) * 10000) / 10000
-      return tax.toFixed(4)
+    if (!isNetworkOnline()) {
+      return queueOfflineCreate('offline')
     }
-
-    dbItem.tax_amount_purchase_price = computeTaxString(dbItem.purchase_price, dbItem.tax_rate_pct)
-    dbItem.tax_amount_project_price = computeTaxString(dbItem.project_price, dbItem.tax_rate_pct)
-
-    const { error } = await supabase
-      .from('items')
-      .insert(dbItem)
-
-    if (error) throw error
 
     try {
-      if (dbItem.transaction_id) {
-        await _updateTransactionItemIds(accountId, dbItem.transaction_id, itemId, 'add')
+      await ensureAuthenticatedForDatabase()
+
+      const now = new Date()
+      // Use the pre-generated optimistic ID for consistency
+      const itemId = optimisticItemId
+      const qrKey = `QR-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+
+      const dbItem = this._convertItemToDb({
+        ...itemData,
+        itemId,
+        qrKey: itemData.qrKey || qrKey
+      } as Item)
+
+      dbItem.date_created = toDateOnlyString(now)
+      dbItem.last_updated = now.toISOString()
+      dbItem.account_id = accountId
+      dbItem.created_at = now.toISOString()
+      if (!dbItem.date_created) dbItem.date_created = toDateOnlyString(now)
+      if (!dbItem.last_updated) dbItem.last_updated = now.toISOString()
+      if (!dbItem.inventory_status) dbItem.inventory_status = 'available'
+
+      try {
+        if (dbItem.transaction_id && dbItem.tax_rate_pct === null) {
+          await withNetworkTimeout(async () => {
+            const { data: txData } = await supabase
+              .from('transactions')
+              .select('tax_rate_pct')
+              .eq('account_id', accountId)
+              .eq('transaction_id', dbItem.transaction_id)
+              .single()
+
+            if (txData && txData.tax_rate_pct !== undefined && txData.tax_rate_pct !== null) {
+              dbItem.tax_rate_pct = txData.tax_rate_pct
+            }
+          })
+        }
+      } catch (e) {
+        console.warn('Failed to inherit tax_rate_pct when creating item:', e)
       }
-    } catch (e) {
-      console.warn('Failed to sync transaction item_ids after createItem:', e)
-    }
 
-    // If this item was created attached to a transaction, adjust that transaction's derived sum and recompute
-    try {
-      if (dbItem.transaction_id) {
-        const txId = dbItem.transaction_id
-        if (!transactionService._isBatchActive(accountId, txId)) {
-          try {
-            const purchasePriceRaw = dbItem.purchase_price ?? dbItem.price ?? '0'
-            const delta = parseFloat(String(purchasePriceRaw) || '0')
-            transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
-              console.warn('Failed to notifyTransactionChanged after creating item:', e)
-            })
-          } catch (e) {
-            console.warn('Failed computing delta for created item:', e)
+      const computeTaxString = (priceStr: string | null | undefined, ratePct: number | undefined | null) => {
+        const priceNum = parseFloat(priceStr || '0')
+        const rate = (ratePct !== undefined && ratePct !== null) ? (Number(ratePct) / 100) : 0
+        const tax = Math.round((priceNum * rate) * 10000) / 10000
+        return tax.toFixed(4)
+      }
+
+      dbItem.tax_amount_purchase_price = computeTaxString(dbItem.purchase_price, dbItem.tax_rate_pct)
+      dbItem.tax_amount_project_price = computeTaxString(dbItem.project_price, dbItem.tax_rate_pct)
+
+      await withNetworkTimeout(async () => {
+        const { error } = await supabase
+          .from('items')
+          .insert(dbItem)
+        if (error) throw error
+      })
+
+      try {
+        if (dbItem.transaction_id) {
+          await _updateTransactionItemIds(accountId, dbItem.transaction_id, itemId, 'add')
+        }
+      } catch (e) {
+        console.warn('Failed to sync transaction item_ids after createItem:', e)
+      }
+
+      try {
+        if (dbItem.transaction_id) {
+          const txId = dbItem.transaction_id
+          if (!transactionService._isBatchActive(accountId, txId)) {
+            try {
+              const purchasePriceRaw = dbItem.purchase_price ?? dbItem.price ?? '0'
+              const delta = parseFloat(String(purchasePriceRaw) || '0')
+              transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+                console.warn('Failed to notifyTransactionChanged after creating item:', e)
+              })
+            } catch (e) {
+              console.warn('Failed computing delta for created item:', e)
+            }
           }
         }
+      } catch (e) {
+        console.warn('Failed to notifyTransactionChanged after creating item (sync path):', e)
       }
-    } catch (e) {
-      console.warn('Failed to notifyTransactionChanged after creating item (sync path):', e)
-    }
 
-    return itemId
+      return { mode: 'online', itemId }
+    } catch (error) {
+      if (error instanceof NetworkTimeoutError) {
+        console.warn('Supabase insert timed out, queuing item for offline sync.')
+        return queueOfflineCreate('timeout')
+      }
+      console.warn('Failed to create item online, falling back to offline queue:', error)
+      return queueOfflineCreate('fallback')
+    }
   },
 
-  // Update item (account-scoped)
+  // Update item (account-scoped) - offline-aware orchestrator
   async updateItem(accountId: string, itemId: string, updates: Partial<Item>): Promise<void> {
-    await ensureAuthenticatedForDatabase()
-    // Read existing item so we can recompute any affected transactions after the update
-    let existingItem: Item | null = null
+    // Check network state and hydrate from offlineStore first
+    const online = isNetworkOnline()
+    
+    // Hydrate from offlineStore before attempting Supabase operations
     try {
-      existingItem = await this.getItemById(accountId, itemId)
+      await offlineStore.init()
+      const existingOfflineItem = await offlineStore.getItemById(itemId).catch(() => null)
+      if (existingOfflineItem) {
+        // Pre-hydrate React Query cache if needed
+        // This prevents empty state flashes
+      }
     } catch (e) {
-      console.warn('Failed to fetch existing item before update:', e)
+      console.warn('Failed to hydrate from offlineStore:', e)
     }
+
+    // If offline, delegate to offlineItemService
+    if (!online) {
+      const { offlineItemService } = await import('./offlineItemService')
+      await offlineItemService.updateItem(accountId, itemId, updates)
+      return
+    }
+
+    // Online: try Supabase first, fall back to offline if it fails
+    try {
+      await ensureAuthenticatedForDatabase()
+      // Read existing item so we can recompute any affected transactions after the update
+      let existingItem: Item | null = null
+      try {
+        existingItem = await this.getItemById(accountId, itemId)
+      } catch (e) {
+        console.warn('Failed to fetch existing item before update:', e)
+      }
 
     const previousTransactionId = existingItem?.transactionId ?? null
     const explicitTransactionUpdate = updates.transactionId !== undefined
@@ -2333,66 +3351,109 @@ export const unifiedItemsService = {
     } catch (e) {
       console.warn('Failed to schedule notifyTransactionChanged after updateItem:', e)
     }
+    } catch (error) {
+      // Network request failed - fall back to offline queue
+      console.warn('Failed to update item online, falling back to offline queue:', error)
+      const { offlineItemService } = await import('./offlineItemService')
+      await offlineItemService.updateItem(accountId, itemId, updates)
+    }
   },
 
-  // Delete item (account-scoped)
+  // Delete item (account-scoped) - offline-aware orchestrator
   async deleteItem(accountId: string, itemId: string): Promise<void> {
-    await ensureAuthenticatedForDatabase()
-    // Read existing item to determine associated transaction (if any) so we can recompute after deletion
-    let existingItem: Item | null = null
+    // Check network state and hydrate from offlineStore first
+    const online = isNetworkOnline()
+    
+    // Hydrate from offlineStore before attempting Supabase operations
     try {
-      existingItem = await this.getItemById(accountId, itemId)
-    } catch (e) {
-      console.warn('Failed to fetch item before deletion:', e)
-    }
-
-    const { error } = await supabase
-      .from('items')
-      .delete()
-      .eq('account_id', accountId)
-      .eq('item_id', itemId)
-
-    if (error) throw error
-
-    if (existingItem?.transactionId) {
-      // The Postgres trigger handles hard deletes performed outside the app, but we
-      // still clean up eagerly here so TransactionDetail stays in sync immediately.
-      _updateTransactionItemIds(accountId, existingItem.transactionId, itemId, 'remove').catch(e => {
-        console.warn('Failed to sync transaction item_ids after deleteItem:', e)
-      })
-    }
-
-    // Adjust persisted sum and recompute for the transaction the item belonged to (if any)
-    try {
-      const txId = existingItem?.transactionId ?? null
-      if (txId) {
-        if (!transactionService._isBatchActive(accountId, txId)) {
-          const prevPrice = parseFloat(existingItem?.purchasePrice || '0')
-          const delta = -prevPrice
-          transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
-            console.warn('Failed to notifyTransactionChanged after deleting item:', e)
-          })
-        }
+      await offlineStore.init()
+      const existingOfflineItem = await offlineStore.getItemById(itemId).catch(() => null)
+      if (existingOfflineItem) {
+        // Pre-hydrate React Query cache if needed
       }
     } catch (e) {
-      console.warn('Failed to notifyTransactionChanged after deleting item:', e)
+      console.warn('Failed to hydrate from offlineStore:', e)
+    }
+
+    // If offline, delegate to offlineItemService
+    if (!online) {
+      const { offlineItemService } = await import('./offlineItemService')
+      await offlineItemService.deleteItem(accountId, itemId)
+      return
+    }
+
+    // Online: try Supabase first, fall back to offline if it fails
+    try {
+      await ensureAuthenticatedForDatabase()
+      // Read existing item to determine associated transaction (if any) so we can recompute after deletion
+      let existingItem: Item | null = null
+      try {
+        existingItem = await this.getItemById(accountId, itemId)
+      } catch (e) {
+        console.warn('Failed to fetch item before deletion:', e)
+      }
+
+      const { error } = await supabase
+        .from('items')
+        .delete()
+        .eq('account_id', accountId)
+        .eq('item_id', itemId)
+
+      if (error) throw error
+
+      if (existingItem?.transactionId) {
+        // The Postgres trigger handles hard deletes performed outside the app, but we
+        // still clean up eagerly here so TransactionDetail stays in sync immediately.
+        _updateTransactionItemIds(accountId, existingItem.transactionId, itemId, 'remove').catch(e => {
+          console.warn('Failed to sync transaction item_ids after deleteItem:', e)
+        })
+      }
+
+      // Adjust persisted sum and recompute for the transaction the item belonged to (if any)
+      try {
+        const txId = existingItem?.transactionId ?? null
+        if (txId) {
+          if (!transactionService._isBatchActive(accountId, txId)) {
+            const prevPrice = parseFloat(existingItem?.purchasePrice || '0')
+            const delta = -prevPrice
+            transactionService.notifyTransactionChanged(accountId, txId, { deltaSum: delta }).catch((e: any) => {
+              console.warn('Failed to notifyTransactionChanged after deleting item:', e)
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to notifyTransactionChanged after deleting item:', e)
+      }
+    } catch (error) {
+      // Network request failed - fall back to offline queue
+      console.warn('Failed to delete item online, falling back to offline queue:', error)
+      const { offlineItemService } = await import('./offlineItemService')
+      await offlineItemService.deleteItem(accountId, itemId)
     }
   },
 
   // Get items for a transaction (by transaction_id) (account-scoped)
   async getItemsForTransaction(accountId: string, _projectId: string, transactionId: string): Promise<Item[]> {
-    await ensureAuthenticatedForDatabase()
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
+        const { data, error } = await supabase
+          .from('items')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('transaction_id', transactionId)
+          .order('date_created', { ascending: true })
 
-    const { data, error } = await supabase
-      .from('items')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('transaction_id', transactionId)
-      .order('date_created', { ascending: true })
+        if (error) throw error
+        void cacheItemsOffline(data || [])
+        return (data || []).map(item => this._convertItemFromDb(item))
+      } catch (error) {
+        console.warn('Failed to fetch transaction items from network, using offline cache:', error)
+      }
+    }
 
-    if (error) throw error
-
-    return (data || []).map(item => this._convertItemFromDb(item))
+    return await this._getTransactionItemsOffline(accountId, transactionId)
   },
 
   // Allocate single item to project (follows ALLOCATION_TRANSACTION_LOGIC.md deterministic flows) (account-scoped)
@@ -3093,11 +4154,11 @@ export const unifiedItemsService = {
         }
 
         // If the transaction has a tax rate, propagate it to the added item
-        try {
+          try {
           const txTax = existingTransaction.tax_rate_pct
           if (txTax !== undefined && txTax !== null) {
             await this.updateItem(accountId, itemId, {
-              tax_rate_pct: txTax
+              taxRatePct: txTax
             })
           }
         } catch (e) {
@@ -3658,25 +4719,49 @@ export const unifiedItemsService = {
 
   // Helper function to get item by ID (account-scoped)
   async getItemById(accountId: string, itemId: string): Promise<Item | null> {
-    await ensureAuthenticatedForDatabase()
-
-    const { data, error } = await supabase
-      .from('items')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('item_id', itemId)
-      .single()
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null
+    // First, check React Query cache (for optimistic items created offline)
+    try {
+      const queryClient = tryGetQueryClient()
+      if (queryClient) {
+        const cachedItem = queryClient.getQueryData<Item>(['item', accountId, itemId])
+        if (cachedItem) {
+          console.debug('[getItemById] Found item in React Query cache:', itemId)
+          return cachedItem
+        }
       }
-      throw error
+    } catch (error) {
+      // QueryClient might not be initialized yet, continue to other sources
+      console.debug('[getItemById] React Query cache check failed (non-fatal):', error)
     }
 
-    if (!data) return null
+    const online = isNetworkOnline()
+    if (online) {
+      try {
+        await ensureAuthenticatedForDatabase()
 
-    return this._convertItemFromDb(data)
+        const { data, error } = await supabase
+          .from('items')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('item_id', itemId)
+          .single()
+
+        if (error) {
+          if (error.code === 'PGRST116') {
+            return null
+          }
+          throw error
+        }
+
+        if (!data) return null
+        void cacheItemsOffline([data])
+        return this._convertItemFromDb(data)
+      } catch (error) {
+        console.warn('Failed to fetch item by ID from network, using offline cache:', error)
+      }
+    }
+
+    return await this._getItemByIdOffline(accountId, itemId)
   },
 
   // Duplicate an existing item (unified collection version) (account-scoped)
@@ -3809,15 +4894,15 @@ export const unifiedItemsService = {
       const item: any = {
         account_id: accountId,
         item_id: itemId,
-        description: itemData.description || '',
+        description: itemData.description ?? null,
         source: transactionSource, // Use transaction source for all items
-        sku: itemData.sku || '',
-        purchase_price: itemData.purchasePrice || null,
-        project_price: itemData.projectPrice || null,
-        market_value: itemData.marketValue || null,
-        payment_method: 'Client Card', // Default payment method
+        sku: itemData.sku ?? null,
+        purchase_price: itemData.purchasePrice ?? null,
+        project_price: itemData.projectPrice ?? null,
+        market_value: itemData.marketValue ?? null,
+        payment_method: null, // No default - should come from transaction or item data
         disposition: 'purchased',
-        notes: itemData.notes || null,
+        notes: itemData.notes ?? null,
         qr_key: qrKey,
         bookmark: false,
         transaction_id: transactionId,

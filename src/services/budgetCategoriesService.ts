@@ -2,6 +2,8 @@ import { supabase } from './supabase'
 import { convertTimestamps, handleSupabaseError, ensureAuthenticatedForDatabase } from './databaseService'
 import { BudgetCategory } from '@/types'
 import { getBudgetCategoryOrder } from './accountPresetsService'
+import { cacheBudgetCategoriesOffline, getCachedBudgetCategories } from './offlineMetadataService'
+import { isNetworkOnline } from './networkStatusService'
 
 /**
  * Budget Categories Service
@@ -10,77 +12,81 @@ import { getBudgetCategoryOrder } from './accountPresetsService'
  * Categories are scoped to accounts and can be archived (not hard deleted)
  * to preserve historical integrity.
  */
+type GetCategoriesOptions = {
+  mode?: 'auto' | 'cache-only'
+}
+
 export const budgetCategoriesService = {
   /**
    * Get all budget categories for an account
    * @param accountId - The account ID to fetch categories for
    * @param includeArchived - If true, includes archived categories (default: false)
+   * @param options - Allows forcing cache-only reads (no Supabase calls)
    * @returns Array of budget categories ordered by preset order (if set), otherwise alphabetically
    */
-  async getCategories(accountId: string, includeArchived: boolean = false): Promise<BudgetCategory[]> {
+  async getCategories(
+    accountId: string,
+    includeArchived: boolean = false,
+    options?: GetCategoriesOptions
+  ): Promise<BudgetCategory[]> {
+    const mode = options?.mode ?? 'auto'
+    const shouldForceCache = mode === 'cache-only'
+    const online = shouldForceCache ? false : isNetworkOnline()
+
+    if (!online) {
+      return filterArchivedCategories(
+        await loadCategoriesFromCache(accountId, { silent: mode !== 'cache-only' }),
+        includeArchived
+      )
+    }
+
     await ensureAuthenticatedForDatabase()
 
-    let query = supabase
-      .from('budget_categories')
-      .select('*')
-      .eq('account_id', accountId)
-
-    if (!includeArchived) {
-      query = query.eq('is_archived', false)
-    }
-
-    const { data, error } = await query
-
-    handleSupabaseError(error)
-
-    const categories = (data || []).map(category => {
-      const converted = convertTimestamps(category)
-      return {
-        id: converted.id,
-        accountId: converted.account_id,
-        name: converted.name,
-        slug: converted.slug,
-        isArchived: converted.is_archived || false,
-        metadata: converted.metadata || null,
-        createdAt: converted.created_at,
-        updatedAt: converted.updated_at
-      } as BudgetCategory
-    })
-
-    // Get preset order if available
     try {
-      const order = await getBudgetCategoryOrder(accountId)
-      if (order && order.length > 0) {
-        // Create a map for quick lookup
-        const categoryMap = new Map(categories.map(cat => [cat.id, cat]))
-        const orderedCategories: BudgetCategory[] = []
-        const seenIds = new Set<string>()
+      let query = supabase
+        .from('vw_budget_categories')
+        .select('*')
+        .eq('account_id', accountId)
 
-        // Add categories in preset order
-        for (const categoryId of order) {
-          const category = categoryMap.get(categoryId)
-          if (category) {
-            orderedCategories.push(category)
-            seenIds.add(categoryId)
-          }
-        }
-
-        // Append any categories not in the order (new categories, etc.)
-        for (const category of categories) {
-          if (!seenIds.has(category.id)) {
-            orderedCategories.push(category)
-          }
-        }
-
-        return orderedCategories
+      if (!includeArchived) {
+        query = query.eq('is_archived', false)
       }
-    } catch (err) {
-      // If getting order fails, fall back to alphabetical sorting
-      console.warn('Failed to get budget category order, using alphabetical:', err)
-    }
 
-    // Fallback to alphabetical sorting by name
-    return categories.sort((a, b) => a.name.localeCompare(b.name))
+      const { data, error } = await query
+
+      handleSupabaseError(error)
+
+      const categories = (data || []).map(category => {
+        const converted = convertTimestamps(category)
+        return {
+          id: converted.id,
+          accountId: converted.account_id,
+          name: converted.name,
+          slug: converted.slug,
+          isArchived: converted.is_archived || false,
+          metadata: converted.metadata || null,
+          createdAt: converted.created_at,
+          updatedAt: converted.updated_at
+        } as BudgetCategory
+      })
+
+      const ordered = await orderCategories(accountId, categories)
+
+      if (!includeArchived) {
+        cacheBudgetCategoriesOffline(accountId).catch((error) => {
+          console.warn('[budgetCategoriesService] Background cache refresh failed:', error)
+        })
+      }
+
+      return ordered
+    } catch (err) {
+      console.warn('[budgetCategoriesService] Falling back to cached categories after fetch failure:', err)
+      const cached = await loadCategoriesFromCache(accountId, { silent: true })
+      if (cached.length > 0) {
+        return filterArchivedCategories(cached, includeArchived)
+      }
+      throw err
+    }
   },
 
   /**
@@ -93,7 +99,7 @@ export const budgetCategoriesService = {
     await ensureAuthenticatedForDatabase()
 
     const { data, error } = await supabase
-      .from('budget_categories')
+      .from('vw_budget_categories')
       .select('*')
       .eq('id', categoryId)
       .eq('account_id', accountId)
@@ -138,37 +144,34 @@ export const budgetCategoriesService = {
     if (!name || name.trim().length === 0) {
       throw new Error('Category name is required')
     }
-    // Generate slug internally from name
-    const normalizedSlug = (name || '')
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
 
-    const { data, error } = await supabase
-      .from('budget_categories')
-      .insert({
-        account_id: accountId,
-        name: name.trim(),
-        slug: normalizedSlug,
-        metadata: metadata || null,
-        is_archived: false
-      })
-      .select()
-      .single()
+    // Call RPC function to create category
+    const { data, error } = await supabase.rpc('rpc_upsert_budget_category', {
+      p_account_id: accountId,
+      p_category_id: null,
+      p_name: name.trim(),
+      p_slug: null, // Let RPC generate slug
+      p_metadata: metadata || null,
+      p_is_archived: false
+    })
 
     handleSupabaseError(error)
 
-    const converted = convertTimestamps(data)
+    if (!data) {
+      throw new Error('Failed to create category: no data returned')
+    }
+
+    // RPC returns JSONB, convert to BudgetCategory
+    const category = data as any
     return {
-      id: converted.id,
-      accountId: converted.account_id,
-      name: converted.name,
-      slug: converted.slug,
-      isArchived: converted.is_archived || false,
-      metadata: converted.metadata || null,
-      createdAt: converted.created_at,
-      updatedAt: converted.updated_at
+      id: category.id,
+      accountId: category.account_id,
+      name: category.name,
+      slug: category.slug,
+      isArchived: category.is_archived || false,
+      metadata: category.metadata || null,
+      createdAt: new Date(category.created_at),
+      updatedAt: new Date(category.updated_at)
     } as BudgetCategory
   },
 
@@ -196,53 +199,53 @@ export const budgetCategoriesService = {
       throw new Error('Category not found or does not belong to this account')
     }
 
-    const updateData: Record<string, any> = {
-      updated_at: new Date().toISOString()
-    }
-
+    // Validate name if provided
     if (updates.name !== undefined) {
       if (!updates.name || updates.name.trim().length === 0) {
         throw new Error('Category name cannot be empty')
       }
-      updateData.name = updates.name.trim()
     }
 
+    // Normalize slug if provided
+    let normalizedSlug: string | null = null
     if (updates.slug !== undefined) {
       if (!updates.slug || updates.slug.trim().length === 0) {
         throw new Error('Category slug cannot be empty')
       }
-      // Normalize slug
-      updateData.slug = updates.slug
+      normalizedSlug = updates.slug
         .toLowerCase()
         .trim()
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')
     }
 
-    if (updates.metadata !== undefined) {
-      updateData.metadata = updates.metadata
-    }
-
-    const { data, error } = await supabase
-      .from('budget_categories')
-      .update(updateData)
-      .eq('id', categoryId)
-      .eq('account_id', accountId)
-      .select()
-      .single()
+    // Call RPC function to update category
+    const { data, error } = await supabase.rpc('rpc_upsert_budget_category', {
+      p_account_id: accountId,
+      p_category_id: categoryId,
+      p_name: updates.name !== undefined ? updates.name.trim() : existing.name,
+      p_slug: normalizedSlug,
+      p_metadata: updates.metadata !== undefined ? updates.metadata : existing.metadata,
+      p_is_archived: existing.isArchived
+    })
 
     handleSupabaseError(error)
 
-    const converted = convertTimestamps(data)
+    if (!data) {
+      throw new Error('Failed to update category: no data returned')
+    }
+
+    // RPC returns JSONB, convert to BudgetCategory
+    const category = data as any
     return {
-      id: converted.id,
-      accountId: converted.account_id,
-      name: converted.name,
-      slug: converted.slug,
-      isArchived: converted.is_archived || false,
-      metadata: converted.metadata || null,
-      createdAt: converted.created_at,
-      updatedAt: converted.updated_at
+      id: category.id,
+      accountId: category.account_id,
+      name: category.name,
+      slug: category.slug,
+      isArchived: category.is_archived || false,
+      metadata: category.metadata || null,
+      createdAt: new Date(category.created_at),
+      updatedAt: new Date(category.updated_at)
     } as BudgetCategory
   },
 
@@ -262,30 +265,30 @@ export const budgetCategoriesService = {
       throw new Error('Category not found or does not belong to this account')
     }
 
-    // Archive the category (allow archiving even if referenced to preserve history)
-    const { data, error } = await supabase
-      .from('budget_categories')
-      .update({
-        is_archived: true,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', categoryId)
-      .eq('account_id', accountId)
-      .select()
-      .single()
+    // Call RPC function to archive category
+    const { data, error } = await supabase.rpc('rpc_archive_budget_category', {
+      p_account_id: accountId,
+      p_category_id: categoryId,
+      p_is_archived: true
+    })
 
     handleSupabaseError(error)
 
-    const converted = convertTimestamps(data)
+    if (!data) {
+      throw new Error('Failed to archive category: no data returned')
+    }
+
+    // RPC returns JSONB, convert to BudgetCategory
+    const category = data as any
     return {
-      id: converted.id,
-      accountId: converted.account_id,
-      name: converted.name,
-      slug: converted.slug,
-      isArchived: converted.is_archived || false,
-      metadata: converted.metadata || null,
-      createdAt: converted.created_at,
-      updatedAt: converted.updated_at
+      id: category.id,
+      accountId: category.account_id,
+      name: category.name,
+      slug: category.slug,
+      isArchived: category.is_archived || false,
+      metadata: category.metadata || null,
+      createdAt: new Date(category.created_at),
+      updatedAt: new Date(category.updated_at)
     } as BudgetCategory
   },
 
@@ -304,29 +307,30 @@ export const budgetCategoriesService = {
       throw new Error('Category not found or does not belong to this account')
     }
 
-    const { data, error } = await supabase
-      .from('budget_categories')
-      .update({
-        is_archived: false,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', categoryId)
-      .eq('account_id', accountId)
-      .select()
-      .single()
+    // Call RPC function to unarchive category
+    const { data, error } = await supabase.rpc('rpc_archive_budget_category', {
+      p_account_id: accountId,
+      p_category_id: categoryId,
+      p_is_archived: false
+    })
 
     handleSupabaseError(error)
 
-    const converted = convertTimestamps(data)
+    if (!data) {
+      throw new Error('Failed to unarchive category: no data returned')
+    }
+
+    // RPC returns JSONB, convert to BudgetCategory
+    const category = data as any
     return {
-      id: converted.id,
-      accountId: converted.account_id,
-      name: converted.name,
-      slug: converted.slug,
-      isArchived: converted.is_archived || false,
-      metadata: converted.metadata || null,
-      createdAt: converted.created_at,
-      updatedAt: converted.updated_at
+      id: category.id,
+      accountId: category.account_id,
+      name: category.name,
+      slug: category.slug,
+      isArchived: category.is_archived || false,
+      metadata: category.metadata || null,
+      createdAt: new Date(category.created_at),
+      updatedAt: new Date(category.updated_at)
     } as BudgetCategory
   },
 
@@ -431,5 +435,56 @@ export const budgetCategoriesService = {
 
     return { successful, failed }
   }
+}
+
+async function orderCategories(accountId: string, categories: BudgetCategory[]): Promise<BudgetCategory[]> {
+  try {
+    const order = await getBudgetCategoryOrder(accountId)
+    if (order && order.length > 0) {
+      const categoryMap = new Map(categories.map(cat => [cat.id, cat]))
+      const orderedCategories: BudgetCategory[] = []
+      const seenIds = new Set<string>()
+
+      for (const categoryId of order) {
+        const category = categoryMap.get(categoryId)
+        if (category) {
+          orderedCategories.push(category)
+          seenIds.add(categoryId)
+        }
+      }
+
+      for (const category of categories) {
+        if (!seenIds.has(category.id)) {
+          orderedCategories.push(category)
+        }
+      }
+
+      return orderedCategories
+    }
+  } catch (err) {
+    console.warn('Failed to get budget category order, using alphabetical:', err)
+  }
+
+  return [...categories].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+async function loadCategoriesFromCache(accountId: string, options?: { silent?: boolean }): Promise<BudgetCategory[]> {
+  const cached = await getCachedBudgetCategories(accountId)
+  if (!cached || cached.length === 0) {
+    if (!options?.silent) {
+      throw new Error(
+        'Budget categories cache is empty. Go online and tap Retry sync to warm the offline cache before using this screen offline.'
+      )
+    }
+    return []
+  }
+  return orderCategories(accountId, cached)
+}
+
+function filterArchivedCategories(categories: BudgetCategory[], includeArchived: boolean): BudgetCategory[] {
+  if (includeArchived) {
+    return categories
+  }
+  return categories.filter(cat => !cat.isArchived)
 }
 
